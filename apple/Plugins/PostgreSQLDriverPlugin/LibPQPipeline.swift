@@ -53,9 +53,9 @@ nonisolated struct LibPQPipelineTally {
         }
     }
 
-    // A row read alone, counted and dropped, as a lone read past its limit counts and drops it.
-    mutating func takeRow() {
-        rowsSoFar += 1
+    // Rows read in a chunk, counted and dropped, as a lone read past its limit counts and drops them.
+    mutating func takeRows(_ count: Int) {
+        rowsSoFar += count
     }
 
     mutating func takeSync() {

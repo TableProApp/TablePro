@@ -1,10 +1,19 @@
 use crate::AiError;
 
-/// What a streaming reply sends, in order: text as it arrives, then one
-/// `Finished` or `Failed`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What a streaming reply sends, in order: text and tool calls as they
+/// arrive, then one `Finished` or `Failed`.
+// Not `Eq`: a tool call's input is a `serde_json::Value`, whose numbers
+// are not `Eq`.
+#[derive(Debug, Clone, PartialEq)]
 pub enum ReplyEvent {
     Text(String),
+    /// A tool call assembled from the stream, ready for the agent loop
+    /// to run. `input` is the parsed arguments.
+    ToolCall {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
     Finished(ReplyEnd),
     Failed(AiError),
 }
@@ -23,6 +32,8 @@ pub enum StopReason {
     LengthLimit,
     /// The model declined to answer.
     Refused,
+    /// The model called one or more tools and waits for their results.
+    ToolUse,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

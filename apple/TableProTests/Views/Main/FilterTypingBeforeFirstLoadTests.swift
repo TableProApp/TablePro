@@ -104,7 +104,7 @@ extension GlobalStateSuites {
         func appliedFiltersNeedTheSchema() {
             let (coordinator, tabManager, tabId) = makeCoordinator(
                 filter: TestFixtures.makeTableFilter(column: "code", value: "0123"),
-                type: .postgresql
+                type: .mssql
             )
             defer { coordinator.teardown() }
 

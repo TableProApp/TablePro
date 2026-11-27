@@ -14,7 +14,8 @@ public sealed class DatabaseSwitchTests
 
         Assert.Equal(DatabaseLayout.OneDatabase, database.Session.Layout);
         Assert.Null(database.Session.Database);
-        Assert.Equal("driver.unsupported", listing.Error.Code);
+        Assert.Equal("unsupported.database_switching", listing.Error.Code);
+        Assert.Contains("driver.unsupported", listing.Error.Codes);
     }
 
     [Fact]
@@ -27,7 +28,8 @@ public sealed class DatabaseSwitchTests
             () => database.Session.OpenEditorAsync("shop", cancellationToken));
         await using var editor = await database.Session.OpenEditorAsync(null, cancellationToken);
 
-        Assert.Equal("driver.unsupported", refused.Error.Code);
+        Assert.Equal("unsupported.database_switching", refused.Error.Code);
+        Assert.Contains("driver.unsupported", refused.Error.Codes);
         Assert.Null(editor.Database);
     }
 

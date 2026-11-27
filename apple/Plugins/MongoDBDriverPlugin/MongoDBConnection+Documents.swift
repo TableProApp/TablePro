@@ -168,9 +168,19 @@ nonisolated struct MongoLibbsonCodec: MongoDocumentCodec {
     }
 
     func bsonSize(of json: String) -> Int? {
+        storedBytes(ofJSON: json)?.count
+    }
+
+    /// The document libbson reads from the text, as the bytes it would store.
+    func storedBytes(ofJSON json: String) -> Data? {
         guard let bson = Self.parse(json) else { return nil }
         defer { bson_destroy(bson) }
-        return Self.size(of: bson)
+        return Self.storedBytes(of: bson)
+    }
+
+    static func storedBytes(of bson: OpaquePointer) -> Data {
+        guard let data = bson_get_data(bson) else { return Data() }
+        return Data(bytes: data, count: size(of: bson))
     }
 
     /// Whether `text` reads back as exactly `stored`. Text libbson cannot read is not the same.

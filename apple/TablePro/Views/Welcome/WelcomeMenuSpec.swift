@@ -42,6 +42,7 @@ internal enum WelcomeMenuCommand: Equatable {
     case importFromApp
     case importFromAWS
     case openProjectFolder
+    case moveToProject(connectionIds: [UUID], groupIds: [UUID], projectId: UUID?)
 }
 
 extension WelcomeMenuCommand: SidebarMenuShortcutProviding {
@@ -73,6 +74,7 @@ internal struct WelcomeMenuContext {
     internal let canPublishToTeamCatalog: Bool
     internal let teamLibraryTeams: [TeamLibraryTeam]
     internal let hasTeamLibraryConflicts: Bool
+    internal var projects: [ConnectionProject] = []
 }
 
 @MainActor
@@ -91,7 +93,10 @@ internal enum WelcomeMenuSpec {
         }
 
         if !resolved.groupIds.isEmpty, resolved.savedConnectionIds.isEmpty, resolved.sharedConnectionIds.isEmpty {
-            guard resolved.groupIds.count == 1, let groupId = resolved.groupIds.first else { return [] }
+            guard resolved.groupIds.count == 1, let groupId = resolved.groupIds.first else {
+                return moveToProjectSubmenu(connectionIds: [], groupIds: resolved.groupIds, context: context)
+                    .map { [WelcomeMenuSection([$0])] } ?? []
+            }
             return groupSections(groupId, context: context)
         }
 
@@ -102,7 +107,16 @@ internal enum WelcomeMenuSpec {
 
         guard resolved.sharedConnectionIds.isEmpty, resolved.groupIds.isEmpty else {
             let count = resolved.savedConnectionIds.count + resolved.sharedConnectionIds.count
-            return [WelcomeMenuSection([.command(Titles.connect(count: count), .connect(context.rows))])]
+            var sections = [WelcomeMenuSection([.command(Titles.connect(count: count), .connect(context.rows))])]
+            if resolved.sharedConnectionIds.isEmpty,
+               let move = moveToProjectSubmenu(
+                   connectionIds: resolved.savedConnectionIds,
+                   groupIds: resolved.groupIds,
+                   context: context
+               ) {
+                sections.append(WelcomeMenuSection([move]))
+            }
+            return sections
         }
 
         if resolved.savedConnectionIds.count == 1,
@@ -180,6 +194,9 @@ internal enum WelcomeMenuSpec {
         if currentGroupId != nil {
             organize.append(.command(Titles.removeFromGroup, .moveToGroup([id], nil)))
         }
+        if let move = moveToProjectSubmenu(connectionIds: [id], groupIds: [], context: context) {
+            organize.append(move)
+        }
         if context.isSyncEnabled {
             organize.append(syncItem([id], allLocalOnly: connection.localOnly))
         }
@@ -208,6 +225,9 @@ internal enum WelcomeMenuSpec {
         organize.append(moveToGroupSubmenu(ids, currentGroupId: nil, groups: context.groups))
         if connections.contains(where: { validGroupId(of: $0, groups: context.groups) != nil }) {
             organize.append(.command(Titles.removeFromGroup, .moveToGroup(ids, nil)))
+        }
+        if let move = moveToProjectSubmenu(connectionIds: ids, groupIds: [], context: context) {
+            organize.append(move)
         }
         if context.isSyncEnabled {
             organize.append(syncItem(ids, allLocalOnly: connections.allSatisfy(\.localOnly)))
@@ -318,6 +338,9 @@ internal enum WelcomeMenuSpec {
         if !moveTargets.isEmpty {
             arrange.append(.submenu(title: Titles.moveGroupTo, sections: moveTargets))
         }
+        if let move = moveToProjectSubmenu(connectionIds: [], groupIds: [groupId], context: context) {
+            arrange.append(move)
+        }
 
         return [
             WelcomeMenuSection(edit),
@@ -356,6 +379,43 @@ internal enum WelcomeMenuSpec {
             ]),
             WelcomeMenuSection(targets),
         ]
+    }
+
+    // MARK: - Projects
+
+    // Offered on what carries a project of its own: an ungrouped connection and a top-level group. A
+    // grouped connection and a subgroup follow their top-level group.
+    private static func moveToProjectSubmenu(
+        connectionIds: [UUID],
+        groupIds: [UUID],
+        context: WelcomeMenuContext
+    ) -> WelcomeMenuItem? {
+        guard !context.projects.isEmpty, !(connectionIds.isEmpty && groupIds.isEmpty) else { return nil }
+        let connections = connectionIds.compactMap { context.connections[$0] }
+        guard connections.count == connectionIds.count,
+              connections.allSatisfy({ validGroupId(of: $0, groups: context.groups) == nil }) else { return nil }
+        let graph = LibraryGroupGraph(groups: context.groups)
+        let groups = groupIds.compactMap { id in context.groups.first { $0.id == id } }
+        guard groups.count == groupIds.count,
+              groups.allSatisfy({ graph.parentId(of: $0.id) == nil }) else { return nil }
+
+        // An id no project holds reads as none.
+        let known = Set(context.projects.map(\.id))
+        let current = Set((connections.map(\.projectId) + groups.map(\.projectId)).map { id in
+            id.flatMap { known.contains($0) ? $0 : nil }
+        })
+        let shared: UUID?? = current.count == 1 ? current.first : nil
+        func entry(_ title: String, _ projectId: UUID?) -> WelcomeMenuItem {
+            .command(SidebarMenuEntry(
+                title: title,
+                command: .moveToProject(connectionIds: connectionIds, groupIds: groupIds, projectId: projectId),
+                isOn: shared == .some(projectId)
+            ))
+        }
+        return .submenu(title: Titles.moveToProject, sections: [
+            WelcomeMenuSection([entry(Titles.noProject, nil)]),
+            WelcomeMenuSection(context.projects.map { entry($0.name, $0.id) }),
+        ])
     }
 
     // MARK: - Helpers
@@ -398,6 +458,8 @@ internal extension WelcomeMenuSpec {
         static var copyConnectionString: String { String(localized: "Copy Connection String") }
         static var copyTableProLink: String { String(localized: "Copy TablePro Link") }
         static var moveToGroup: String { String(localized: "Move to Group") }
+        static var moveToProject: String { String(localized: "Move to Project") }
+        static var noProject: String { String(localized: "None") }
         static var removeFromGroup: String { String(localized: "Remove from Group") }
         static var includeInSync: String { String(localized: "Include in iCloud Sync") }
         static var excludeFromSync: String { String(localized: "Exclude from iCloud Sync") }

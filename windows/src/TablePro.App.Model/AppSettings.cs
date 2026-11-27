@@ -87,6 +87,10 @@ public sealed record AppSettings
     // A preset id from the core's keymaps.json; null keeps TablePro's own keys.
     public string? ShortcutPreset { get; set; }
 
+    // Per-command key customs laid over the preset: action -> chord text like "ctrl+alt+r", "" for a removed binding
+    // (windows/docs/decisions/0028). Normalized drops unknown or unbindable entries.
+    public ShortcutOverrideMap ShortcutOverrides { get; set; } = new();
+
     // Kept on this device only, so another device with an empty library still shows the guide (core 0057).
     public bool SetupGuideSeen { get; set; }
 
@@ -143,6 +147,9 @@ public sealed record AppSettings
     public bool McpServerEnabled { get; set; }
 
     public int McpServerPort { get; set; } = DefaultMcpServerPort;
+
+    // The project the Connections page shows, on this PC only; null, and an id no project holds, show all connections.
+    public Guid? ActiveProjectId { get; set; }
 
     // The channel Settings chose; null follows the App Installer file the app was installed from.
     public UpdateChannel? UpdateChannel { get; set; }
@@ -204,6 +211,7 @@ public sealed record AppSettings
         EditorLightScheme = string.IsNullOrWhiteSpace(EditorLightScheme) ? null : EditorLightScheme.Trim(),
         EditorDarkScheme = string.IsNullOrWhiteSpace(EditorDarkScheme) ? null : EditorDarkScheme.Trim(),
         ShortcutPreset = string.IsNullOrWhiteSpace(ShortcutPreset) ? null : ShortcutPreset.Trim(),
+        ShortcutOverrides = Keymap.NormalizeOverrides(ShortcutOverrides ?? new ShortcutOverrideMap()),
         GridFontFamily = string.IsNullOrWhiteSpace(GridFontFamily) ? null : GridFontFamily.Trim(),
         GridFontSize = double.IsFinite(GridFontSize) ? Math.Clamp(GridFontSize, 8, 36) : DefaultGridFontSize,
         NullDisplay = string.IsNullOrEmpty(NullDisplay)

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tablepro_core::plan::{ExplainPlanFormat, ExplainVariant};
 use tablepro_core::{
     ConfigError, ConnectOptions, ConnectTarget, Connection, DatabaseDriver, DriverCapabilities, DriverError,
     UnsupportedFeature,
@@ -31,6 +32,19 @@ impl DatabaseDriver for MysqlDriver {
 
     fn capabilities(&self) -> &'static DriverCapabilities {
         &CAPABILITIES
+    }
+
+    fn explain_variants(&self) -> &'static [ExplainVariant] {
+        const VARIANTS: &[ExplainVariant] = &[
+            ExplainVariant::prefix("explain", "EXPLAIN", "EXPLAIN", ExplainPlanFormat::MYSQL_COMPOSITE),
+            ExplainVariant::prefix(
+                "explain-json",
+                "EXPLAIN (JSON)",
+                "EXPLAIN FORMAT=JSON",
+                ExplainPlanFormat::MYSQL_COMPOSITE,
+            ),
+        ];
+        VARIANTS
     }
 
     async fn connect(

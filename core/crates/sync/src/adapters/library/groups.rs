@@ -29,6 +29,8 @@ pub(super) fn group(id: Uuid, fields: &Value, stored: Option<&ConnectionGroup>) 
         id,
         name,
         parent_id: uuid_at(fields, "parent_id"),
+        // Sync carries no project yet (core ADR 0067), so a pulled group keeps the one this device stored.
+        project_id: stored.and_then(|stored| stored.project_id),
         order: integer(fields, "sort_order").map_or(0, clamped),
         color: text(fields, "color").and_then(color_named),
         icon: text(fields, "icon_name").and_then(icon_for_symbol),

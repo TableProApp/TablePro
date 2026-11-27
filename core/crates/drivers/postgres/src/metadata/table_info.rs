@@ -6,7 +6,9 @@ use super::{decode_error, text_rows};
 
 /// The relation's kind, its comment, and the sizes of what it stores:
 /// its own for a table or materialized view, its leaf partitions' for a
-/// partitioned table, which stores nothing itself.
+/// partitioned table, which stores nothing itself. The leaves are found
+/// through `pg_inherits`, which every release has; `pg_partition_tree`
+/// came in 12 and finds the same ones.
 pub(super) const TABLE_INFO_SQL: &str = "\
 SELECT c.relkind::text,
        pg_catalog.obj_description(c.oid, 'pg_class'),
@@ -15,47 +17,24 @@ SELECT c.relkind::text,
        sizes.total_bytes
 FROM pg_catalog.pg_class c
 CROSS JOIN LATERAL (
-    SELECT COALESCE(pg_catalog.sum(pg_catalog.pg_table_size(part.relid)), 0)::int8,
-           COALESCE(pg_catalog.sum(pg_catalog.pg_indexes_size(part.relid)), 0)::int8,
-           COALESCE(pg_catalog.sum(pg_catalog.pg_total_relation_size(part.relid)), 0)::int8
-    FROM (SELECT c.oid WHERE c.relkind IN ('r', 'm')
-          UNION ALL
-          SELECT leaf.oid
-            FROM pg_catalog.pg_partition_tree(c.oid) AS tree
-            JOIN pg_catalog.pg_class leaf ON leaf.oid = tree.relid::pg_catalog.oid
-           WHERE c.relkind = 'p' AND leaf.relkind = 'r') AS part(relid)
+    WITH RECURSIVE tree AS (
+        SELECT c.oid AS relid
+      UNION ALL
+        SELECT h.inhrelid FROM pg_catalog.pg_inherits h JOIN tree ON h.inhparent = tree.relid
+         WHERE c.relkind = 'p'
+    )
+    SELECT COALESCE(pg_catalog.sum(pg_catalog.pg_table_size(leaf.oid)), 0)::int8,
+           COALESCE(pg_catalog.sum(pg_catalog.pg_indexes_size(leaf.oid)), 0)::int8,
+           COALESCE(pg_catalog.sum(pg_catalog.pg_total_relation_size(leaf.oid)), 0)::int8
+    FROM tree
+    JOIN pg_catalog.pg_class leaf ON leaf.oid = tree.relid
+    WHERE leaf.relkind IN ('r', 'm')
 ) AS sizes(data_bytes, index_bytes, total_bytes)
 WHERE c.oid = $1::text::oid";
 
-/// `pg_partition_tree` came in PostgreSQL 12, so before it a partitioned
-/// table reports its own sizes.
-pub(super) const TABLE_INFO_SQL_BEFORE_12: &str = "\
-SELECT c.relkind::text,
-       pg_catalog.obj_description(c.oid, 'pg_class'),
-       sizes.data_bytes,
-       sizes.index_bytes,
-       sizes.total_bytes
-FROM pg_catalog.pg_class c
-CROSS JOIN LATERAL (
-    SELECT COALESCE(pg_catalog.sum(pg_catalog.pg_table_size(part.relid)), 0)::int8,
-           COALESCE(pg_catalog.sum(pg_catalog.pg_indexes_size(part.relid)), 0)::int8,
-           COALESCE(pg_catalog.sum(pg_catalog.pg_total_relation_size(part.relid)), 0)::int8
-    FROM (SELECT c.oid WHERE c.relkind IN ('r', 'm', 'p')) AS part(relid)
-) AS sizes(data_bytes, index_bytes, total_bytes)
-WHERE c.oid = $1::text::oid";
-
-/// `partition_tree` says the server has `pg_partition_tree`.
-pub(crate) async fn table_info(
-    client: &Client,
-    relation: &str,
-    partition_tree: bool,
-) -> Result<TableInfo, DriverError> {
-    let sql = match partition_tree {
-        true => TABLE_INFO_SQL,
-        false => TABLE_INFO_SQL_BEFORE_12,
-    };
+pub(crate) async fn table_info(client: &Client, relation: &str) -> Result<TableInfo, DriverError> {
     let field = decode_error("pg_class");
-    let rows = text_rows(client, sql, &[relation]).await?;
+    let rows = text_rows(client, TABLE_INFO_SQL, &[relation]).await?;
     let Some(row) = rows.first() else {
         return Ok(TableInfo::default());
     };

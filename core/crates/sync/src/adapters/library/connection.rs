@@ -521,6 +521,8 @@ fn read(id: Uuid, fields: &Value, stored: Option<&SavedConnection>, names: Drive
         last_opened_at: None,
         color: text(fields, "color").and_then(connection_color),
         group_id: uuid_at(fields, "group_id"),
+        // Sync carries no project yet (core ADR 0067), so a pulled connection keeps the one this device stored.
+        project_id: stored.and_then(|stored| stored.project_id),
         order: integer(fields, "sort_order").map_or(0, clamped),
         tags: fields
             .get("tag_ids")

@@ -17,6 +17,7 @@ use uuid::Uuid;
 use super::{AppServices, TableProApplication, WindowLaunch};
 use crate::i18n::gettext_f;
 use crate::runtime::{InputSender, input_queue, pump_inputs};
+use crate::services::active_project::ActiveProject;
 use crate::services::history_service::HistoryService;
 use crate::ui::write_confirmation::{WriteConfirmation, confirm_until};
 use crate::ui::{SessionWindow, SessionWindowInput};
@@ -54,6 +55,7 @@ pub(crate) enum McpRequest {
 pub(crate) struct GtkMcpHost {
     requests: InputSender<McpRequest>,
     history: HistoryService,
+    active_project: ActiveProject,
 }
 
 impl GtkMcpHost {
@@ -82,6 +84,10 @@ impl McpHost for GtkMcpHost {
         self.ask(|reply| McpRequest::OpenConnections { reply })
             .await
             .unwrap_or_default()
+    }
+
+    fn active_project(&self) -> Option<Uuid> {
+        self.active_project.get()
     }
 
     async fn open(&self, connection: SavedConnection) -> OpenOutcome {
@@ -123,6 +129,7 @@ impl TableProApplication {
         Arc::new(GtkMcpHost {
             requests,
             history: services.history(),
+            active_project: services.active_project.clone(),
         })
     }
 

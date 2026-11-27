@@ -50,7 +50,16 @@ struct QueryHistoryCoreMirrorTests {
         let mine = await storage.entryIds() ?? []
         #expect(mine.count == 2)
         #expect(try await coreIds() == mine)
-        let page = try await fixture.core.history().search(text: "broken", connectionId: nil, after: nil, limit: 10)
+        let filter = HistoryFilterArg(
+            text: "broken",
+            connectionIds: nil,
+            projectId: nil,
+            sources: nil,
+            status: .any,
+            executedAfterMs: nil,
+            executedBeforeMs: nil
+        )
+        let page = try await fixture.core.history().search(filter: filter, after: nil, limit: 10)
         let entry = try #require(page.entries.first)
         #expect(UUID(uuidString: entry.recordId) == failed.id)
         #expect(entry.connectionName == "shop")

@@ -461,8 +461,8 @@ extension GlobalStateSuites {
             )
             let stored = tabManager.tabs[0]
 
-            #expect(coordinator.unloadedValueLengthColumns(for: stored, sql: stored.content.query).count == 1)
-            #expect(coordinator.unloadedValueLengthColumns(for: stored, sql: "SELECT * FROM `files`").count == 2)
+            #expect(coordinator.unloadedValueLayout(for: stored, sql: stored.content.query)?.trailingColumns.count == 1)
+            #expect(coordinator.unloadedValueLayout(for: stored, sql: "SELECT * FROM `files`")?.trailingColumns.count == 2)
         }
 
         @Test("Reload sorts by the confirmed key, built on the confirmed columns rather than the rows on screen")

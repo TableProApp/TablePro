@@ -24,6 +24,7 @@ fn shown(text: impl Into<String>, connection: Option<String>) -> tablepro_ffi::H
     tablepro_ffi::HistoryFilterArg {
         text: text.into(),
         connection_ids: connection.map(|id| vec![id]),
+        project_id: None,
         sources: None,
         status: tablepro_ffi::HistoryStatusTag::Any,
         executed_after_ms: None,
@@ -261,6 +262,7 @@ fn record(name: &str, path: &Path, access: Option<ExternalAccessTag>) -> Connect
         tags: Vec::new(),
         ai_policy: None,
         external_access: access,
+        project_id: None,
         icon: None,
         order: 0,
     }
@@ -375,6 +377,36 @@ async fn the_command_reaches_a_connection_the_app_has_open_and_never_a_blocked_o
     assert_eq!(recorded.entries[0].sql, "SELECT name FROM customers");
     let seen = harness.service.seen_clients();
     assert!(seen.iter().any(|client| client.name == "tablepro-cli"), "{seen:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_command_lists_the_project_the_app_shows_from_the_next_call() {
+    let (harness, [shop, writable, _]) = harness().await;
+    let library = harness.core.library().unwrap();
+    let acme = library.create_project("Acme".to_owned(), None).await.unwrap();
+    library
+        .move_to_project(vec![shop.clone()], Some(acme.id.clone()))
+        .await
+        .unwrap();
+    let list = || tablepro(&harness.shell, &["connections", "--format", "json"]).out;
+
+    let before = list();
+    harness.service.set_active_project(Some(acme.id.clone())).unwrap();
+    let scoped = list();
+    library.delete_project(acme.id.clone()).await.unwrap();
+    let deleted = list();
+    harness.service.set_active_project(None).unwrap();
+    let cleared = list();
+    let malformed = harness.service.set_active_project(Some("acme".to_owned())).unwrap_err();
+
+    assert!(before.contains(&shop) && before.contains(&writable), "{before}");
+    assert!(scoped.contains(&shop) && !scoped.contains(&writable), "{scoped}");
+    assert!(
+        deleted.contains(&writable),
+        "a project that is gone is all connections: {deleted}"
+    );
+    assert!(cleared.contains(&shop) && cleared.contains(&writable), "{cleared}");
+    assert_eq!(malformed.code(), "library.invalid_id");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

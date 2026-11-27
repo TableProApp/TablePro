@@ -205,7 +205,11 @@ final class DataGridCellPresenter {
         if let existing, dataIndex < existing.values.count, let cached = existing.values[dataIndex] {
             return (cached, existing.isFormatted(at: dataIndex))
         }
-        let rawValue = row.values[dataIndex]
+        // A cut text holds NULL and shows its first characters, which the row keeps beside its values.
+        let stored = row.values[dataIndex]
+        let rawValue = stored.isNull
+            ? model?.rows.unloadedHead(row.id, column: dataIndex).map(PluginCellValue.text) ?? stored
+            : stored
         let format = dataIndex < formats.count ? formats[dataIndex] : nil
         let formatted = CellDisplayFormatter.display(
             rawValue,
@@ -323,16 +327,22 @@ final class DataGridCellPresenter {
         let order = model.order
         let cache = model.display.cache
         var copied: [Row] = []
+        var heads: [RowID: [Int: String]] = [:]
         var index = start
         while index < window.upperBound, copied.count < DataGridPrewarmBatch.rowLimit {
             if let row = order.row(at: index, in: rows), cache.box(forID: row.id) == nil {
                 copied.append(row)
+                if rows.hasUnloadedValues(row.id) {
+                    let rowHeads = rows.unloadedHeads(of: row.id)
+                    if !rowHeads.isEmpty { heads[row.id] = rowHeads }
+                }
             }
             index += 1
         }
         guard !copied.isEmpty else { return (nil, index) }
         let batch = DataGridPrewarmBatch(
             rows: copied,
+            unloadedHeads: heads,
             columnCount: rows.columns.count,
             columnTypes: rows.columnTypes,
             formats: model.store.displayFormats,
@@ -474,7 +484,10 @@ final class DataGridCellPresenter {
         case .empty: return String(localized: "Empty")
         case .defaultMarker: return String(localized: "DEFAULT")
         case .absent: return DataGridCellContent.absentFieldText
-        case .unloaded(let byteCount): return DataGridCellContent.unloadedSpokenText(byteCount: byteCount)
+        case .unloaded(let byteCount):
+            // A cut text shows its first characters, so they are read before its size.
+            let size = DataGridCellContent.unloadedSpokenText(byteCount: byteCount)
+            return text.isEmpty ? size : String(format: String(localized: "%@, %@"), spokenText(of: text), size)
         case .none: return spokenText(of: text)
         }
     }

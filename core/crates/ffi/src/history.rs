@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -9,12 +10,12 @@ use tablepro_storage::query_history::{
     Entry, HistoryCursor, HistoryPageRequest, HistoryQuery, MAX_PAGE_SIZE, MAX_QUERY_BYTES, NewEntry, Outcome,
     RunDetails, RunSource, StatementType, StatusFilter,
 };
-use tablepro_storage::{QueryHistory, StoragePaths};
+use tablepro_storage::{ConnectionStore, QueryHistory, StoragePaths};
 use uuid::Uuid;
 
 use crate::error::CoreError;
 use crate::export::write_whole_file;
-use crate::library::parse_ids;
+use crate::library::{optional_id, parse_ids};
 use crate::runtime::on_runtime;
 use crate::session::DatabaseSession;
 
@@ -22,6 +23,8 @@ use crate::session::DatabaseSession;
 pub struct QueryHistoryStore {
     pub(crate) history: QueryHistory,
     pub(crate) tasks: Tasks,
+    // Read to turn a project into its connections; None for a core with no library.
+    connections: Option<ConnectionStore>,
 }
 
 // A run as the editor saw it end. Times are milliseconds from the Unix epoch; the store keeps whole seconds.
@@ -84,10 +87,13 @@ pub enum HistoryStatusTag {
 
 // What the History pane shows. Every word of `text` appears in the run, in any case. An empty list of connections or
 // sources matches nothing; a run that names no source matches only None. Times are milliseconds, both ends inclusive.
+// `project_id` keeps the runs of the connections that project holds now, so a run whose connection was deleted shows
+// only without one; None, and an id no project holds, keep every run.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct HistoryFilterArg {
     pub text: String,
     pub connection_ids: Option<Vec<String>>,
+    pub project_id: Option<String>,
     pub sources: Option<Vec<HistorySourceTag>>,
     pub status: HistoryStatusTag,
     pub executed_after_ms: Option<i64>,
@@ -149,7 +155,11 @@ pub struct HistoryCursorArg {
 
 impl QueryHistoryStore {
     // The prune keeps every entry however old and drops the oldest past the store's cap.
-    pub(crate) async fn open(paths: StoragePaths, tasks: Tasks) -> Result<Arc<Self>, CoreError> {
+    pub(crate) async fn open(
+        paths: StoragePaths,
+        tasks: Tasks,
+        connections: Option<ConnectionStore>,
+    ) -> Result<Arc<Self>, CoreError> {
         let history = QueryHistory::open(&paths).await?;
         match history.prune(0).await {
             Ok(report) if report.removed_anything() => {
@@ -158,7 +168,11 @@ impl QueryHistoryStore {
             Ok(_) => {}
             Err(error) => tracing::warn!(%error, "could not prune the query history"),
         }
-        Ok(Arc::new(Self { history, tasks }))
+        Ok(Arc::new(Self {
+            history,
+            tasks,
+            connections,
+        }))
     }
 }
 
@@ -196,13 +210,17 @@ impl QueryHistoryStore {
         after: Option<HistoryCursorArg>,
         limit: u32,
     ) -> Result<HistoryPageInfo, CoreError> {
+        let project = optional_id(filter.project_id.as_deref())?;
         let query = HistoryQuery::try_from(filter)?;
         let request = HistoryPageRequest {
             after: after.as_ref().map(HistoryCursorArg::cursor),
             limit: usize::try_from(limit).unwrap_or(MAX_PAGE_SIZE).min(MAX_PAGE_SIZE),
         };
         let history = self.history.clone();
+        let connections = self.connections.clone();
+        let tasks = self.tasks.clone();
         on_runtime(&self.tasks, async move {
+            let query = within_project(query, project, connections, tasks).await?;
             let page = history.search_page(&query, request).await?;
             let next = page.next.and(page.entries.last()).map(HistoryCursorArg::after);
             Ok(HistoryPageInfo {
@@ -225,9 +243,16 @@ impl QueryHistoryStore {
 
     // The person's deletion of everything `filter` matches, as the pane clears what it shows. Returns how many went.
     pub async fn delete_matching(&self, filter: HistoryFilterArg) -> Result<u64, CoreError> {
+        let project = optional_id(filter.project_id.as_deref())?;
         let query = HistoryQuery::try_from(filter)?;
         let history = self.history.clone();
-        on_runtime(&self.tasks, async move { Ok(history.delete_matching(&query).await?) }).await
+        let connections = self.connections.clone();
+        let tasks = self.tasks.clone();
+        on_runtime(&self.tasks, async move {
+            let query = within_project(query, project, connections, tasks).await?;
+            Ok(history.delete_matching(&query).await?)
+        })
+        .await
     }
 
     // Oldest first, at most `limit`: runs a pull or an older build brought, whose shape the app reads with its grammar.
@@ -297,6 +322,44 @@ impl QueryHistoryStore {
         })
         .await
     }
+}
+
+// The project's connections narrow the ones the filter picked, or stand for them when it picked none.
+async fn within_project(
+    mut query: HistoryQuery,
+    project: Option<Uuid>,
+    connections: Option<ConnectionStore>,
+    tasks: Tasks,
+) -> Result<HistoryQuery, CoreError> {
+    let (Some(project), Some(store)) = (project, connections) else {
+        return Ok(query);
+    };
+    let members = tasks
+        .spawn_blocking_task(move || members(&store, project))
+        .await
+        .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))??;
+    if let Some(members) = members {
+        query.connections = Some(match query.connections.take() {
+            Some(picked) => {
+                let held: HashSet<Uuid> = members.into_iter().collect();
+                picked.into_iter().filter(|id| held.contains(id)).collect()
+            }
+            None => members,
+        });
+    }
+    Ok(query)
+}
+
+// None when no project holds the id, which is every connection.
+fn members(store: &ConnectionStore, project: Uuid) -> Result<Option<Vec<Uuid>>, CoreError> {
+    let list = store.list_blocking()?;
+    Ok(list.resolved_scope(Some(project)).map(|project| {
+        list.scoped(Some(project))
+            .connections
+            .iter()
+            .map(|connection| connection.id)
+            .collect()
+    }))
 }
 
 // Without a dialect nobody can say which statements hold a secret, so nothing is kept.

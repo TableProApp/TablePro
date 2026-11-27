@@ -395,6 +395,49 @@ struct ConnectionEditorStoreTests {
         #expect(saved.sortOrder > second.sortOrder)
     }
 
+    @Test("A new connection saved while a project is active lands in it, and one saved into a group stores none")
+    func newConnectionLandsInTheActiveProject() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let acme = try fixture.projects.createProject(name: "Acme")
+        let group = ConnectionGroup(name: "Inside", projectId: acme.id)
+        try fixture.groups.addGroup(group)
+        fixture.scope.setActiveProject(acme.id)
+
+        let ungrouped = fixture.makeStore(.new(type: .postgresql, parsedURL: nil))
+        ungrouped.update { $0.host = "db.example.com" }
+        let saved = try ungrouped.save().get()
+        #expect(fixture.storage.loadConnection(id: saved.id)?.projectId == acme.id)
+
+        let grouped = fixture.makeStore(.new(type: .postgresql, parsedURL: nil))
+        grouped.update {
+            $0.host = "db.example.com"
+            $0.appearance.groupId = group.id
+        }
+        let inGroup = try grouped.save().get()
+        let stored = try #require(fixture.storage.loadConnection(id: inGroup.id))
+        #expect(stored.groupId == group.id)
+        #expect(stored.projectId == nil)
+    }
+
+    @Test("A connection the editor takes out of a project's group keeps that project")
+    func leavingAGroupKeepsItsProject() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let acme = try fixture.projects.createProject(name: "Acme")
+        let group = ConnectionGroup(name: "Inside", projectId: acme.id)
+        try fixture.groups.addGroup(group)
+        var moving = postgres(name: "Moving")
+        moving.groupId = group.id
+        fixture.seed([moving])
+        let store = fixture.makeStore(.edit(connectionId: moving.id))
+
+        store.update { $0.appearance.groupId = nil }
+        _ = try store.save().get()
+
+        let saved = try #require(fixture.storage.loadConnection(id: moving.id))
+        #expect(saved.groupId == nil)
+        #expect(saved.projectId == acme.id)
+    }
+
     @Test("A connection deleted elsewhere turns the editor into the missing state")
     func deletionElsewhereShowsMissing() throws {
         let fixture = try ConnectionEditorStoreFixture()

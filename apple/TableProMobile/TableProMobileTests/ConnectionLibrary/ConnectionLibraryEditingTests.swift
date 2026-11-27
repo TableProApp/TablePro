@@ -18,12 +18,12 @@ struct ConnectionLibraryEditingTests {
         let intoGroup = ConnectionLibraryEditing.adding(
             DatabaseConnection(name: "New", type: .mysql, groupId: groupId),
             to: existing,
-            validGroupIds: [groupId]
+            groups: [ConnectionGroup(id: groupId, name: "Group")]
         )
         let ungrouped = ConnectionLibraryEditing.adding(
             DatabaseConnection(name: "Loose", type: .mysql),
             to: existing,
-            validGroupIds: [groupId]
+            groups: [ConnectionGroup(id: groupId, name: "Group")]
         )
 
         #expect(intoGroup.connections.last?.sortOrder == 5)
@@ -37,11 +37,11 @@ struct ConnectionLibraryEditingTests {
         let editing = DatabaseConnection(name: "Editing", type: .mysql, sortOrder: 1)
 
         let inPlace = try #require(ConnectionLibraryEditing.mutatingConnection(
-            editing.id, in: [member, editing], validGroupIds: [groupId]
+            editing.id, in: [member, editing], groups: [ConnectionGroup(id: groupId, name: "Group")]
         ) { $0.name = "Renamed" })
 
         let moved = try #require(ConnectionLibraryEditing.mutatingConnection(
-            editing.id, in: [member, editing], validGroupIds: [groupId]
+            editing.id, in: [member, editing], groups: [ConnectionGroup(id: groupId, name: "Group")]
         ) { $0.groupId = groupId })
 
         #expect(inPlace.connections.first { $0.id == editing.id }?.sortOrder == 1)
@@ -53,7 +53,7 @@ struct ConnectionLibraryEditingTests {
     func mutatingMissingConnection() {
         let stored = DatabaseConnection(name: "Stored", type: .mysql)
 
-        let change = ConnectionLibraryEditing.mutatingConnection(UUID(), in: [stored], validGroupIds: []) {
+        let change = ConnectionLibraryEditing.mutatingConnection(UUID(), in: [stored], groups: []) {
             $0.name = "Resurrected"
         }
 
@@ -65,7 +65,7 @@ struct ConnectionLibraryEditingTests {
         let stored = DatabaseConnection(name: "Stored", type: .mysql, sortOrder: 3)
 
         let change = try #require(ConnectionLibraryEditing.mutatingConnection(
-            stored.id, in: [stored], validGroupIds: []
+            stored.id, in: [stored], groups: []
         ) { $0.name = "Stored" })
 
         #expect(change.changedConnectionIds.isEmpty)
@@ -117,7 +117,7 @@ struct ConnectionLibraryEditingTests {
         let b = DatabaseConnection(name: "B", type: .mysql, sortOrder: 1)
         let c = DatabaseConnection(name: "C", type: .mysql, sortOrder: 2)
 
-        let change = ConnectionLibraryEditing.moving([c.id], toGroup: nil, before: a.id, in: [a, b, c], validGroupIds: [])
+        let change = ConnectionLibraryEditing.moving([c.id], toGroup: nil, before: a.id, in: [a, b, c], groups: [])
 
         let order = LibrarySorting.sorted(change.connections, mode: .manual).map(\.id)
         #expect(order == [c.id, a.id, b.id])

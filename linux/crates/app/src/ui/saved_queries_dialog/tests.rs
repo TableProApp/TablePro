@@ -14,7 +14,11 @@ use uuid::Uuid;
 
 use super::*;
 use crate::runtime::AppRuntime;
-use crate::test_support::{OwnedWindow, assert_access_keys, descendants, drain_main_context, test_runtime, wait_until};
+use crate::services::saved_connection_list::SavedConnectionList;
+use crate::test_support::{
+    OwnedWindow, assert_access_keys, descendants, detached_list, drain_main_context, project_named, show_projects,
+    test_runtime, wait_until,
+};
 
 // Long enough that a loaded machine cannot decide the outcome; a passing
 // test returns as soon as its condition holds.
@@ -24,6 +28,8 @@ struct Harness {
     runtime: AppRuntime,
     hold: Rc<tablepro_session::runtime::CountingHold>,
     store: SavedQueries,
+    // The list whose scope the dialog follows; All Connections until a test shows a project.
+    saved: Rc<SavedConnectionList>,
     root: tempfile::TempDir,
 }
 
@@ -56,14 +62,22 @@ impl Harness {
             runtime: test_runtime(),
             hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
             store,
+            saved: detached_list(root.path()),
             root,
         }
+    }
+
+    fn in_project(&self, name: &str, connections: &[Uuid]) {
+        let project = project_named(name);
+        show_projects(&self.saved, &[(&project, connections)]);
+        self.saved.set_active_project(Some(project.id));
     }
 
     fn dialog(&self, active_connection: Option<Uuid>) -> SavedQueriesDialog {
         SavedQueriesDialog::new(SavedQueriesDialogInit {
             store: Some(self.store.clone()),
             active_connection,
+            saved: self.saved.clone(),
             tasks: self.runtime.tasks(),
             hold: self.hold.clone(),
         })
@@ -460,12 +474,129 @@ fn copying_a_query_says_so_inside_the_dialog() {
 }
 
 #[gtk4::test]
+fn a_project_lists_only_the_queries_of_its_connections() {
+    let (harness, local, _staging) = seeded();
+    harness.in_project("Acme", &[local]);
+
+    let dialog = harness.dialog(None);
+
+    wait_until(WAIT, || visible_page(&dialog).as_deref() == Some("list")).expect("the list");
+    assert_eq!(row_titles(&dialog), ["daily orders"]);
+}
+
+#[gtk4::test]
+fn a_window_on_a_connection_of_another_project_still_lists_its_own_queries() {
+    let (harness, local, staging) = seeded();
+    harness.in_project("Acme", &[local]);
+
+    let dialog = harness.dialog(Some(staging));
+
+    wait_until(WAIT, || stored(&dialog).len() == 2).expect("both connections' queries");
+    assert_eq!(row_titles(&dialog), ["stale carts", "daily orders"]);
+}
+
+#[gtk4::test]
+fn a_project_with_no_saved_query_shows_the_empty_page_and_all_connections_lists_every_one() {
+    let (harness, _local, _staging) = seeded();
+    harness.in_project("Empty", &[]);
+
+    let empty = harness.dialog(None);
+    wait_until(WAIT, || visible_page(&empty).as_deref() == Some("empty")).expect("the empty page");
+    assert!(stored(&empty).is_empty(), "an empty project listed another's queries");
+
+    harness.saved.set_active_project(None);
+    let all = harness.dialog(None);
+    wait_until(WAIT, || stored(&all).len() == 2).expect("every query");
+}
+
+#[gtk4::test]
+fn a_switch_made_elsewhere_lists_the_new_projects_queries_and_searches_them() {
+    let (harness, local, staging) = seeded();
+    let (acme, side) = (project_named("Acme"), project_named("Side"));
+    show_projects(&harness.saved, &[(&acme, &[local]), (&side, &[staging])]);
+    harness.saved.set_active_project(Some(acme.id));
+    let dialog = harness.dialog(None);
+    wait_until(WAIT, || row_titles(&dialog) == ["daily orders"]).expect("Acme's queries");
+    dialog.imp().search_entry.set_text("carts");
+    wait_until(WAIT, || visible_page(&dialog).as_deref() == Some("empty")).expect("no match in Acme");
+
+    harness.saved.set_active_project(Some(side.id));
+
+    wait_until(WAIT, || row_titles(&dialog) == ["stale carts"]).expect("the search over Side's queries");
+    assert_eq!(stored(&dialog).len(), 1, "the old project's queries stayed");
+    harness.saved.set_active_project(None);
+    dialog.imp().search_entry.set_text("");
+    wait_until(WAIT, || stored(&dialog).len() == 2).expect("every query");
+}
+
+#[gtk4::test]
+fn a_connection_moved_between_projects_takes_its_queries_along() {
+    let (harness, local, staging) = seeded();
+    let (acme, side) = (project_named("Acme"), project_named("Side"));
+    show_projects(&harness.saved, &[(&acme, &[local]), (&side, &[staging])]);
+    harness.saved.set_active_project(Some(acme.id));
+    let dialog = harness.dialog(None);
+    wait_until(WAIT, || row_titles(&dialog) == ["daily orders"]).expect("Acme's queries");
+
+    show_projects(&harness.saved, &[(&acme, &[local, staging]), (&side, &[])]);
+    wait_until(WAIT, || stored(&dialog).len() == 2).expect("the moved connection's queries");
+
+    show_projects(&harness.saved, &[(&acme, &[]), (&side, &[local, staging])]);
+    wait_until(WAIT, || visible_page(&dialog).as_deref() == Some("empty")).expect("a project left with nothing");
+    assert!(stored(&dialog).is_empty());
+}
+
+#[gtk4::test]
+fn a_list_read_before_a_switch_cannot_replace_the_new_projects() {
+    let (harness, local, staging) = seeded();
+    let (acme, side) = (project_named("Acme"), project_named("Side"));
+    show_projects(&harness.saved, &[(&acme, &[local]), (&side, &[staging])]);
+    harness.saved.set_active_project(Some(acme.id));
+    let dialog = harness.dialog(None);
+    wait_until(WAIT, || row_titles(&dialog) == ["daily orders"]).expect("Acme's queries");
+    let old = dialog.imp().load_generation.get();
+
+    harness.saved.set_active_project(Some(side.id));
+    assert_ne!(dialog.imp().load_generation.get(), old, "the switch started no read");
+    dialog.list_arrived(old, Ok(Ok(Listing::new(Vec::new(), None))));
+
+    assert_eq!(row_titles(&dialog), ["daily orders"], "a late read was applied");
+    wait_until(WAIT, || row_titles(&dialog) == ["stale carts"]).expect("Side's queries");
+}
+
+#[gtk4::test]
+fn a_closed_dialog_stops_following_the_scope() {
+    let (harness, local, staging) = seeded();
+    let (acme, side) = (project_named("Acme"), project_named("Side"));
+    show_projects(&harness.saved, &[(&acme, &[local]), (&side, &[staging])]);
+    let dialog = harness.dialog(None);
+    wait_until(WAIT, || stored(&dialog).len() == 2).expect("every query");
+    let window = window();
+    dialog.present(Some(&*window));
+    dialog.force_close();
+    let imp = dialog.imp();
+    wait_until(WAIT, || {
+        let observer = imp.scope_observer.take();
+        imp.scope_observer.set(observer);
+        observer.is_none()
+    })
+    .expect("the dialog to close");
+    let before = imp.load_generation.get();
+
+    harness.saved.set_active_project(Some(acme.id));
+
+    assert_eq!(dialog.imp().load_generation.get(), before, "a closed dialog read again");
+}
+
+#[gtk4::test]
 fn a_dialog_with_no_database_shows_an_error() {
     init();
     let runtime = test_runtime();
+    let root = tempfile::tempdir().expect("tempdir");
     let dialog = SavedQueriesDialog::new(SavedQueriesDialogInit {
         store: None,
         active_connection: None,
+        saved: detached_list(root.path()),
         tasks: runtime.tasks(),
         hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
     });

@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.Windows.Storage.Pickers;
 using TablePro.App.ConnectionForm;
 using TablePro.App.Model;
+using TablePro.App.Model.QuickSwitcher;
 using TablePro.App.Services;
 using TablePro.App.Views;
 using TablePro.Editor.Model;
@@ -52,6 +53,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private readonly SessionEnd? _sessionEnd;
     private TimeSpan _nextRetry = SaveDelay;
     private SettingsView? _settings;
+    private KeyboardShortcutsView? _keyboard;
     private OpenConnection? _front;
 
     // The connection whose cue the title bar shows, painted again when the theme changes.
@@ -62,6 +64,13 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private bool _launchGateAsked;
     private bool _choosingRail;
     private EffectiveKeymap? _keysShown;
+
+    // The command palette while it is open, its per-connection frecency, and the commands and connections a committed
+    // row routes to, filled each time it opens.
+    private CommandPalette? _palette;
+    private PaletteFrecencyStore? _frecency;
+    private IReadOnlyDictionary<string, Action> _paletteCommands = new Dictionary<string, Action>(StringComparer.Ordinal);
+    private IReadOnlyList<SavedConnection> _paletteConnections = [];
 
     // A tab window that has not taken a tab yet, kept hidden for the next drag out of a strip.
     private MainWindow? _spare;
@@ -364,6 +373,55 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         MenuOpenRecent.Items.Add(clear);
     }
 
+    // Built again when the projects or the scope change, in each window's own menu bar.
+    private void ShowProjects()
+    {
+        ProjectMenus.Fill(
+            MenuProject.Items,
+            _workbench,
+            "Menu",
+            async () => await NewProjectAsync(),
+            async () => await ManageProjectsAsync());
+        if (_home is not null && ReferenceEquals(Rail.Content, _home))
+        {
+            AppTitleBar.Subtitle = ProjectSubtitle();
+        }
+    }
+
+    private void OnProjectChanged(object? sender, EventArgs e) => ShowProjects();
+
+    // The item clicked checked itself; the menu goes back to the project the lists show.
+    private void OnScopeReadFailed(object? sender, ScopeReadFailedEventArgs e) => ShowProjects();
+
+    // All connections adds nothing to the title, so a library with no project looks as it did.
+    private string ProjectSubtitle() => _workbench.ActiveProjectRecord?.Name ?? string.Empty;
+
+    private async Task NewProjectAsync()
+    {
+        if (_home is null)
+        {
+            _primary.Activate();
+            await _primary.NewProjectAsync();
+            return;
+        }
+
+        ShowHome();
+        await _home.NewProjectAsync();
+    }
+
+    private async Task ManageProjectsAsync()
+    {
+        if (_home is null)
+        {
+            _primary.Activate();
+            await _primary.ManageProjectsAsync();
+            return;
+        }
+
+        ShowHome();
+        await _home.ManageProjectsAsync();
+    }
+
     public async Task ImportAsync()
     {
         if (_home is null)
@@ -384,7 +442,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         ShowHome();
         try
         {
-            var summary = await _workbench.Library.ImportAsync(result.Path);
+            var summary = await _workbench.Library.ImportAsync(result.Path, _workbench.ActiveProject);
             _workbench.NotifyLibraryChanged();
             _home.ShowMessage(Strings.Format("ImportDone", summary.Added, summary.Updated), InfoBarSeverity.Success);
             await HandOffAsync(SetupGuide.Handoff(summary.ConnectionIds, ImportSource.FileOrLink));
@@ -460,7 +518,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     }
 
     // The launch's first read of the library decides whether the guide shows, while the Connections page is in front.
-    private void OnLibraryRead(object? sender, LibrarySnapshot snapshot)
+    private async void OnLibraryRead(object? sender, LibrarySnapshot snapshot)
     {
         if (_launchGateAsked)
         {
@@ -468,8 +526,22 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
 
         _launchGateAsked = true;
+        // A snapshot narrowed to a project counts that project; the guide is for a library with nothing anywhere.
+        var connections = snapshot.Connections.Count;
+        if (connections == 0 && snapshot.Scope is not null)
+        {
+            try
+            {
+                connections = (await _workbench.Library.GetSnapshotAsync().ConfigureAwait(true)).Connections.Count;
+            }
+            catch (TableProException)
+            {
+                return;
+            }
+        }
+
         var gate = new SetupGate(
-            false, true, snapshot.Connections.Count, _workbench.Settings.SetupGuideSeen, LaunchWork: _waitingFiles.Count > 0);
+            false, true, connections, _workbench.Settings.SetupGuideSeen, LaunchWork: _waitingFiles.Count > 0);
         if (ReferenceEquals(Rail.Content, _home) && SetupGuide.ShouldShow(gate))
         {
             ShowSetupGuide();
@@ -589,6 +661,21 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         {
             Show(Settings());
         }
+    }
+
+    // A sub-page of Settings: it leads back there, as Settings leads back to the Connections page.
+    public void ShowKeyboardShortcuts()
+    {
+        if (!IsPrimary)
+        {
+            _primary.Activate();
+            _primary.ShowKeyboardShortcuts();
+            return;
+        }
+
+        var page = _keyboard ??= new KeyboardShortcutsView(_workbench);
+        page.Refresh();
+        Show(page);
     }
 
     WindowId IWorkspaceHost.TearOutWindow(OpenConnection connection) => _primary.SpareFor(connection);
@@ -726,8 +813,12 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         };
         ShowKeys();
         ShowRecentFiles();
+        ShowProjects();
         WatchUpdates();
         _workbench.RecentFilesChanged += OnRecentFilesChanged;
+        _workbench.ProjectChanged += OnProjectChanged;
+        _workbench.ScopeChanged += OnProjectChanged;
+        _workbench.ScopeReadFailed += OnScopeReadFailed;
         _workbench.SettingsChanged += OnSettingsChanged;
         _workbench.LibraryChanged += OnLibraryChanged;
         AppWindow.Closing += OnClosing;
@@ -879,6 +970,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     [
         (MenuNewConnection, "newConnection"),
         (MenuOpenFile, "openFile"),
+        (MenuCommandPalette, "quickSwitcher"),
         (MenuNewQueryTab, "newTab"),
         (MenuCloseTab, "closeTab"),
         (MenuReopenTab, "reopenClosedTab"),
@@ -1028,12 +1120,14 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private void Show(UIElement page)
     {
         SetContent(page);
-        AppTitleBar.Subtitle = string.Empty;
+        AppTitleBar.Subtitle = ReferenceEquals(page, _home) ? ProjectSubtitle() : string.Empty;
         ShowCue(null);
-        // While the rail is hidden, Settings is reached from the Connections page, so the title bar leads back.
+        // The keyboard page always leads back to Settings; while the rail is hidden, Settings is reached from the
+        // Connections page, so the title bar leads back from it too.
         AppTitleBar.IsBackButtonVisible = page is SetupView setup
             ? setup.CanGoBack
-            : !Rail.IsPaneVisible && ReferenceEquals(page, _settings);
+            : ReferenceEquals(page, _keyboard)
+                || (!Rail.IsPaneVisible && ReferenceEquals(page, _settings));
         UpdateCommands();
     }
 
@@ -1394,6 +1488,12 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
+        if (Rail.Content is KeyboardShortcutsView)
+        {
+            Show(Settings());
+            return;
+        }
+
         if (_home is not null)
         {
             Show(_home);
@@ -1635,6 +1735,9 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     {
         _workbench.SettingsChanged -= OnSettingsChanged;
         _workbench.LibraryChanged -= OnLibraryChanged;
+        _workbench.ProjectChanged -= OnProjectChanged;
+        _workbench.ScopeChanged -= OnProjectChanged;
+        _workbench.ScopeReadFailed -= OnScopeReadFailed;
         _workbench.RecentFilesChanged -= OnRecentFilesChanged;
         if (IsPrimary)
         {
@@ -1850,6 +1953,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         MenuAiReview.IsEnabled = canAsk;
         MenuAiExplain.IsEnabled = canAsk;
         MenuAiOptimize.IsEnabled = canAsk;
+        MenuExplainPlan.IsEnabled = workspace?.CanExplainPlan ?? false;
         MenuSaveQuery.IsEnabled = workspace?.CanSaveQuery ?? false;
         MenuExportResults.IsEnabled = workspace?.CanExport ?? false;
         MenuShareResult.IsEnabled = workspace?.CanShareResult ?? false;
@@ -1900,6 +2004,85 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private async void OnExportConnections(object sender, RoutedEventArgs e) => await ExportConnectionsAsync();
 
     private void OnNewQueryTab(object sender, RoutedEventArgs e) => Workspace?.NewQueryTab();
+
+    private void OnCommandPalette(object sender, RoutedEventArgs e) => ShowCommandPalette();
+
+    // Open over this window's Root, toggling off when it is already up, as macOS does. Each window shows its own.
+    internal void ShowCommandPalette()
+    {
+        if (_palette is { IsOpen: true } open)
+        {
+            open.Dismiss();
+            return;
+        }
+
+        _frecency ??= new PaletteFrecencyStore(Path.Combine(AppStorage.DataFolder, "quick-switcher.json"));
+        var model = new PaletteModel(_front?.ConnectionId ?? Guid.Empty, _frecency);
+        var palette = new CommandPalette(Root, model);
+        palette.Committed += OnPaletteCommitted;
+        palette.Dismissed += (_, _) => _palette = null;
+        _palette = palette;
+        palette.Show();
+        _ = LoadPaletteAsync(model);
+    }
+
+    private async Task LoadPaletteAsync(PaletteModel model)
+    {
+        var items = new List<PaletteItem>();
+        if (Workspace is { } workspace)
+        {
+            try
+            {
+                items.AddRange(await workspace.BuildPaletteItemsAsync(CancellationToken.None));
+            }
+            catch (TableProException)
+            {
+                // The catalog could not be read; the palette still offers connections and commands.
+            }
+        }
+
+        var snapshot = await _workbench.Library.GetSnapshotAsync();
+        _paletteConnections = snapshot.Connections;
+        foreach (var saved in snapshot.Connections)
+        {
+            if (saved.Id is not { } id)
+            {
+                continue;
+            }
+
+            items.Add(new PaletteItem
+            {
+                FrecencyKey = "connection:" + id,
+                Name = saved.Name,
+                Kind = PaletteItemKind.Connection,
+                Subtitle = _workbench.EngineName(saved.EngineId),
+                Payload = id.ToString(),
+            });
+        }
+
+        var (commands, invoke) = PaletteCommands.Build(AcceleratedItems());
+        _paletteCommands = invoke;
+        items.AddRange(commands);
+
+        model.SetItems(items);
+    }
+
+    private void OnPaletteCommitted(object? sender, PaletteCommitEventArgs e)
+    {
+        switch (e.Item.Kind)
+        {
+            case PaletteItemKind.Connection when e.Item.Payload is { } id
+                && _paletteConnections.FirstOrDefault(saved => string.Equals(saved.Id?.ToString(), id, StringComparison.Ordinal)) is { } connection:
+                Connect(connection);
+                break;
+            case PaletteItemKind.Command when e.Item.Action is { } action && _paletteCommands.TryGetValue(action, out var run):
+                run();
+                break;
+            default:
+                Workspace?.CommitPalette(e.Item, e.Intent);
+                break;
+        }
+    }
 
     private void OnCloseTab(object sender, RoutedEventArgs e) => Workspace?.CloseActiveTab();
 
@@ -2061,6 +2244,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private void OnAiExplain(object sender, RoutedEventArgs e) => Workspace?.AskAssistant(AiAction.Explain);
 
     private void OnAiOptimize(object sender, RoutedEventArgs e) => Workspace?.AskAssistant(AiAction.Optimize);
+
+    private void OnExplainPlan(object sender, RoutedEventArgs e) => Workspace?.ExplainPlan();
 
     private async void OnSaveQuery(object sender, RoutedEventArgs e)
     {

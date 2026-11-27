@@ -17,6 +17,7 @@ fn shown(text: impl Into<String>, connection: Option<String>) -> tablepro_ffi::H
     tablepro_ffi::HistoryFilterArg {
         text: text.into(),
         connection_ids: connection.map(|id| vec![id]),
+        project_id: None,
         sources: None,
         status: tablepro_ffi::HistoryStatusTag::Any,
         executed_after_ms: None,

@@ -5,6 +5,7 @@ use tablepro_core::meta::{IndexInfo, IndexKey};
 use tokio_postgres::Client;
 
 use super::{decode_error, text_rows};
+use crate::catalog_release::CatalogRelease;
 
 /// One row per key column, the INCLUDE columns past `indnkeyatts` left
 /// out. Attribute number 0 marks an expression, which only
@@ -21,13 +22,17 @@ FROM pg_catalog.pg_index i
 JOIN pg_catalog.pg_class ic ON ic.oid = i.indexrelid
 CROSS JOIN LATERAL pg_catalog.unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)
 LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum AND k.attnum > 0
-WHERE i.indrelid = $1::text::oid AND k.ord <= i.indnkeyatts
+WHERE i.indrelid = $1::text::oid AND k.ord <= {i.indnkeyatts}
 ORDER BY ic.relname, k.ord";
 
-pub(crate) async fn fetch_indexes(client: &Client, relation: &str) -> Result<Vec<IndexInfo>, DriverError> {
+pub(crate) async fn fetch_indexes(
+    client: &Client,
+    release: CatalogRelease,
+    relation: &str,
+) -> Result<Vec<IndexInfo>, DriverError> {
     let field = decode_error("pg_index");
     let mut indexes: Vec<IndexInfo> = Vec::new();
-    for row in text_rows(client, INDEXES_SQL, &[relation]).await? {
+    for row in text_rows(client, &release.render(INDEXES_SQL), &[relation]).await? {
         let name: String = row.try_get(0).map_err(&field)?;
         let column: Option<String> = row.try_get(4).map_err(&field)?;
         let expression: String = row.try_get(5).map_err(&field)?;

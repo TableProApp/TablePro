@@ -29,7 +29,7 @@ const SAFE_MODE: &str = "safe-mode";
 /// The window's actions and the input each one sends. A closure holds
 /// only the window's input sender, so an action that outlives the window
 /// drops its input rather than reaching a window that is gone.
-const ACTIONS: [(&str, ActionInput); 12] = [
+const ACTIONS: [(&str, ActionInput); 14] = [
     ("new-connection", || SessionWindowInput::OpenConnectDialog),
     ("close-current", || SessionWindowInput::CloseCurrent),
     ("disconnect", || SessionWindowInput::Disconnect),
@@ -42,6 +42,10 @@ const ACTIONS: [(&str, ActionInput); 12] = [
     ("import-connections", || SessionWindowInput::ImportConnections),
     ("import-from-app", || SessionWindowInput::ImportFromApp),
     ("manage-tags", || SessionWindowInput::ManageTags),
+    (crate::ui::projects::NEW_PROJECT, || SessionWindowInput::NewProject),
+    (crate::ui::projects::MANAGE_PROJECTS, || {
+        SessionWindowInput::ManageProjects
+    }),
 ];
 
 /// The actions a connection tree row or a toast fires for its own
@@ -74,8 +78,28 @@ pub(super) fn install(window: &adw::ApplicationWindow, input: &InputSender<Sessi
         retry_with_new_secret(input.clone()),
         safe_mode(input.clone()),
         new_group(input.clone()),
+        switch_project(),
         setup_guide(),
     ]);
+}
+
+// Stateful, so every menu shows the projects as radio items with the active one ticked.
+// The state moves once the list follows the setting the pick writes.
+fn switch_project() -> gio::ActionEntry<adw::ApplicationWindow> {
+    gio::ActionEntry::builder(crate::ui::projects::SWITCH_PROJECT)
+        .parameter_type(Some(glib::VariantTy::STRING))
+        .state(crate::ui::projects::project_target(None).to_variant())
+        .change_state(|window: &adw::ApplicationWindow, _, target| {
+            if let (Some(window), Some(project)) = (
+                window.downcast_ref::<SessionWindow>(),
+                target
+                    .and_then(|target| target.str())
+                    .and_then(crate::ui::projects::project_from_target),
+            ) {
+                window.switch_project(project);
+            }
+        })
+        .build()
 }
 
 // The main menu's Setup Guide and the empty library's Set Up…, after the menu that fired it has closed.
@@ -92,6 +116,15 @@ fn setup_guide() -> gio::ActionEntry<adw::ApplicationWindow> {
             });
         })
         .build()
+}
+
+pub(super) fn show_project(window: &adw::ApplicationWindow, project: Option<uuid::Uuid>) {
+    if let Some(action) = window
+        .lookup_action(crate::ui::projects::SWITCH_PROJECT)
+        .and_downcast::<gio::SimpleAction>()
+    {
+        action.set_state(&crate::ui::projects::project_target(project).to_variant());
+    }
 }
 
 // The main menu's New Group…, which always makes a group at the top level, as macOS does.

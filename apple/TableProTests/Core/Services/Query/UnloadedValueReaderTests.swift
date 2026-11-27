@@ -77,6 +77,27 @@ struct UnloadedValueReaderTests {
         #expect(values[["1"]] == [.bytes(Data([1]))])
         #expect(values[["2"]] == [.bytes(Data([2]))])
     }
+
+    @Test("A key that comes back on two rows is left out, so no row gets another row's value")
+    func sharedKeyIsLeftOut() async throws {
+        let reader = Self.reader { _ in
+            [["1", .bytes(Data([1]))], ["2", .bytes(Data([2]))], ["1", .bytes(Data([9]))]]
+        }
+        let values = try await reader.read(
+            columns: ["data"],
+            requests: [.init(key: ["1"], byteCount: 1), .init(key: ["2"], byteCount: 1)]
+        )
+        #expect(values[["1"]] == nil)
+        #expect(values[["2"]] == [.bytes(Data([2]))])
+    }
+
+    @Test("The same row read again by a later statement keeps its value")
+    func rowReadInTwoStatementsKeepsItsValue() async throws {
+        let requests = (0..<101).map { _ in UnloadedValueReader.Request(key: ["1"], byteCount: 1) }
+        let reader = Self.reader { _ in [["1", .bytes(Data([1]))]] }
+        let values = try await reader.read(columns: ["data"], requests: requests)
+        #expect(values[["1"]] == [.bytes(Data([1]))])
+    }
 }
 
 private final class BlobAnsweringDriver: DatabaseDriver, @unchecked Sendable {

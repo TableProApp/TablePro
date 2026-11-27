@@ -85,12 +85,18 @@ impl SessionWindow {
         };
         let editor = state.services.saved_connection_editor.clone();
         let saved = state.services.history().ready_saved();
+        // Another app has no projects, so what it adds lands in the active one.
+        let project = state
+            .services
+            .saved_connections
+            .active_project()
+            .map(|project| project.id);
         let hold = state.services.hold().acquire();
         let window = self.downgrade();
         spawn_and_deliver(
             &state.services.tasks,
             async move {
-                match editor.add_imported(review, plan).await {
+                match editor.add_imported(review, plan, project).await {
                     Ok(imported) => {
                         let (queries, queries_available) = if imported.applied.queries.is_empty() {
                             (None, false)

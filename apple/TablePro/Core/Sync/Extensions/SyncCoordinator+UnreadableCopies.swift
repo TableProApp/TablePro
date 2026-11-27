@@ -19,7 +19,18 @@ extension SyncCoordinator {
             .map { SyncRecordType.connection.recordName(for: $0.uuidString) }
         let profiles = services.credentialProfileStorage.unreadableProfileIds
             .map { SyncRecordType.credentialProfile.recordName(for: $0.uuidString) }
-        return Set(connections + profiles)
+        // Groups and tags always sync, so every one this Mac cannot read is listed.
+        let groups = services.groupStorage.unreadableGroupIds
+            .map { SyncRecordType.group.recordName(for: $0.uuidString) }
+        let tags = services.tagStorage.unreadableTagIds
+            .map { SyncRecordType.tag.recordName(for: $0.uuidString) }
+        return Set(connections + profiles + groups + tags).union(unreadableProjectRecordNames())
+    }
+
+    // Empty until projects sync: no pull applies a project before then, so none is held either.
+    private func unreadableProjectRecordNames() -> Set<String> {
+        guard isProjectSyncWritable() else { return [] }
+        return Set(services.projectStorage.unreadableProjectIds.map { SyncRecordType.project.recordName(for: $0.uuidString) })
     }
 
     struct HeldChangeRecovery {
@@ -34,12 +45,26 @@ extension SyncCoordinator {
         let profileStorage = services.credentialProfileStorage
         let readConnections = connectionStorage.loadConnections()
         let readProfiles = profileStorage.loadProfiles()
-        guard !connectionStorage.lastLoadFailed, !profileStorage.lastLoadFailed else { return nil }
+        let projectStorage = services.projectStorage
+        let readProjects = projectStorage.loadProjects()
+        let groupStorage = services.groupStorage
+        let readGroups = groupStorage.loadGroups()
+        let tagStorage = services.tagStorage
+        let readTags = tagStorage.loadTags()
+        guard !connectionStorage.lastLoadFailed, !profileStorage.lastLoadFailed,
+              !projectStorage.storeIsUnreadable, !groupStorage.storeIsUnreadable,
+              !tagStorage.storeIsUnreadable else { return nil }
         let connections = readConnections.filter(\.participatesInSync).map(\.id)
             + connectionStorage.unreadableConnectionIds.filter { changeTracker.standing(ofConnection: $0) != .keptOff }
         let profiles = readProfiles.map(\.id) + profileStorage.unreadableProfileIds
+        let projects = readProjects.map(\.id) + projectStorage.unreadableProjectIds
+        let groups = readGroups.map(\.id) + groupStorage.unreadableGroupIds
+        let tags = readTags.map(\.id) + tagStorage.unreadableTagIds
         return Set(connections.map { SyncRecordType.connection.recordName(for: $0.uuidString) })
             .union(profiles.map { SyncRecordType.credentialProfile.recordName(for: $0.uuidString) })
+            .union(projects.map { SyncRecordType.project.recordName(for: $0.uuidString) })
+            .union(groups.map { SyncRecordType.group.recordName(for: $0.uuidString) })
+            .union(tags.map { SyncRecordType.tag.recordName(for: $0.uuidString) })
     }
 
     // A change held while the copy could not be read is fetched by id once it reads: a delta never resends it, and
@@ -124,7 +149,12 @@ extension SyncCoordinator {
     }
 
     func forgetHeldChanges(ofConnections ids: Set<UUID>) {
-        let names = Set(ids.map { SyncRecordType.connection.recordName(for: $0.uuidString) })
+        forgetHeldChanges(of: .connection, ids: ids)
+    }
+
+    func forgetHeldChanges(of type: SyncRecordType, ids: Set<UUID>) {
+        let names = Set(ids.map { type.recordName(for: $0.uuidString) })
+        guard !names.isDisjoint(with: metadataStorage.changesHeldForUnreadableCopies) else { return }
         metadataStorage.changesHeldForUnreadableCopies.subtract(names)
     }
 }

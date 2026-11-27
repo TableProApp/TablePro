@@ -90,6 +90,7 @@ fn saved_orders() -> SavedConnection {
         last_opened_at: None,
         color: None,
         group_id: None,
+        project_id: None,
         order: 0,
         tags: Vec::new(),
         icon: None,
@@ -250,6 +251,51 @@ fn checking_a_duplicate_offers_its_choice_and_import_hands_over_the_plan() {
     assert_eq!(planned, ["billing", "orders-prod"]);
     assert!(plan.connections().iter().all(|planned| planned.replaces.is_none()));
     assert_eq!(harness.store.list_blocking().expect("the list").connections.len(), 1);
+}
+
+#[gtk4::test]
+fn what_another_app_adds_lands_in_the_active_project_and_what_is_saved_keeps_its_own() {
+    let harness = Harness::new();
+    // Before the review, which an import refuses once the library changed under it.
+    let acme = harness
+        .store
+        .create_project_blocking(tablepro_storage::ConnectionProject::new(
+            tablepro_storage::ConnectionProjectName::new("Acme").expect("a project name"),
+        ))
+        .expect("the project");
+    wait_until(WAIT, || harness.sources_shown()).expect("the apps to be looked for");
+    harness.pages().continue_button().emit_clicked();
+    wait_until(WAIT, || harness.page().as_deref() == Some(pages::REVIEW)).expect("the review");
+    harness.pages().import_button().emit_clicked();
+    let (review, plan) = harness.imported.borrow_mut().take().expect("the plan handed over");
+    let added: Vec<String> = plan
+        .connections()
+        .iter()
+        .map(|planned| planned.connection.name.clone())
+        .collect();
+    assert!(!added.is_empty(), "the plan adds nothing");
+    let editor = crate::services::saved_connection_editor::SavedConnectionEditor::new(
+        harness.store.clone(),
+        std::sync::Arc::new(tablepro_test_support::FakeSecretVault::new()),
+        harness._runtime.tasks(),
+    );
+
+    let adding = harness
+        ._runtime
+        .tasks()
+        .spawn_task(async move { editor.add_imported(review, plan, Some(acme.id)).await });
+    let imported = crate::test_support::finish_on_main(WAIT, adding)
+        .expect("the import to end")
+        .expect("the import's task");
+    assert!(imported.is_ok(), "the import was refused");
+
+    let list = harness.store.list_blocking().expect("the list");
+    let membership = list.membership();
+    for saved in list.connections.iter() {
+        let expected = added.contains(&saved.name).then_some(acme.id);
+        assert_eq!(membership.of_connection(saved), expected, "{}", saved.name);
+    }
+    assert_eq!(list.connections.len(), added.len() + 1);
 }
 
 #[gtk4::test]

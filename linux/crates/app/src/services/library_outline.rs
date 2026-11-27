@@ -66,10 +66,29 @@ pub(crate) struct LibraryOutline {
     groups: Vec<(Uuid, String, usize)>,
     group_at: HashMap<Uuid, usize>,
     connection_at: HashMap<Uuid, usize>,
+    // A top-level group's name is its own only among its project's groups.
+    top_projects: HashMap<Uuid, Option<Uuid>>,
+    // Where a new top-level group lands.
+    landing: Option<Uuid>,
 }
 
 impl LibraryOutline {
     pub(crate) fn new(list: &ConnectionList) -> Self {
+        Self::landing_in(list, None)
+    }
+
+    pub(crate) fn of_project(list: &ConnectionList, project: Uuid) -> Self {
+        Self::landing_in(&list.scoped(Some(project)), list.resolved_scope(Some(project)))
+    }
+
+    fn landing_in(list: &ConnectionList, landing: Option<Uuid>) -> Self {
+        let membership = list.membership();
+        let top_projects = list
+            .groups
+            .iter()
+            .filter(|group| group.parent_id.is_none())
+            .map(|group| (group.id, membership.of_group(group.id)))
+            .collect();
         let tree = list.group_tree();
         let walked = tree.walk();
         let by_group = list.connections_by_group();
@@ -111,6 +130,8 @@ impl LibraryOutline {
             groups,
             group_at: first_positions(list.groups.iter().map(|group| group.id)),
             connection_at,
+            top_projects,
+            landing,
             list: list.clone(),
         }
     }
@@ -177,7 +198,21 @@ impl LibraryOutline {
             .collect()
     }
 
+    pub(crate) fn list(&self) -> &ConnectionList {
+        &self.list
+    }
+
+    #[cfg(test)]
+    pub(crate) fn landing(&self) -> Option<Uuid> {
+        self.landing
+    }
+
+    // At the top, the names of one project: `except`'s own, or the one a new group lands in.
     pub(crate) fn sibling_names(&self, parent: Option<Uuid>, except: Option<Uuid>) -> Vec<ConnectionGroupName> {
+        let project = match except {
+            Some(group) => self.top_projects.get(&group).copied().unwrap_or(self.landing),
+            None => self.landing,
+        };
         self.children
             .get(&parent)
             .into_iter()
@@ -186,6 +221,7 @@ impl LibraryOutline {
                 LibraryItem::Group(id) if Some(*id) != except => self.group(*id),
                 _ => None,
             })
+            .filter(|group| parent.is_some() || self.top_projects.get(&group.id).copied().flatten() == project)
             .map(|group| group.name.clone())
             .collect()
     }
@@ -1157,6 +1193,272 @@ mod tests {
             lib.dropped((Tree, lib.connection("w1")), DropSpot::Before(Tree, Connection(gone))),
             None
         );
+    }
+
+    // A store with two projects mixed at the top level: the groups GA (Acme), GS (Side), GB (Acme) and
+    // GN (none), then the connections a1 (Acme), s1 (Side), a2 (Acme), n1 (none) and a3 (Acme).
+    struct Mixed {
+        store: tablepro_storage::ConnectionStore,
+        acme: Uuid,
+        ids: HashMap<String, Uuid>,
+        _dir: tempfile::TempDir,
+    }
+
+    impl Mixed {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().expect("a temporary directory");
+            let store = tablepro_storage::ConnectionStore::new(&tablepro_storage::StoragePaths::under(
+                dir.path(),
+                "tablepro",
+                crate::config::APP_ID,
+            ));
+            let project = |name: &str| {
+                store
+                    .create_project_blocking(tablepro_storage::ConnectionProject::new(
+                        tablepro_storage::ConnectionProjectName::new(name).expect("a project name"),
+                    ))
+                    .expect("the project")
+                    .id
+            };
+            let (acme, side) = (project("Acme"), project("Side"));
+            let mut ids = HashMap::new();
+            for (name, project) in [("GA", Some(acme)), ("GS", Some(side)), ("GB", Some(acme)), ("GN", None)] {
+                let made = store
+                    .create_group_blocking(ConnectionGroup {
+                        project_id: project,
+                        ..group(name, None, 0)
+                    })
+                    .expect("the group");
+                ids.insert(name.to_owned(), made.id);
+            }
+            for (name, project) in [
+                ("a1", Some(acme)),
+                ("s1", Some(side)),
+                ("a2", Some(acme)),
+                ("n1", None),
+                ("a3", Some(acme)),
+            ] {
+                let saved = SavedConnection {
+                    project_id: project,
+                    ..saved_connection(name)
+                };
+                ids.insert(name.to_owned(), saved.id);
+                store.upsert_blocking(saved).expect("the connection");
+            }
+            Self {
+                store,
+                acme,
+                ids,
+                _dir: dir,
+            }
+        }
+
+        fn list(&self) -> ConnectionList {
+            self.store.list_blocking().expect("the list")
+        }
+
+        fn scoped(&self) -> LibraryOutline {
+            LibraryOutline::of_project(&self.list(), self.acme)
+        }
+
+        fn apply(&self, change: Option<LibraryMove>) {
+            match change.expect("a move") {
+                LibraryMove::Connections { ids, group, before } => {
+                    self.store.move_connections_blocking(&ids, group, before)
+                }
+                LibraryMove::Groups { ids, parent, before } => self.store.move_groups_blocking(&ids, parent, before),
+                LibraryMove::Favourites { ids, before } => self.store.add_favorites_blocking(&ids, before),
+            }
+            .expect("the store to take the move");
+        }
+
+        fn names(&self, outline: &LibraryOutline, parent: Option<&str>) -> Vec<String> {
+            outline
+                .children(parent.map(|name| self.ids[name]))
+                .into_iter()
+                .filter_map(|item| match item {
+                    Group(id) => outline.group(id).map(|group| group.name.as_str().to_owned()),
+                    Connection(id) => outline.connection(id).map(|saved| saved.name.clone()),
+                })
+                .collect()
+        }
+
+        fn top(&self) -> Vec<String> {
+            self.names(&LibraryOutline::new(&self.list()), None)
+        }
+
+        fn connection(&self, name: &str) -> LibraryItem {
+            Connection(self.ids[name])
+        }
+
+        fn group(&self, name: &str) -> LibraryItem {
+            Group(self.ids[name])
+        }
+    }
+
+    #[test]
+    fn a_project_lists_only_its_own_items_and_names_them_by_the_ids_the_store_has() {
+        let mixed = Mixed::new();
+        let scoped = mixed.scoped();
+
+        assert_eq!(mixed.names(&scoped, None), ["GA", "GB", "a1", "a2", "a3"]);
+        assert_eq!(scoped.landing(), Some(mixed.acme));
+        assert_eq!(
+            mixed.top(),
+            ["GA", "GS", "GB", "GN", "a1", "s1", "a2", "n1", "a3"],
+            "the whole library"
+        );
+        assert!(scoped.connection(mixed.ids["s1"]).is_none());
+        assert!(scoped.group(mixed.ids["GS"]).is_none());
+        assert_eq!(
+            scoped.resolve_drop((Tree, mixed.connection("a1")), DropSpot::Into(mixed.ids["GS"]), false),
+            None,
+            "a group of another project took a drop"
+        );
+        assert_eq!(
+            scoped.resolve_drop((Tree, mixed.connection("s1")), DropSpot::End(Tree), false),
+            None,
+            "a connection of another project was dragged"
+        );
+    }
+
+    #[test]
+    fn a_step_in_a_project_moves_one_place_among_its_own_and_leaves_the_hidden_ones_in_order() {
+        let mixed = Mixed::new();
+
+        mixed.apply(mixed.scoped().step(Tree, mixed.connection("a2"), Step::Up));
+        assert_eq!(mixed.names(&mixed.scoped(), None), ["GA", "GB", "a2", "a1", "a3"]);
+        assert_eq!(mixed.top(), ["GA", "GS", "GB", "GN", "a2", "a1", "s1", "n1", "a3"]);
+
+        mixed.apply(mixed.scoped().step(Tree, mixed.connection("a2"), Step::Down));
+        assert_eq!(mixed.names(&mixed.scoped(), None), ["GA", "GB", "a1", "a2", "a3"]);
+
+        // The last step down has no sibling to land before, so the store puts it last of all.
+        mixed.apply(mixed.scoped().step(Tree, mixed.connection("a2"), Step::Down));
+        assert_eq!(mixed.names(&mixed.scoped(), None), ["GA", "GB", "a1", "a3", "a2"]);
+        assert_eq!(mixed.scoped().step(Tree, mixed.connection("a2"), Step::Down), None);
+        assert_eq!(mixed.scoped().step(Tree, mixed.connection("a1"), Step::Up), None);
+
+        mixed.apply(mixed.scoped().step(Tree, mixed.group("GB"), Step::Up));
+        assert_eq!(mixed.names(&mixed.scoped(), None), ["GB", "GA", "a1", "a3", "a2"]);
+        assert_eq!(mixed.scoped().step(Tree, mixed.group("GB"), Step::Up), None);
+        let hidden: Vec<String> = mixed
+            .top()
+            .into_iter()
+            .filter(|name| ["GS", "GN", "s1", "n1"].contains(&name.as_str()))
+            .collect();
+        assert_eq!(
+            hidden,
+            ["GS", "GN", "s1", "n1"],
+            "a move in one project reordered the others"
+        );
+    }
+
+    #[test]
+    fn a_drop_in_a_project_lands_where_it_shows_and_keeps_every_items_project() {
+        let mixed = Mixed::new();
+        let dropped = |dragged: LibraryItem, spot: DropSpot| mixed.scoped().resolve_drop((Tree, dragged), spot, false);
+
+        mixed.apply(dropped(
+            mixed.connection("a3"),
+            DropSpot::Before(Tree, mixed.connection("a1")),
+        ));
+        assert_eq!(mixed.names(&mixed.scoped(), None), ["GA", "GB", "a3", "a1", "a2"]);
+        mixed.apply(dropped(
+            mixed.connection("a3"),
+            DropSpot::After(Tree, mixed.connection("a1")),
+        ));
+        assert_eq!(mixed.names(&mixed.scoped(), None), ["GA", "GB", "a1", "a3", "a2"]);
+        assert_eq!(
+            dropped(mixed.connection("a2"), DropSpot::End(Tree)),
+            None,
+            "the last one shown moved past the hidden ones"
+        );
+
+        mixed.apply(dropped(mixed.connection("a1"), DropSpot::Into(mixed.ids["GA"])));
+        assert_eq!(mixed.names(&mixed.scoped(), Some("GA")), ["a1"]);
+        // Out of its group again: it stays in the project the group is in.
+        mixed.apply(dropped(mixed.connection("a1"), DropSpot::End(Tree)));
+        assert_eq!(mixed.names(&mixed.scoped(), None), ["GA", "GB", "a3", "a2", "a1"]);
+
+        mixed.apply(dropped(mixed.group("GB"), DropSpot::Into(mixed.ids["GA"])));
+        assert_eq!(mixed.names(&mixed.scoped(), None), ["GA", "a3", "a2", "a1"]);
+        // A subgroup moved to the top keeps the project of the group it left.
+        mixed.apply(dropped(mixed.group("GB"), DropSpot::Before(Tree, mixed.group("GA"))));
+        assert_eq!(mixed.names(&mixed.scoped(), None), ["GB", "GA", "a3", "a2", "a1"]);
+
+        let list = mixed.list();
+        let membership = list.membership();
+        let other: Vec<(&str, Option<Uuid>)> = list
+            .connections
+            .iter()
+            .filter(|saved| ["s1", "n1"].contains(&saved.name.as_str()))
+            .map(|saved| (saved.name.as_str(), membership.of_connection(saved)))
+            .collect();
+        assert_eq!(other.len(), 2);
+        assert!(
+            other.iter().all(|(_, project)| *project != Some(mixed.acme)),
+            "a hidden connection changed project: {other:?}"
+        );
+        let hidden: Vec<String> = mixed
+            .top()
+            .into_iter()
+            .filter(|name| ["GS", "GN", "s1", "n1"].contains(&name.as_str()))
+            .collect();
+        assert_eq!(
+            hidden,
+            ["GS", "GN", "s1", "n1"],
+            "a drop in one project reordered the others"
+        );
+    }
+
+    #[test]
+    fn a_favourite_dropped_in_a_project_lands_among_the_favourites_shown() {
+        let mixed = Mixed::new();
+        let all = ["s1", "a1", "n1", "a2"].map(|name| mixed.ids[name]);
+        mixed.store.add_favorites_blocking(&all, None).expect("the favourites");
+        let scoped = mixed.scoped();
+        assert_eq!(scoped.favourites(), [mixed.ids["a1"], mixed.ids["a2"]]);
+
+        mixed.apply(scoped.resolve_drop(
+            (Favourites, mixed.connection("a2")),
+            DropSpot::Before(Favourites, mixed.connection("a1")),
+            false,
+        ));
+
+        assert_eq!(mixed.scoped().favourites(), [mixed.ids["a2"], mixed.ids["a1"]]);
+        assert_eq!(
+            mixed.list().favorites.to_vec(),
+            ["s1", "a2", "a1", "n1"].map(|name| mixed.ids[name]),
+            "the favourites of other projects moved"
+        );
+    }
+
+    #[test]
+    fn a_top_level_name_is_taken_only_inside_its_own_project() {
+        let mixed = Mixed::new();
+        let whole = LibraryOutline::new(&mixed.list());
+        let names = |outline: &LibraryOutline, except: Option<&str>| -> Vec<String> {
+            outline
+                .sibling_names(None, except.map(|name| mixed.ids[name]))
+                .iter()
+                .map(|name| name.as_str().to_owned())
+                .collect()
+        };
+
+        assert_eq!(names(&mixed.scoped(), None), ["GA", "GB"], "a new group in the project");
+        assert_eq!(
+            names(&whole, None),
+            ["GN"],
+            "a new group in All Connections lands in no project"
+        );
+        assert_eq!(
+            names(&whole, Some("GA")),
+            ["GB"],
+            "a rename is checked in the group's own project"
+        );
+        assert_eq!(names(&whole, Some("GS")), Vec::<String>::new());
+        assert_eq!(names(&mixed.scoped(), Some("GB")), ["GA"]);
     }
 
     #[test]

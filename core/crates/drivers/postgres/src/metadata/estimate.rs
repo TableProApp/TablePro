@@ -3,12 +3,13 @@ use tablepro_core::meta::{RowCountEstimate, TableEstimate};
 use tokio_postgres::Client;
 
 use super::{decode_error, text_rows};
+use crate::catalog_release::CatalogRelease;
 
 /// The planner's row count summed over the table and every descendant,
 /// so a partitioned or inherited table counts its children. A table never
-/// analysed has `reltuples` -1 from PostgreSQL 14 on (0 before), which is
-/// no estimate at all. The heap size in blocks is what sizes a ctid
-/// window.
+/// analysed has no estimate at all; `{c.never_analysed}` is how each
+/// release says so, and before 14 an analysed empty table says the same.
+/// The heap size in blocks is what sizes a ctid window.
 pub(super) const ESTIMATE_SQL: &str = "\
 WITH RECURSIVE tree AS (
     SELECT $1::text::oid AS oid
@@ -16,15 +17,19 @@ WITH RECURSIVE tree AS (
     SELECT i.inhrelid FROM pg_catalog.pg_inherits i JOIN tree t ON i.inhparent = t.oid
 )
 SELECT COALESCE(pg_catalog.sum(GREATEST(c.reltuples, 0)), 0)::float8,
-       COALESCE(pg_catalog.bool_and(c.reltuples < 0::float4), true),
+       COALESCE(pg_catalog.bool_and({c.never_analysed}), true),
        (pg_catalog.pg_relation_size($1::text::oid)
           / pg_catalog.current_setting('block_size')::int8)::int8
 FROM tree
 JOIN pg_catalog.pg_class c ON c.oid = tree.oid";
 
-pub(crate) async fn table_estimate(client: &Client, relation: &str) -> Result<TableEstimate, DriverError> {
+pub(crate) async fn table_estimate(
+    client: &Client,
+    release: CatalogRelease,
+    relation: &str,
+) -> Result<TableEstimate, DriverError> {
     let field = decode_error("pg_class");
-    let rows = text_rows(client, ESTIMATE_SQL, &[relation]).await?;
+    let rows = text_rows(client, &release.render(ESTIMATE_SQL), &[relation]).await?;
     let Some(row) = rows.first() else {
         return Ok(TableEstimate {
             rows: RowCountEstimate::Unknown,

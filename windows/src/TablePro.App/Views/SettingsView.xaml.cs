@@ -110,7 +110,6 @@ public sealed partial class SettingsView : UserControl
         StatementSwitch.IsOn = settings.HighlightCurrentStatement;
         FoldingSwitch.IsOn = settings.CodeFolding;
         VimSwitch.IsOn = settings.VimMode;
-        FillPresets(ShortcutsBox, settings.ShortcutPreset);
         FillSchemes(LightSchemeBox, dark: false, settings.EditorLightScheme);
         FillSchemes(DarkSchemeBox, dark: true, settings.EditorDarkScheme);
         FillFamilies(GridFontBox, SqlEditor.InstalledFontFamilies(monospacedOnly: false), settings.GridFontFamily, "GridFontDefault");
@@ -168,7 +167,6 @@ public sealed partial class SettingsView : UserControl
             _ => 2,
         };
         VimSwitch.IsOn = settings.VimMode;
-        FillPresets(ShortcutsBox, settings.ShortcutPreset);
         _loading = false;
     }
 
@@ -349,13 +347,7 @@ public sealed partial class SettingsView : UserControl
         }
     }
 
-    private void OnShortcutsChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_loading && ShortcutsBox.SelectedItem is ComboBoxItem { Tag: string id })
-        {
-            _workbench.UpdateSettings(settings => settings with { ShortcutPreset = id.Length == 0 ? null : id });
-        }
-    }
+    private void OnShortcutsCard(object sender, RoutedEventArgs e) => _shell.ShowKeyboardShortcuts();
 
     private void OnLightSchemeChanged(object sender, SelectionChangedEventArgs e)
     {

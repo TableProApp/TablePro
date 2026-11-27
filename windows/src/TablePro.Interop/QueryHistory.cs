@@ -86,10 +86,12 @@ public sealed class QueryHistory : IDisposable
         return await CoreCall.RunAsync(() => _store.Record(session.Handle, native)).ConfigureAwait(false);
     }
 
-    // Every word of text appears in the run, in any case. Pinned runs come first, then the newest.
+    // Every word of text appears in the run, in any case. Pinned runs come first, then the newest. projectId keeps
+    // the runs of the connections that project holds now; null, and an id no project holds, keep every run.
     public async Task<HistoryPage> SearchAsync(
         string text,
         Guid? connectionId,
+        Guid? projectId,
         HistoryCursor? after,
         int limit,
         CancellationToken cancellationToken = default)
@@ -101,6 +103,7 @@ public sealed class QueryHistory : IDisposable
         var filter = new Native.HistoryFilterArg(
             text,
             connectionId is { } connection ? [connection.ToString()] : null,
+            projectId?.ToString(),
             null,
             Native.HistoryStatusTag.Any,
             null,
@@ -119,6 +122,15 @@ public sealed class QueryHistory : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
         long[] native = [.. ids];
         return CoreCall.RunAsync(() => _store.Delete(native));
+    }
+
+    // Every run of one connection, pinned ones too, for a connection deleted with its history. Returns how many went.
+    public async Task<long> DeleteForConnectionAsync(Guid connectionId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var removed = await CoreCall.RunAsync(() => _store.DeleteForConnection(connectionId.ToString()))
+            .ConfigureAwait(false);
+        return Mapping.Count(removed);
     }
 
     // Drops unpinned runs older than retentionDays (0 keeps every age), then the oldest past maxEntries (0 keeps the

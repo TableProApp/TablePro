@@ -233,6 +233,8 @@ jobs:
           dotnet-version: 10.0.x
       - name: Start MySQL
         run: windows/ci/live-servers.ps1 -Server MySql
+      - name: Start PostgreSQL
+        run: windows/ci/live-servers.ps1 -Server Postgres
       - name: Start MongoDB
         run: windows/ci/live-servers.ps1 -Server MongoDb
       - name: Start Redis

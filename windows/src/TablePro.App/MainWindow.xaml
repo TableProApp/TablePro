@@ -36,7 +36,11 @@
                 </MenuFlyoutItem>
                 <MenuFlyoutItem x:Uid="ImportAppMenu" x:Name="MenuImportFromApp" AutomationProperties.AutomationId="MenuImportFromApp" Click="OnImportFromApp" />
                 <MenuFlyoutItem x:Uid="MenuExportConnections" x:Name="MenuExportConnections" Click="OnExportConnections" />
+                <!-- The Connections page's switcher, here for the keyboard and for a window with no Connections page. -->
+                <MenuFlyoutSubItem x:Uid="MenuProject" x:Name="MenuProject" AutomationProperties.AutomationId="MenuProject" />
                 <MenuFlyoutSeparator />
+                <!-- The command palette. Its key and label come from the keymap in code, like the managed items below. -->
+                <MenuFlyoutItem x:Uid="MenuCommandPalette" x:Name="MenuCommandPalette" AutomationProperties.AutomationId="MenuCommandPalette" Click="OnCommandPalette" />
                 <MenuFlyoutItem x:Uid="MenuNewQueryTab" x:Name="MenuNewQueryTab" Click="OnNewQueryTab" IsEnabled="False" />
                 <MenuFlyoutItem x:Uid="MenuCloseTab" x:Name="MenuCloseTab" Click="OnCloseTab" IsEnabled="False" />
                 <MenuFlyoutItem x:Uid="MenuReopenTab" x:Name="MenuReopenTab" Click="OnReopenTab" IsEnabled="False" />
@@ -155,6 +159,7 @@
                 <MenuFlyoutItem x:Uid="MenuAiReview" x:Name="MenuAiReview" Click="OnAiReview" IsEnabled="False" />
                 <MenuFlyoutItem x:Uid="MenuAiExplain" x:Name="MenuAiExplain" Click="OnAiExplain" IsEnabled="False" />
                 <MenuFlyoutItem x:Uid="MenuAiOptimize" x:Name="MenuAiOptimize" Click="OnAiOptimize" IsEnabled="False" />
+                <MenuFlyoutItem x:Uid="MenuExplainPlan" x:Name="MenuExplainPlan" Click="OnExplainPlan" IsEnabled="False" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuFilterRows" x:Name="MenuFilterRows" Click="OnFilterRows" IsEnabled="False">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Filter" /></MenuFlyoutItem.Icon>

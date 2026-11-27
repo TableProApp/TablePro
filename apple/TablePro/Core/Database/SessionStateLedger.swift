@@ -69,10 +69,11 @@ extension DatabaseManager {
     internal func noteSessionStatements(_ statements: [String], ranOn driver: DatabaseDriver, scope: DatabaseScope) async {
         guard !statements.isEmpty,
               let session = activeSessions[scope.connectionId],
-              let dialect = SQLSessionDialect(TransactionEngineFamily.of(session.connection.type)),
               let key = sessionKey(for: scope),
               isLiveSessionDriver(driver, for: key)
         else { return }
+        noteAuthoredStatements(ranOn: driver, for: scope.connectionId)
+        guard let dialect = SQLSessionDialect(TransactionEngineFamily.of(session.connection.type)) else { return }
         let databaseType = session.connection.type
         let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
         // A reconnect runs the startup commands again, so what they set up is never lost.

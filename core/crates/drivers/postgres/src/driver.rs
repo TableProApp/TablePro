@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tablepro_core::plan::{ExplainPlanFormat, ExplainVariant};
 use tablepro_core::{
     ConnectOptions, ConnectTarget, Connection, DatabaseDriver, DriverCapabilities, DriverError, TlsCapabilities,
     UnsupportedFeature,
@@ -31,6 +32,24 @@ impl DatabaseDriver for PgDriver {
 
     fn capabilities(&self) -> &'static DriverCapabilities {
         &CAPABILITIES
+    }
+
+    fn explain_variants(&self) -> &'static [ExplainVariant] {
+        const VARIANTS: &[ExplainVariant] = &[
+            ExplainVariant::prefix(
+                "explain",
+                "EXPLAIN",
+                "EXPLAIN (FORMAT JSON)",
+                ExplainPlanFormat::POSTGRES_JSON,
+            ),
+            ExplainVariant::prefix(
+                "analyze",
+                "EXPLAIN ANALYZE",
+                "EXPLAIN (ANALYZE, FORMAT JSON)",
+                ExplainPlanFormat::POSTGRES_JSON,
+            ),
+        ];
+        VARIANTS
     }
 
     async fn connect(

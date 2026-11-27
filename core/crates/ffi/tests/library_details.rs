@@ -13,10 +13,11 @@ use tablepro_ffi::{
     AiPolicyTag, CloudflareAuthTag, CloudflareTunnelRecord, ConnectionDetailsRecord, ConnectionRecord,
     ConnectionSecrets, Core, CredentialPasswordRecord, CredentialProfileRecord, CredentialReferenceRecord,
     DeviceSettingsRecord, ExternalAccessTag, GroupRecord, HostConfig, HostSecretError, HostSecrets,
-    LibraryConnectionRecord, LibraryWriteRecord, LocalPasswordSourceRecord, RemoteFileAccessTag, SafeModeTag,
-    SecretItemTag, SecretKindTag, SshAuthTag, SshJumpAuthTag, SshJumpHostRecord, SshOptionsRecord, SshProfileRecord,
-    SshSettings, SshTotpAlgorithmTag, SshTotpModeTag, SshTotpRecord, TableFolderItemRecord, TableRefRecord, TagRecord,
-    TlsModeTag, TlsSettings, VaultAuthRecord, library_icon_for_symbol, library_icon_symbol, parse_jump_hosts,
+    LibraryConnectionRecord, LibraryWriteRecord, LocalPasswordSourceRecord, ProjectRecord, RemoteFileAccessTag,
+    SafeModeTag, SecretItemTag, SecretKindTag, SshAuthTag, SshJumpAuthTag, SshJumpHostRecord, SshOptionsRecord,
+    SshProfileRecord, SshSettings, SshTotpAlgorithmTag, SshTotpModeTag, SshTotpRecord, TableFolderItemRecord,
+    TableRefRecord, TagRecord, TlsModeTag, TlsSettings, VaultAuthRecord, library_icon_for_symbol, library_icon_symbol,
+    parse_jump_hosts,
 };
 
 struct NoSecrets;
@@ -88,6 +89,7 @@ fn record(name: &str) -> ConnectionRecord {
         query_timeout_secs: None,
         color: None,
         group_id: None,
+        project_id: None,
         last_opened_ms: None,
         tags: Vec::new(),
         ai_policy: None,
@@ -459,6 +461,7 @@ fn mac_library() -> LibraryWriteRecord {
             parent_id: Some("380cb783-4b26-48f3-8f84-1468967a9fa3".to_owned()),
             order: 4,
             color: None,
+            project_id: None,
             icon: library_icon_for_symbol("server.rack".to_owned()),
         }],
         tags: vec![TagRecord {
@@ -468,6 +471,7 @@ fn mac_library() -> LibraryWriteRecord {
             is_preset: true,
         }],
         favorites: vec!["6f1c2a9e-0b4d-4c8e-9a51-3d7e2b1f0c44".to_owned()],
+        projects: Vec::new(),
         removing: Vec::new(),
     }
 }
@@ -674,6 +678,44 @@ async fn a_library_written_whole_reads_back_as_it_was_written() {
     assert_eq!(
         snapshot.groups[0].parent_id, None,
         "a parent the library lacks reads as the top"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_library_write_holds_its_projects_and_what_each_member_names() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = started(dir.path());
+    let library = core.library().unwrap();
+    let acme = "cbcaf15e-97d4-4b75-8d5d-01d586cadc97".to_owned();
+    let mut written = mac_library();
+    written.projects = vec![ProjectRecord {
+        id: acme.clone(),
+        name: "Acme".to_owned(),
+        order: 0,
+        color: Some("blue".to_owned()),
+        icon: library_icon_for_symbol("star".to_owned()),
+    }];
+    written.groups[0].parent_id = None;
+    written.groups[0].project_id = Some(acme.clone());
+    written.connections[0].connection.group_id = None;
+    written.connections[0].connection.project_id = Some(acme.clone());
+
+    library.replace_library(written.clone(), None).await.unwrap();
+    let read = library.library_contents().await.unwrap();
+
+    assert_eq!(read.projects, written.projects);
+    assert_eq!(read.groups[0].project_id.as_deref(), Some(acme.as_str()));
+    assert_eq!(
+        read.connections[0].connection.project_id.as_deref(),
+        Some(acme.as_str())
+    );
+    let shown = library.snapshot_in(Some(acme.clone())).await.unwrap();
+    assert_eq!(shown.scope.as_deref(), Some(acme.as_str()));
+    assert!(
+        shown
+            .connections
+            .iter()
+            .any(|record| record.project_id.as_deref() == Some(acme.as_str()))
     );
 }
 
