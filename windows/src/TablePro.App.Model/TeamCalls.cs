@@ -5,22 +5,27 @@ namespace TablePro.App.Model;
 // The core's Team Library and team key calls as the team models make them, so each model is tested without the core.
 public interface ITeamCalls
 {
-    Task<IReadOnlyList<TeamLibraryTeam>> GetTeamLibraryAsync();
+    // The owner the engine's sign-in binds Team Library to, null while there is no engine. A Team Library call takes the
+    // owner the caller read under the sign-in it means, and another account's engine refuses it.
+    TeamLibraryOwner? Owner { get; }
 
-    Task<IReadOnlyList<TeamScopeStatus>> GetTeamScopeStatusAsync();
+    Task<IReadOnlyList<TeamLibraryTeam>> GetTeamLibraryAsync(TeamLibraryOwner owner);
+
+    Task<IReadOnlyList<TeamScopeStatus>> GetTeamScopeStatusAsync(TeamLibraryOwner owner);
 
     Task<TeamPublish> PublishTeamSavedQueriesAsync(
+        TeamLibraryOwner owner,
         string teamId,
         IReadOnlyList<TeamFolderEdit> folders,
         IReadOnlyList<TeamQueryEdit> queries);
 
-    Task<TeamPublish> RemoveTeamItemsAsync(string teamId, IReadOnlyList<TeamItemRef> items);
+    Task<TeamPublish> RemoveTeamItemsAsync(TeamLibraryOwner owner, string teamId, IReadOnlyList<TeamItemRef> items);
 
-    Task<IReadOnlyList<UnsentTeamEdit>> GetUnsentTeamEditsAsync();
+    Task<IReadOnlyList<UnsentTeamEdit>> GetUnsentTeamEditsAsync(TeamLibraryOwner owner);
 
-    Task DiscardTeamEditsAsync(string? teamId);
+    Task DiscardTeamEditsAsync(TeamLibraryOwner owner, string? teamId);
 
-    Task DeleteTeamLibraryDataAsync();
+    Task DeleteTeamLibraryDataAsync(TeamLibraryOwner owner);
 
     Task<IReadOnlyList<TeamConflict>> GetConflictsAsync();
 

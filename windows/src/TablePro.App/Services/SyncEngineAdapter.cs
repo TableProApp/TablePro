@@ -105,23 +105,28 @@ internal sealed class KeyFlowsAdapter(TableProSync sync) : IKeyFlows
 
 internal sealed class TeamCallsAdapter(TableProSync sync) : ITeamCalls
 {
-    public Task<IReadOnlyList<TeamLibraryTeam>> GetTeamLibraryAsync() => sync.GetTeamLibraryAsync();
+    public TeamLibraryOwner? Owner => sync.GetTeamLibraryOwner();
 
-    public Task<IReadOnlyList<TeamScopeStatus>> GetTeamScopeStatusAsync() => sync.GetTeamScopeStatusAsync();
+    public Task<IReadOnlyList<TeamLibraryTeam>> GetTeamLibraryAsync(TeamLibraryOwner owner) => sync.GetTeamLibraryAsync(owner);
+
+    public Task<IReadOnlyList<TeamScopeStatus>> GetTeamScopeStatusAsync(TeamLibraryOwner owner) =>
+        sync.GetTeamScopeStatusAsync(owner);
 
     public Task<TeamPublish> PublishTeamSavedQueriesAsync(
+        TeamLibraryOwner owner,
         string teamId,
         IReadOnlyList<TeamFolderEdit> folders,
-        IReadOnlyList<TeamQueryEdit> queries) => sync.PublishTeamSavedQueriesAsync(teamId, folders, queries);
+        IReadOnlyList<TeamQueryEdit> queries) => sync.PublishTeamSavedQueriesAsync(owner, teamId, folders, queries);
 
-    public Task<TeamPublish> RemoveTeamItemsAsync(string teamId, IReadOnlyList<TeamItemRef> items) =>
-        sync.RemoveTeamItemsAsync(teamId, items);
+    public Task<TeamPublish> RemoveTeamItemsAsync(TeamLibraryOwner owner, string teamId, IReadOnlyList<TeamItemRef> items) =>
+        sync.RemoveTeamItemsAsync(owner, teamId, items);
 
-    public Task<IReadOnlyList<UnsentTeamEdit>> GetUnsentTeamEditsAsync() => sync.GetUnsentTeamEditsAsync();
+    public Task<IReadOnlyList<UnsentTeamEdit>> GetUnsentTeamEditsAsync(TeamLibraryOwner owner) =>
+        sync.GetUnsentTeamEditsAsync(owner);
 
-    public Task DiscardTeamEditsAsync(string? teamId) => sync.DiscardTeamEditsAsync(teamId);
+    public Task DiscardTeamEditsAsync(TeamLibraryOwner owner, string? teamId) => sync.DiscardTeamEditsAsync(owner, teamId);
 
-    public Task DeleteTeamLibraryDataAsync() => sync.DeleteTeamLibraryDataAsync();
+    public Task DeleteTeamLibraryDataAsync(TeamLibraryOwner owner) => sync.DeleteTeamLibraryDataAsync(owner);
 
     public Task<IReadOnlyList<TeamConflict>> GetConflictsAsync() => sync.GetConflictsAsync();
 

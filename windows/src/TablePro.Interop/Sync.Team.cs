@@ -20,14 +20,19 @@ public enum TeamItemKind
 // The id the team stores, byte for byte; the core matches it without case.
 public sealed record TeamItemRef(TeamItemKind Kind, string Id);
 
-// FieldsJson is the item's JSON object: a folder's and a query's as /v2 keeps them, a connection's as the macOS bundle.
+// FieldsJson is a folder's and a query's JSON object as /v2 keeps them; a connection comes as the core's record instead.
 // UpdatedBy is who last changed it as the server names them to this account, null until a pull names anyone.
 public sealed record TeamItem(
     TeamItemKind Kind,
     string Id,
     string FieldsJson,
     string? UpdatedBy,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    SavedConnection? Connection = null);
+
+// Who Team Library belongs to on this sign-in: the API's origin and the account. Every Team Library call names the
+// owner it means, so a call started for one account is refused on the next one's engine.
+public sealed record TeamLibraryOwner(string ApiOrigin, string AccountId);
 
 // Role is null until the first scopes answer this run; a team's name comes from the profile.
 public sealed record TeamLibraryTeam(
@@ -149,19 +154,36 @@ public sealed record HeldRestart(string Team, long Version, string Signer, strin
 // teams carry; every call reaches TablePro Sync's engine, which runs the team scopes whatever the personal provider.
 public sealed partial class TableProSync
 {
-    // Names come from the profile in the background, so this never waits on the network.
-    public async Task<IReadOnlyList<TeamLibraryTeam>> GetTeamLibraryAsync() =>
-        [.. (await CoreCall.RunAsync(() => _service.TeamLibrary()).ConfigureAwait(false)).Select(Mapping.Team)];
+    // Null while the service holds no engine. Each Team Library call below takes it back and is refused with
+    // sync.team_library.other_owner on another account's engine.
+    public TeamLibraryOwner? GetTeamLibraryOwner() =>
+        _service.TeamLibraryOwner() is { } owner ? new TeamLibraryOwner(owner.ApiOrigin, owner.AccountId) : null;
 
-    public async Task<IReadOnlyList<TeamScopeStatus>> GetTeamScopeStatusAsync() =>
-        [.. (await CoreCall.RunAsync(() => _service.TeamScopeStatus()).ConfigureAwait(false)).Select(Mapping.TeamStatus)];
+    // Names come from the profile in the background, so this never waits on the network.
+    public async Task<IReadOnlyList<TeamLibraryTeam>> GetTeamLibraryAsync(TeamLibraryOwner owner)
+    {
+        var expected = Owner(owner);
+        return [.. (await CoreCall.RunAsync(() => _service.TeamLibrary(expected)).ConfigureAwait(false)).Select(Mapping.Team)];
+    }
+
+    public async Task<IReadOnlyList<TeamScopeStatus>> GetTeamScopeStatusAsync(TeamLibraryOwner owner)
+    {
+        var expected = Owner(owner);
+        return
+        [
+            .. (await CoreCall.RunAsync(() => _service.TeamScopeStatus(expected)).ConfigureAwait(false))
+                .Select(Mapping.TeamStatus),
+        ];
+    }
 
     // Every saved query and folder this device holds: the core removes what it published before and no longer holds.
     public async Task<TeamPublish> PublishTeamSavedQueriesAsync(
+        TeamLibraryOwner owner,
         string teamId,
         IReadOnlyList<TeamFolderEdit> folders,
         IReadOnlyList<TeamQueryEdit> queries)
     {
+        var expected = Owner(owner);
         ArgumentException.ThrowIfNullOrEmpty(teamId);
         ArgumentNullException.ThrowIfNull(folders);
         ArgumentNullException.ThrowIfNull(queries);
@@ -178,27 +200,40 @@ public sealed partial class TableProSync
                 query.ConnectionId,
                 query.SortOrder)),
         ];
-        return Mapping.Publish(await CoreCall.RunAsync(() => _service.PublishTeamSavedQueries(teamId, folderArgs, queryArgs))
-            .ConfigureAwait(false));
+        return Mapping.Publish(await CoreCall.RunAsync(
+            () => _service.PublishTeamSavedQueries(expected, teamId, folderArgs, queryArgs)).ConfigureAwait(false));
     }
 
-    public async Task<TeamPublish> RemoveTeamItemsAsync(string teamId, IReadOnlyList<TeamItemRef> items)
+    public async Task<TeamPublish> RemoveTeamItemsAsync(TeamLibraryOwner owner, string teamId, IReadOnlyList<TeamItemRef> items)
     {
+        var expected = Owner(owner);
         ArgumentException.ThrowIfNullOrEmpty(teamId);
         ArgumentNullException.ThrowIfNull(items);
         Native.TeamLibraryItemRef[] refs = [.. items.Select(Mapping.ItemRef)];
-        return Mapping.Publish(await CoreCall.RunAsync(() => _service.RemoveTeamItems(teamId, refs)).ConfigureAwait(false));
+        return Mapping.Publish(await CoreCall.RunAsync(() => _service.RemoveTeamItems(expected, teamId, refs))
+            .ConfigureAwait(false));
     }
 
-    public async Task<IReadOnlyList<UnsentTeamEdit>> GetUnsentTeamEditsAsync() =>
-        [.. (await CoreCall.RunAsync(() => _service.UnsentTeamEdits()).ConfigureAwait(false)).Select(Mapping.Unsent)];
+    public async Task<IReadOnlyList<UnsentTeamEdit>> GetUnsentTeamEditsAsync(TeamLibraryOwner owner)
+    {
+        var expected = Owner(owner);
+        return [.. (await CoreCall.RunAsync(() => _service.UnsentTeamEdits(expected)).ConfigureAwait(false)).Select(Mapping.Unsent)];
+    }
 
     // A null team discards every team's, refused and imported edits included.
-    public Task DiscardTeamEditsAsync(string? teamId) => CoreCall.RunAsync(() => _service.DiscardTeamEdits(teamId));
+    public Task DiscardTeamEditsAsync(TeamLibraryOwner owner, string? teamId)
+    {
+        var expected = Owner(owner);
+        return CoreCall.RunAsync(() => _service.DiscardTeamEdits(expected, teamId));
+    }
 
     // After the sign-in ended too, as Sign Out deletes once it has signed out. On failure Team Library stays off for
     // this account until a later delete succeeds.
-    public Task DeleteTeamLibraryDataAsync() => CoreCall.RunAsync(() => _service.DeleteTeamLibraryData());
+    public Task DeleteTeamLibraryDataAsync(TeamLibraryOwner owner)
+    {
+        var expected = Owner(owner);
+        return CoreCall.RunAsync(() => _service.DeleteTeamLibraryData(expected));
+    }
 
     public async Task<IReadOnlyList<TeamConflict>> GetConflictsAsync() =>
         [.. (await CoreCall.RunAsync(() => _service.Conflicts()).ConfigureAwait(false)).Select(Mapping.Conflict)];
@@ -274,5 +309,11 @@ public sealed partial class TableProSync
     {
         ArgumentException.ThrowIfNullOrEmpty(account);
         return Mapping.Fingerprint(await CoreCall.RunAsync(() => _service.AccountFingerprint(account)).ConfigureAwait(false));
+    }
+
+    private static Native.TeamLibraryOwnerArg Owner(TeamLibraryOwner owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        return new Native.TeamLibraryOwnerArg(owner.ApiOrigin, owner.AccountId);
     }
 }

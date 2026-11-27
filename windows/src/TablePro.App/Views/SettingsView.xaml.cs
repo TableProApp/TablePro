@@ -644,14 +644,18 @@ public sealed partial class SettingsView : UserControl
         _accountBusy = true;
         ShowAccount();
         SyncLease? lease = null;
+        TeamLibraryOwner? owner = null;
         try
         {
             bool erased;
             try
             {
                 lease = await _workbench.Sync.LeaseAsync();
-                if (lease is not null && !await TeamSignOut.SettleUnsentAsync(
+                // Read before the sign-out, so the delete after it reaches this account's library and no other.
+                owner = lease?.Team.Owner;
+                if (lease is not null && owner is not null && !await TeamSignOut.SettleUnsentAsync(
                         lease.Team,
+                        owner,
                         (names, failure) => TeamDialogs.SignOutUnsentAsync(this, names, failure)))
                 {
                     return;
@@ -678,8 +682,8 @@ public sealed partial class SettingsView : UserControl
             }
 
             await RunAccountAsync(account => account.SignOutAsync());
-            if (lease is not null && _workbench.SignInSession != session
-                && await TeamSignOut.DeleteDataAsync(lease.Team) is { } failure)
+            if (lease is not null && owner is not null && _workbench.SignInSession != session
+                && await TeamSignOut.DeleteDataAsync(lease.Team, owner) is { } failure)
             {
                 CrashLog.Note("team library delete", failure.Code);
                 _accountError ??= failure;

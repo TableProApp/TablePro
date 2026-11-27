@@ -393,6 +393,9 @@ internal sealed class FakeTeamCalls : ITeamCalls
 
     public Dictionary<string, CoreError> Fails { get; } = new(StringComparer.Ordinal);
 
+    // The engine's owner; a Team Library call naming another is refused as the core refuses it.
+    public TeamLibraryOwner? Owner { get; set; } = new("https://api.tablepro.app", "acct-1");
+
     public IReadOnlyList<string> Calls
     {
         get
@@ -404,29 +407,37 @@ internal sealed class FakeTeamCalls : ITeamCalls
         }
     }
 
-    public Task<IReadOnlyList<TeamLibraryTeam>> GetTeamLibraryAsync() => Answer("teams", Teams);
+    public Task<IReadOnlyList<TeamLibraryTeam>> GetTeamLibraryAsync(TeamLibraryOwner owner) =>
+        Answer("teams", Teams, owner);
 
-    public Task<IReadOnlyList<TeamScopeStatus>> GetTeamScopeStatusAsync() => Answer("statuses", Statuses);
+    public Task<IReadOnlyList<TeamScopeStatus>> GetTeamScopeStatusAsync(TeamLibraryOwner owner) =>
+        Answer("statuses", Statuses, owner);
 
     public Task<TeamPublish> PublishTeamSavedQueriesAsync(
+        TeamLibraryOwner owner,
         string teamId,
         IReadOnlyList<TeamFolderEdit> folders,
         IReadOnlyList<TeamQueryEdit> queries) =>
-        Answer($"publish {teamId} {folders.Count} folders {queries.Count} queries", Publish);
+        Answer($"publish {teamId} {folders.Count} folders {queries.Count} queries", Publish, owner);
 
-    public Task<TeamPublish> RemoveTeamItemsAsync(string teamId, IReadOnlyList<TeamItemRef> items) =>
-        Answer($"remove {teamId} {string.Join(',', items.Select(item => item.Id))}", Publish);
+    public Task<TeamPublish> RemoveTeamItemsAsync(TeamLibraryOwner owner, string teamId, IReadOnlyList<TeamItemRef> items) =>
+        Answer($"remove {teamId} {string.Join(',', items.Select(item => item.Id))}", Publish, owner);
 
-    public Task<IReadOnlyList<UnsentTeamEdit>> GetUnsentTeamEditsAsync() =>
-        Answer<IReadOnlyList<UnsentTeamEdit>>("unsent", [.. Unsent]);
+    public Task<IReadOnlyList<UnsentTeamEdit>> GetUnsentTeamEditsAsync(TeamLibraryOwner owner) =>
+        Answer<IReadOnlyList<UnsentTeamEdit>>("unsent", [.. Unsent], owner);
 
-    public Task DiscardTeamEditsAsync(string? teamId)
+    public Task DiscardTeamEditsAsync(TeamLibraryOwner owner, string? teamId)
     {
-        Unsent.Clear();
-        return Answer($"discard {teamId ?? "all"}", true);
+        var answer = Answer($"discard {teamId ?? "all"}", true, owner);
+        if (answer.IsCompletedSuccessfully)
+        {
+            Unsent.Clear();
+        }
+
+        return answer;
     }
 
-    public Task DeleteTeamLibraryDataAsync() => Answer("delete data", true);
+    public Task DeleteTeamLibraryDataAsync(TeamLibraryOwner owner) => Answer("delete data", true, owner);
 
     public Task<IReadOnlyList<TeamConflict>> GetConflictsAsync() =>
         Answer<IReadOnlyList<TeamConflict>>("conflicts", [.. Conflicts]);
@@ -485,6 +496,21 @@ internal sealed class FakeTeamCalls : ITeamCalls
     public Task<IReadOnlyList<KeyNotice>> GetKeyNoticesAsync() => Answer("notices", Notices);
 
     public Task DismissKeyNoticeAsync(string notice) => Answer($"dismiss {notice}", true);
+
+    private Task<T> Answer<T>(string call, T value, TeamLibraryOwner owner)
+    {
+        if (owner != Owner)
+        {
+            lock (_gate)
+            {
+                _calls.Add(call + " refused");
+            }
+
+            return Task.FromException<T>(new TableProException(SyncErrors.Of("sync.team_library.other_owner")));
+        }
+
+        return Answer(call, value);
+    }
 
     private Task<T> Answer<T>(string call, T value)
     {

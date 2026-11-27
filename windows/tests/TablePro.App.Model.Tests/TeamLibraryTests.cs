@@ -64,6 +64,38 @@ public sealed class TeamLibraryTests
     }
 
     [Fact]
+    public async Task APublishNamesTheOwnerTheTeamWasReadUnderAndAnotherOwnersEngineRefusesIt()
+    {
+        _calls.Teams = [Data()];
+        var library = Library();
+        var unread = library.Destination(Team);
+        await library.RefreshAsync();
+        var picked = library.Destination(Team);
+
+        _calls.Owner = new TeamLibraryOwner("https://api.tablepro.app", "acct-2");
+        var outcome = await library.PublishSavedQueriesAsync(picked, [], []);
+
+        Assert.Null(unread.Owner);
+        Assert.Same(TeamPublishOutcome.SignedOut.Instance, await library.PublishSavedQueriesAsync(unread, [], []));
+        Assert.Same(TeamPublishOutcome.SignedOut.Instance, outcome);
+        Assert.Contains($"publish {Team} 0 folders 0 queries refused", _calls.Calls);
+    }
+
+    [Fact]
+    public async Task AnEngineWithNoOwnerReadsNothing()
+    {
+        _calls.Owner = null;
+        _calls.Teams = [Data()];
+        var library = Library();
+
+        await library.RefreshAsync();
+
+        Assert.Empty(library.Teams);
+        Assert.Equal(TeamLibraryModel.NoOwner.Code, library.LoadFailure?.Code);
+        Assert.Empty(_calls.Calls);
+    }
+
+    [Fact]
     public async Task APublishToATeamThisAccountReadsOnlyIsRefusedBeforeItGoes()
     {
         _calls.Teams = [Data(canWrite: false)];
@@ -145,7 +177,7 @@ public sealed class TeamLibraryTests
         var asked = new List<(IReadOnlyList<string> Names, string? Failure)>();
         var answers = new Queue<TeamSignOutAnswer>([TeamSignOutAnswer.Upload, TeamSignOutAnswer.Discard]);
 
-        var proceed = await TeamSignOut.SettleUnsentAsync(_calls, (names, failure) =>
+        var proceed = await TeamSignOut.SettleUnsentAsync(_calls, _calls.Owner!, (names, failure) =>
         {
             asked.Add((names, failure));
             return Task.FromResult(answers.Dequeue());
@@ -161,12 +193,13 @@ public sealed class TeamLibraryTests
     [Fact]
     public async Task SignOutWithNothingUnsentAsksNothingAndCancelKeepsTheSignIn()
     {
-        var nothing = await TeamSignOut.SettleUnsentAsync(_calls, (_, _) => Task.FromResult(TeamSignOutAnswer.Cancel));
+        var owner = _calls.Owner!;
+        var nothing = await TeamSignOut.SettleUnsentAsync(_calls, owner, (_, _) => Task.FromResult(TeamSignOutAnswer.Cancel));
         _calls.Unsent.Add(new UnsentTeamEdit(Team, new TeamItemRef(TeamItemKind.Folder, "F-1"), null, true,
             UnsentTeamEditState.Refused, "sync.validation_failed"));
-        var kept = await TeamSignOut.SettleUnsentAsync(_calls, (_, _) => Task.FromResult(TeamSignOutAnswer.Cancel));
+        var kept = await TeamSignOut.SettleUnsentAsync(_calls, owner, (_, _) => Task.FromResult(TeamSignOutAnswer.Cancel));
         _calls.Fails["delete"] = SyncErrors.Of("sync.team_library.delete_failed");
-        var deleted = await TeamSignOut.DeleteDataAsync(_calls);
+        var deleted = await TeamSignOut.DeleteDataAsync(_calls, owner);
 
         Assert.True(nothing);
         Assert.False(kept);

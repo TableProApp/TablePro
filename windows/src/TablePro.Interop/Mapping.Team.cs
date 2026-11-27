@@ -15,7 +15,8 @@ internal static partial class Mapping
             item.Id,
             item.FieldsJson,
             item.UpdatedBy,
-            item.UpdatedAtMs is { } at ? DateTimeOffset.FromUnixTimeMilliseconds(at) : null))]);
+            item.UpdatedAtMs is { } at ? DateTimeOffset.FromUnixTimeMilliseconds(at) : null,
+            item.Connection is { } connection ? Connection(connection.Connection) : null))]);
 
     public static TeamScopeStatus TeamStatus(Native.TeamScopeStatusInfo status) => new(
         status.TeamId,

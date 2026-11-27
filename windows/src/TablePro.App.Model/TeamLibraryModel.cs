@@ -34,8 +34,9 @@ public sealed record TeamView(
     IReadOnlyList<TeamQuery> Queries,
     int Connections);
 
-// A team as the person picked it, under the sign-in shown then: a publish goes out only while that sign-in holds.
-public sealed record TeamDestination(string TeamId, string? Session);
+// A team as the person picked it, under the sign-in and Team Library owner shown then: a publish goes out only while
+// that sign-in holds, and the core refuses it on another owner's engine.
+public sealed record TeamDestination(string TeamId, string? Session, TeamLibraryOwner? Owner);
 
 public abstract record TeamPublishOutcome
 {
@@ -204,6 +205,8 @@ public sealed class TeamLibraryModel
     private readonly Func<Task<ITeamCalls>> _calls;
     private readonly Func<string?> _session;
     private string? _shown;
+    // The owner of what shows, read with it under the sign-in shown.
+    private TeamLibraryOwner? _owner;
     // Each read and each change of sign-in takes the next, so an answer begun under an older one changes nothing.
     private int _generation;
     // Each change of sign-in takes the next, so a choice still out when it ends changes nothing after.
@@ -219,6 +222,10 @@ public sealed class TeamLibraryModel
     }
 
     public event EventHandler? Changed;
+
+    // An engine with no sign-in names no owner, so nothing of Team Library is read or written through it.
+    public static CoreError NoOwner { get; } =
+        new("sync.signed_out", ["sync.signed_out"], "the engine names no Team Library owner", null, null);
 
     public IReadOnlyList<TeamView> Teams { get; private set; } = [];
 
@@ -243,7 +250,7 @@ public sealed class TeamLibraryModel
     public string? TeamName(string teamId) => Teams.FirstOrDefault(team => team.TeamId == teamId)?.Name;
 
     // Taken when the person picks the team, before any confirmation waits.
-    public TeamDestination Destination(string teamId) => new(teamId, _shown);
+    public TeamDestination Destination(string teamId) => new(teamId, _shown, _owner);
 
     // Who last changed the team's copy of a record a conflict names.
     public string? Writer(SyncRecord record)
@@ -285,15 +292,17 @@ public sealed class TeamLibraryModel
         try
         {
             var calls = await _calls().ConfigureAwait(true);
-            var teams = await calls.GetTeamLibraryAsync().ConfigureAwait(true);
-            var statuses = await calls.GetTeamScopeStatusAsync().ConfigureAwait(true);
-            var unsent = await calls.GetUnsentTeamEditsAsync().ConfigureAwait(true);
+            var owner = calls.Owner ?? throw new TableProException(NoOwner);
+            var teams = await calls.GetTeamLibraryAsync(owner).ConfigureAwait(true);
+            var statuses = await calls.GetTeamScopeStatusAsync(owner).ConfigureAwait(true);
+            var unsent = await calls.GetUnsentTeamEditsAsync(owner).ConfigureAwait(true);
             var conflicts = await calls.GetConflictsAsync().ConfigureAwait(true);
             if (generation != _generation)
             {
                 return;
             }
 
+            _owner = owner;
             Teams = [.. teams.Select(TeamItems.View)];
             Statuses = statuses;
             Unsent = unsent;
@@ -324,17 +333,23 @@ public sealed class TeamLibraryModel
         TeamDestination destination,
         IReadOnlyList<TeamFolderEdit> folders,
         IReadOnlyList<TeamQueryEdit> queries) =>
-        PublishAsync(destination, calls => calls.PublishTeamSavedQueriesAsync(destination.TeamId, folders, queries));
+        PublishAsync(destination, (calls, owner) =>
+            calls.PublishTeamSavedQueriesAsync(owner, destination.TeamId, folders, queries));
 
     public Task<TeamPublishOutcome> RemoveAsync(TeamDestination destination, IReadOnlyList<TeamItemRef> items) =>
-        PublishAsync(destination, calls => calls.RemoveTeamItemsAsync(destination.TeamId, items));
+        PublishAsync(destination, (calls, owner) => calls.RemoveTeamItemsAsync(owner, destination.TeamId, items));
 
     // Null discards every team's edits, refused and imported ones included. Null when it ran; else why not.
     public async Task<CoreError?> DiscardAsync(string? teamId)
     {
+        if (_owner is not { } owner)
+        {
+            return NoOwner;
+        }
+
         try
         {
-            await (await _calls().ConfigureAwait(true)).DiscardTeamEditsAsync(teamId).ConfigureAwait(true);
+            await (await _calls().ConfigureAwait(true)).DiscardTeamEditsAsync(owner, teamId).ConfigureAwait(true);
         }
         catch (Exception exception) when (KeyErrors.Of(exception) is { } error)
         {
@@ -401,6 +416,7 @@ public sealed class TeamLibraryModel
         }
 
         _shown = session;
+        _owner = null;
         _generation++;
         _epoch++;
         Teams = [];
@@ -440,10 +456,11 @@ public sealed class TeamLibraryModel
 
     private async Task<TeamPublishOutcome> PublishAsync(
         TeamDestination destination,
-        Func<ITeamCalls, Task<TeamPublish>> call)
+        Func<ITeamCalls, TeamLibraryOwner, Task<TeamPublish>> call)
     {
         ArgumentNullException.ThrowIfNull(destination);
-        if (destination.Session is null || destination.Session != _shown || _session() != destination.Session)
+        if (destination.Session is null || destination.Session != _shown || _session() != destination.Session
+            || destination.Owner is not { } owner)
         {
             return TeamPublishOutcome.SignedOut.Instance;
         }
@@ -471,13 +488,18 @@ public sealed class TeamLibraryModel
             var calls = await _calls().ConfigureAwait(true);
             outcome = _session() != destination.Session
                 ? TeamPublishOutcome.SignedOut.Instance
-                : Outcome(await call(calls).ConfigureAwait(true));
+                : Outcome(await call(calls, owner).ConfigureAwait(true));
         }
         catch (Exception exception) when (KeyErrors.Of(exception) is { } error)
         {
-            outcome = error.Code == "sync.team_library.not_writable"
-                ? TeamPublishOutcome.NotWritable.Instance
-                : new TeamPublishOutcome.Failed(error.Code);
+            outcome = error.Code switch
+            {
+                "sync.team_library.not_writable" => TeamPublishOutcome.NotWritable.Instance,
+                // Another account's engine took the call, or the sign-in changed under it.
+                "sync.team_library.other_owner" or "sync.team_library.signed_in_changed" or "sync.changed" =>
+                    TeamPublishOutcome.SignedOut.Instance,
+                _ => new TeamPublishOutcome.Failed(error.Code),
+            };
         }
         finally
         {
@@ -501,11 +523,14 @@ public enum TeamSignOutAnswer
 public static class TeamSignOut
 {
     // False when the person keeps the sign-in. Ask gets the edits by name and the code of an upload that did not finish.
+    // Owner is the one read before the sign-out started, so nothing reaches another account's library.
     public static async Task<bool> SettleUnsentAsync(
         ITeamCalls calls,
+        TeamLibraryOwner owner,
         Func<IReadOnlyList<string>, string?, Task<TeamSignOutAnswer>> ask)
     {
         ArgumentNullException.ThrowIfNull(calls);
+        ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(ask);
         string? failure = null;
         while (true)
@@ -513,7 +538,7 @@ public static class TeamSignOut
             IReadOnlyList<UnsentTeamEdit> unsent;
             try
             {
-                unsent = await calls.GetUnsentTeamEditsAsync().ConfigureAwait(true);
+                unsent = await calls.GetUnsentTeamEditsAsync(owner).ConfigureAwait(true);
             }
             catch (Exception exception) when (KeyErrors.Of(exception) is not null)
             {
@@ -545,7 +570,7 @@ public static class TeamSignOut
                 case TeamSignOutAnswer.Discard:
                     try
                     {
-                        await calls.DiscardTeamEditsAsync(null).ConfigureAwait(true);
+                        await calls.DiscardTeamEditsAsync(owner, null).ConfigureAwait(true);
                     }
                     catch (Exception exception) when (KeyErrors.Of(exception) is { } error)
                     {
@@ -561,12 +586,13 @@ public static class TeamSignOut
     }
 
     // After the sign-out: null when the data is gone; else why it stays, which keeps Team Library off for the account.
-    public static async Task<CoreError?> DeleteDataAsync(ITeamCalls calls)
+    public static async Task<CoreError?> DeleteDataAsync(ITeamCalls calls, TeamLibraryOwner owner)
     {
         ArgumentNullException.ThrowIfNull(calls);
+        ArgumentNullException.ThrowIfNull(owner);
         try
         {
-            await calls.DeleteTeamLibraryDataAsync().ConfigureAwait(true);
+            await calls.DeleteTeamLibraryDataAsync(owner).ConfigureAwait(true);
             return null;
         }
         catch (Exception exception) when (KeyErrors.Of(exception) is { } error)
