@@ -515,6 +515,8 @@ internal struct AccountDevicesPage: View {
             }
         }
         .formStyle(.grouped)
+        // Another device can sign in while the pane stays open, so the list is read again each time it shows.
+        .task { await model.loadDevices() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(SettingsPage.accountDevices.pageIdentifier)
     }

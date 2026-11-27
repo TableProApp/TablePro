@@ -32,6 +32,7 @@ private final class FakeMoveEngine: SyncMoveEngine, @unchecked Sendable {
         var moveGate: AsyncGate?
         var moveBackGate: AsyncGate?
         var keysGate: AsyncGate?
+        var logsClose = false
     }
 
     let opened: SyncProviderTag
@@ -42,6 +43,12 @@ private final class FakeMoveEngine: SyncMoveEngine, @unchecked Sendable {
         self.opened = opened
         self.log = log
         state.withLockUnchecked { $0.provider = opened }
+    }
+
+    deinit {
+        if read({ $0.logsClose }) {
+            log.append("\(name) closed")
+        }
     }
 
     private var name: String {
@@ -274,6 +281,19 @@ struct ProviderMovesTests {
             "off keyState", "off chooseProvider tableproSync", "provider tablepro-sync", "tablepro-sync syncNow"
         ])
         #expect(fixture.provider == .tableproSync)
+    }
+
+    @Test("The first pass runs once the service that made the first upload is let go, as TablePro Sync's waits for its file")
+    func firstPassAfterTheMovedServiceGoes() async throws {
+        let fixture = Fixture(provider: .off)
+        fixture.prepare = { $0.update { $0.logsClose = true } }
+
+        _ = try await fixture.moves.moveToService(confirmedUnder: nil)
+
+        #expect(fixture.log.all == [
+            "off keyState", "off chooseProvider tableproSync", "provider tablepro-sync", "off closed",
+            "tablepro-sync syncNow"
+        ])
     }
 
     @Test("Without the account's keys nothing changes and nothing goes up")

@@ -171,29 +171,37 @@ internal final class ProviderMoves: ObservableObject {
         guard !Self.refusesPersonalSync(scopes) else { throw ProviderMoveError.serverRefusesPersonalSync }
         let asked = choice
         return try await exclusively {
-            let from = current
-            let engine = try await host.engine(from)
-            let keys = try await engine.keyState()
-            try ensureCurrent(asked)
-            guard case .approved = keys else { return .needsKeys(keys) }
-            // The profile is read again in the same turn as the call, and the core checks it as well. From iCloud the
-            // core moves, from Off it makes the first upload.
-            guard choices.providers.contains(.tableproSync) else { throw ProviderMoveError.notAllowed }
-            guard host.session() == session else { throw ProviderMoveError.signInChanged }
-            try await engine.chooseProvider(provider: .tableproSync)
-            guard choice == asked else {
-                await stopPersonalSyncAfterSupersededMove()
-                throw ProviderMoveError.superseded
-            }
-            setProvider(.tableproSync)
-            if from == .icloud {
-                // Stopping iCloud has the coordinator tell the service it holds Off. That service is still the open one
-                // until TablePro Sync's has opened, which takes a call into the core, so the Off goes to iCloud's.
-                await host.passesFinished()
-            }
+            let outcome = try await moveOnOpenService(asked, confirmedUnder: session)
+            guard outcome == .moved else { return outcome }
+            // TablePro Sync's service waits for the state file the service that moved still holds, so that one is let
+            // go before the first pass.
             await firstPass(asked)
             return .moved
         }
+    }
+
+    private func moveOnOpenService(_ asked: Int, confirmedUnder session: String?) async throws -> MoveToServiceOutcome {
+        let from = current
+        let engine = try await host.engine(from)
+        let keys = try await engine.keyState()
+        try ensureCurrent(asked)
+        guard case .approved = keys else { return .needsKeys(keys) }
+        // The profile is read again in the same turn as the call, and the core checks it as well. From iCloud the core
+        // moves, from Off it makes the first upload.
+        guard choices.providers.contains(.tableproSync) else { throw ProviderMoveError.notAllowed }
+        guard host.session() == session else { throw ProviderMoveError.signInChanged }
+        try await engine.chooseProvider(provider: .tableproSync)
+        guard choice == asked else {
+            await stopPersonalSyncAfterSupersededMove()
+            throw ProviderMoveError.superseded
+        }
+        setProvider(.tableproSync)
+        if from == .icloud {
+            // Stopping iCloud has the coordinator tell the service it holds Off. That service is still the open one
+            // until TablePro Sync's has opened, which takes a call into the core, so the Off goes to iCloud's.
+            await host.passesFinished()
+        }
+        return .moved
     }
 
     // The core put personal data on TablePro Sync in the service that moved, which a choice made meanwhile overrides.

@@ -269,7 +269,10 @@ struct SyncMoveSheet: View {
             String(localized: "This Mac can no longer read your account's keys. Approve it again from another device, then check again.")
         case .noDeviceStore:
             String(localized: "This Mac has no place to keep its device keys, so it cannot use TablePro Sync.")
-        case .noKeys, .unknown, .approved:
+        // Until TablePro Sync first reads the account, this Mac does not know whether it has keys.
+        case .unknown:
+            String(localized: "TablePro Sync is still reading your account's keys. Check again in a moment.")
+        case .noKeys, .approved:
             String(localized: "Set up a recovery key for your account before this Mac uploads, then check again.")
         }
     }
