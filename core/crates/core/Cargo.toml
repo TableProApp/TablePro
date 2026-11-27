@@ -43,6 +43,7 @@ winapi-util.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+tablepro-test-support.workspace = true
 zip.workspace = true
 tokio = { workspace = true, features = ["rt", "test-util"] }
 

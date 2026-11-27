@@ -8,6 +8,7 @@ use crate::cancel_token::{CancelToken, token};
 use crate::error::CoreError;
 use crate::run::{QueryRun, RunListener, RunOutcome, RunSink, RunState, TransactionStateTag};
 use crate::runtime::on_runtime;
+use crate::script::{BatchErrorPolicyTag, ScriptBatch, ScriptRun, run_script};
 
 /// An editor tab's own connection, which keeps its transaction and
 /// session settings from one run to the next.
@@ -62,6 +63,28 @@ impl QueryEditor {
             run.finish(outcome, transaction);
         }));
         Arc::new(QueryRun::new(state, self.tasks.clone()))
+    }
+
+    /// Runs a whole script of `batches` with an error policy, each one a
+    /// statement or a `GO` batch, and returns at once. `listener` hears
+    /// when events are waiting; the run reports one `Batch` per batch and
+    /// ends with `Finished`. Rows go to the core's store, read through
+    /// `ScriptRun::result_set`.
+    pub fn run_script(
+        &self,
+        batches: Vec<ScriptBatch>,
+        policy: BatchErrorPolicyTag,
+        settings: RunSettings,
+        listener: Box<dyn RunListener>,
+    ) -> Arc<ScriptRun> {
+        run_script(
+            self.editor.clone(),
+            self.tasks.clone(),
+            batches,
+            policy,
+            settings,
+            listener,
+        )
     }
 
     /// The editor's connection is gone. It is never opened again by
