@@ -130,6 +130,7 @@ async fn the_library_s_kinds_sync_with_its_standing_and_its_writes_reach_the_eng
         Kind::Connection,
         Kind::Group,
         Kind::Tag,
+        Kind::ConnectionProject,
         Kind::SshProfile,
         Kind::CredentialProfile,
         Kind::TableFolder,

@@ -31,6 +31,7 @@ fn read_back(kind: Kind, base: &Value) -> Option<Value> {
             ))
         }
         Kind::Group => Some(groups::group_to_wire(&groups::group(id, base, None))),
+        Kind::ConnectionProject => groups::project(id, base, None).map(|project| groups::project_to_wire(&project)),
         Kind::Tag => Some(groups::tag_to_wire(&groups::tag(id, base, None))),
         Kind::SshProfile => Some(profiles::ssh_to_wire(&profiles::ssh(id, base, None))),
         Kind::CredentialProfile => Some(profiles::credential_to_wire(&profiles::credential(id, base, None))),
