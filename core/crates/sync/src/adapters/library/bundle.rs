@@ -5,9 +5,11 @@
 // copy never carries startup commands, a tunnel command or Local only, and reads none: a teammate's copy runs nothing.
 // A driver field goes out and comes in only when this build knows it as one a file may carry
 // (`field_trust::portable_fields`), as the Mac's exporter keeps them: a field a newer build added may be a secret or a
-// command. Nor does a team copy carry a path on the device that wrote it, both ways: SSH keys and the agent socket, the
-// TLS files, a driver's local files and the SSH profile link name things on one device, and another account's path must
-// never pick this device's key. The SSH sign-in method stays, so a key copy asks the reader for a key of their own.
+// command. Nor does a team copy carry the credential and trust material of the device that wrote it, both ways: SSH
+// keys and the agent socket, the TLS files, a driver's key, certificate and extension files (`FieldTrust::LocalFile`)
+// and the SSH profile link name things on one device, and another account's path must never pick this device's key. The
+// SSH sign-in method stays, so a key copy asks the reader for a key of their own. A database file is where the
+// connection goes, so it travels.
 
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;

@@ -3,7 +3,10 @@ import Foundation
 // What an additional field holds, which decides whether it may arrive from outside or leave this device.
 public enum ConnectionFieldTrust: Equatable, Sendable {
     case setting
+    // Where the connection goes: a host, an endpoint or a database file.
     case destination
+    // A file on this device that proves or trusts an identity, or code it loads: a key, a certificate, a CA bundle, an
+    // extension.
     case localFile
     // Any value outside `plainValues` (compared without case) signs in with something this device holds.
     case localCredential(plainValues: Set<String>)
@@ -197,6 +200,7 @@ public enum ConnectionFieldCatalog {
         "wvAuthMethod": .setting,
         "wvSkipTLSVerify": .setting,
 
+        "attachedDatabases": .destination,
         "awsEndpointUrl": .destination,
         "awsRDSEndpoint": .destination,
         "awsRedshiftEndpoint": .destination,
@@ -208,6 +212,7 @@ public enum ConnectionFieldCatalog {
         "btProjectId": .destination,
         "cfAccountId": .destination,
         "databaseUrl": .destination,
+        "duckdbFilePath": .destination,
         "duckdbHost": .destination,
         "duckdbMotherDuckDatabase": .destination,
         "duckdbPort": .destination,
@@ -218,6 +223,8 @@ public enum ConnectionFieldCatalog {
         "fbProjectId": .destination,
         "hanaTLSServerName": .destination,
         "kafkaBootstrapServers": .destination,
+        "libsqlFilePath": .destination,
+        "localSocketPath": .destination,
         "mongoHosts": .destination,
         "oracleDebuggerHost": .destination,
         "oracleServiceName": .destination,
@@ -233,14 +240,10 @@ public enum ConnectionFieldCatalog {
         "spProjectId": .destination,
         "sshForwardUnixSocketPath": .destination,
 
-        "attachedDatabases": .localFile,
         "duckdbCACertificateFilePath": .localFile,
-        "duckdbFilePath": .localFile,
         "etcdCaCertPath": .localFile,
         "etcdClientCertPath": .localFile,
         "etcdClientKeyPath": .localFile,
-        "libsqlFilePath": .localFile,
-        "localSocketPath": .localFile,
         "snowflakePrivateKeyPath": .localFile,
         "sqliteExtensions": .localFile,
         "sslCaCertPath": .localFile,

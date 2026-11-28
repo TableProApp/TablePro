@@ -216,6 +216,31 @@ fn a_driver_field_no_file_may_carry_stays_out_both_ways() {
     );
 }
 
+// A database file is where the connection goes, not a credential, so it travels both ways: a MotherDuck `md:` copy, a
+// DuckDB file and a libSQL file alike.
+#[test]
+fn a_team_copy_keeps_its_database_file() {
+    let file = |kind: &str, field: &str, path: &str| {
+        json!({"name": "Local", "host": "localhost", "port": 0, "database": "", "username": "", "type": kind,
+            "additionalFields": {field: path}})
+    };
+    for bundle in [
+        file("DuckDB", "duckdbFilePath", "md:analytics"),
+        file("DuckDB", "duckdbFilePath", "~/data/sales.duckdb"),
+        file("libSQL", "libsqlFilePath", "~/data/app.db"),
+    ] {
+        let saved = read(&bundle);
+        let (field, path) = bundle["additionalFields"].as_object().unwrap().iter().next().unwrap();
+
+        assert!(saved.details.additional_fields.contains_key(field), "{bundle}");
+        assert_eq!(
+            team_bundle(&saved, None, DriverNames::Mac)["additionalFields"][field],
+            *path,
+            "{bundle}"
+        );
+    }
+}
+
 // Linux and Windows name the engine by the core's driver id; the bundle always carries the Mac's name.
 #[test]
 fn the_core_s_driver_ids_read_and_write_the_mac_s_type_names() {
