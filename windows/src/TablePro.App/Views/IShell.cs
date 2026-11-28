@@ -26,6 +26,9 @@ internal interface IShell
 
     void ShowKeyboardShortcuts();
 
+    // Settings > Sync > End-to-end encryption, which leads back to Settings.
+    void ShowAccountKeys();
+
     // Asks what a close asks, then has Windows install the update the check found and restart the app.
     Task InstallUpdateAsync();
 

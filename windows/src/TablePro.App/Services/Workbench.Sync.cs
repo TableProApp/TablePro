@@ -14,6 +14,9 @@ internal sealed partial class Workbench
     // Raised on the UI thread after the sync status, the key state or a move changed.
     public event EventHandler? SyncChanged;
 
+    // Raised on the UI thread when the key state, a session, a reset or the key notices changed, or the sign-in did.
+    public event EventHandler? SyncKeysChanged;
+
     public SyncHost Sync => _sync ??= OpenSyncHost();
 
     // The sign-in the account holds now, which the service and a confirmed upload are bound to; null while signed out.
@@ -22,11 +25,27 @@ internal sealed partial class Workbench
     // The core's answer for TablePro Sync, null while the account is not open; Gate words it.
     public FeatureAccess? SyncAccess => _readAccount?.Access(PlanFeatures.ServiceSync);
 
+    // RFC 9470's step-up for the key calls: the browser opens for the challenge, as a sign-in's does.
+    public StepUpRetry StepUp => new(async challenge =>
+    {
+        var account = await GetAccountAsync().ConfigureAwait(true)
+            ?? throw new TableProException(new CoreError("account.signed_out", ["account.signed_out"], "no account", null, null));
+        try
+        {
+            await account.StepUpAsync(challenge).ConfigureAwait(true);
+        }
+        finally
+        {
+            ShowAccount(account.Status);
+        }
+    });
+
     // On the UI thread, whose context the network's word comes back to.
     private SyncHost OpenSyncHost()
     {
         var host = new SyncHost(new SyncApp(this));
         host.Changed += (_, _) => SyncChanged?.Invoke(this, EventArgs.Empty);
+        host.KeysChanged += (_, _) => SyncKeysChanged?.Invoke(this, EventArgs.Empty);
         _syncContext = SynchronizationContext.Current;
         NetworkChange.NetworkAvailabilityChanged += OnNetworkAvailabilityChanged;
         return host;

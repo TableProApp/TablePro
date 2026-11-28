@@ -30,6 +30,9 @@ public interface ISyncEngine : IDisposable
     Task<NewIdentityPlan> PlanNewIdentityAsync();
 
     Task ChooseForNewIdentityAsync(NewIdentityChoice choice, string account);
+
+    // The same service's end-to-end key calls.
+    IKeyFlows Keys { get; }
 }
 
 // The parts of the app the host reads and writes: the sync settings in settings.json, the history the PC keeps, and
@@ -112,6 +115,9 @@ public sealed class SyncHost : IDisposable
     // The status, the scopes, the key state, an open that failed or a move that started or ended.
     public event EventHandler? Changed;
 
+    // The key state, a session, a reset or the key notices changed, or the service opened again over another sign-in.
+    public event EventHandler? KeysChanged;
+
     // Null until the service opens, and after it closed for a sign-in change.
     public SyncStatus? Status => _engine?.Status;
 
@@ -185,6 +191,7 @@ public sealed class SyncHost : IDisposable
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
+        KeysChanged?.Invoke(this, EventArgs.Empty);
     }
 
     // The first upload from Off, confirmed in the upload dialog under confirmedSignIn: nothing goes up once another
@@ -377,6 +384,15 @@ public sealed class SyncHost : IDisposable
     // What the first upload sends. Throws TableProException.
     public Task<SyncUploadPlan> PlanUploadAsync() => OnEngineAsync(engine => engine.PlanUploadAsync());
 
+    // The open service's key calls, opening it first; they stay bound to the sign-in it opened under. Throws
+    // TableProException when it could not open.
+    public async Task<IKeyFlows> GetKeyFlowsAsync()
+    {
+        var engine = await GetEngineAsync().ConfigureAwait(true)
+            ?? throw new TableProException(OpenFailure ?? Overtaken);
+        return engine.Keys;
+    }
+
     // After the settings changed; the switches apply before the first upload too. In order, each with the settings as
     // they are when it runs, so the last change is the one the core keeps.
     public Task ApplyCategoriesAsync()
@@ -563,6 +579,10 @@ public sealed class SyncHost : IDisposable
                 if (changes.HasFlag(SyncChanges.Keys))
                 {
                     await ReadKeysAsync(engine, generation).ConfigureAwait(true);
+                    if (generation == _generation)
+                    {
+                        KeysChanged?.Invoke(this, EventArgs.Empty);
+                    }
                 }
 
                 if (_uploadResuming && changes.HasFlag(SyncChanges.Status))

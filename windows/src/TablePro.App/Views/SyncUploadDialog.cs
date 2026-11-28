@@ -7,11 +7,25 @@ using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
+public enum UploadDialogResult
+{
+    Closed,
+    Uploaded,
+
+    // The account's keys come first: the dialog closed for the key dialog, which opens the upload again after.
+    SetUpRecoveryKey,
+    ApproveThisComputer,
+    OpenEncryptionSettings,
+}
+
 // The first upload to TablePro Sync: what goes up and what stays, then the upload (core ADR 0054, Moving between
 // providers). Nothing goes up before the person confirms here, and nothing under another sign-in than this one's.
 internal static class SyncUploadDialog
 {
-    public static async Task ShowAsync(FrameworkElement owner, Workbench workbench)
+    // Request is this computer's open approval request, for ApproveThisComputer.
+    public static async Task<(UploadDialogResult Result, string? Request)> ShowAsync(
+        FrameworkElement owner,
+        Workbench workbench)
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(workbench);
@@ -83,8 +97,22 @@ internal static class SyncUploadDialog
         }
 
         var planned = false;
+        var result = UploadDialogResult.Closed;
+        UploadKeysStep? keys = null;
+        string? request = null;
         dialog.PrimaryButtonClick += async (_, args) =>
         {
+            if (keys is { } step)
+            {
+                result = step switch
+                {
+                    UploadKeysStep.SetUpRecoveryKey => UploadDialogResult.SetUpRecoveryKey,
+                    UploadKeysStep.ApproveThisPc => UploadDialogResult.ApproveThisComputer,
+                    _ => UploadDialogResult.OpenEncryptionSettings,
+                };
+                return;
+            }
+
             var deferral = args.GetDeferral();
             dialog.IsPrimaryButtonEnabled = false;
             notice.Visibility = Visibility.Collapsed;
@@ -104,10 +132,15 @@ internal static class SyncUploadDialog
                 switch (outcome)
                 {
                     case UploadOutcome.Uploaded:
+                        result = UploadDialogResult.Uploaded;
                         return;
                     case UploadOutcome.NeedsKeys needs:
+                        keys = UploadKeys.StepFor(needs.State);
+                        request = (needs.State as KeyState.NeedsApproval)?.Request;
                         Say(InfoBarSeverity.Informational, NeedsKeysText(needs.State));
-                        dialog.PrimaryButtonText = Strings.Get("SyncUploadCheckAgain");
+                        dialog.PrimaryButtonText = keys is { } next
+                            ? Strings.Get("SyncUploadKeysAction_" + next)
+                            : string.Empty;
                         break;
                     case UploadOutcome.Refused refused:
                         Say(InfoBarSeverity.Error, SyncText.Refusal(refused.Reason));
@@ -123,7 +156,7 @@ internal static class SyncUploadDialog
             }
             finally
             {
-                dialog.IsPrimaryButtonEnabled = true;
+                dialog.IsPrimaryButtonEnabled = keys is not UploadKeysStep.NoDeviceStore;
                 deferral.Complete();
             }
         };
@@ -134,6 +167,7 @@ internal static class SyncUploadDialog
             dialog.IsPrimaryButtonEnabled = true;
         };
         await WindowDialogs.ShowAsync(dialog, owner).ConfigureAwait(true);
+        return (result, request);
     }
 
     private static void ShowCounts(StackPanel counts, SyncUploadPlan plan)
@@ -155,7 +189,7 @@ internal static class SyncUploadDialog
 
     private static TextBlock Line(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap };
 
-    // The keys come first (core ADR 0055, PersonalSyncProvider; 0056); Settings' end-to-end encryption page sets them up.
+    // The keys come first (core ADR 0055, PersonalSyncProvider; 0056).
     private static string NeedsKeysText(KeyState state) =>
         UploadKeys.StepFor(state) is { } step ? SyncText.KeysStep(step) : string.Empty;
 }

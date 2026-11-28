@@ -617,11 +617,51 @@ public sealed partial class SettingsView : UserControl
                 _workbench.CancelSignIn();
                 break;
             case AccountStage.SignedIn:
-                await RunAccountAsync(account => account.SignOutAsync());
+                await SignOutAsync();
                 break;
             default:
                 await StartSignInAsync();
                 break;
+        }
+    }
+
+    // This computer's keys are erased before the sign-in is revoked; when they could not be, the person decides
+    // (core ADR 0056, Sign Out).
+    private async Task SignOutAsync()
+    {
+        if (_accountBusy)
+        {
+            return;
+        }
+
+        var session = _workbench.SignInSession;
+        _accountBusy = true;
+        ShowAccount();
+        bool erased;
+        try
+        {
+            erased = await KeysSignOut.RunAsync(
+                _workbench.Sync.GetKeyFlowsAsync,
+                () => _workbench.SignInSession == session,
+                reason =>
+                {
+                    CrashLog.Note("keys sign out", reason.Code);
+                    return KeyDialogs.SignOutFailedAsync(this, reason);
+                });
+        }
+        finally
+        {
+            _accountBusy = false;
+        }
+
+        // Another sign-in meanwhile was not the one asked to end, and its keys were not erased.
+        if (erased && _workbench.SignInSession == session)
+        {
+            await RunAccountAsync(account => account.SignOutAsync());
+        }
+        else
+        {
+            ShowAccount();
         }
     }
 

@@ -92,6 +92,21 @@ public sealed class SyncTests : IDisposable
         Assert.Null(await sync.GetOpenUploadAsync());
     }
 
+    [Fact]
+    public async Task KeyCallsNameTheirDraftsAndNeedASignIn()
+    {
+        using var sync = await _core.OpenSyncAsync(new SyncConfiguration(SyncProvider.Off, Everything), account: null);
+
+        var malformed = Assert.Throws<TableProException>(() => sync.DiscardKeyDraft("not-a-draft"));
+        sync.DiscardKeyDraft(Guid.NewGuid().ToString().ToUpperInvariant());
+        var request = await Assert.ThrowsAsync<TableProException>(sync.RequestApprovalAsync);
+        var devices = await Assert.ThrowsAsync<TableProException>(sync.GetAccountDevicesAsync);
+
+        Assert.Equal("sync.malformed", malformed.Code);
+        Assert.StartsWith("sync.", request.Code, StringComparison.Ordinal);
+        Assert.StartsWith("sync.", devices.Code, StringComparison.Ordinal);
+    }
+
     private static async Task<List<SyncChanges>> ReadAllAsync(TableProSync sync, CancellationToken cancellationToken)
     {
         var seen = new List<SyncChanges>();
