@@ -59,7 +59,7 @@ impl Adapters {
         }
         self.all
             .iter()
-            .filter(|adapter| adapter.kind().scopes().contains(&scope.records_scope()))
+            .filter(|adapter| adapter.kind().scopes().contains(&scope.records_scope()) && adapter.serves(scope))
             .map(Arc::clone)
             .collect()
     }

@@ -1,6 +1,6 @@
 # 0066: The state file keeps refused changes and per-kind refills, and the engine rulings are settled
 
-- **Status**: Accepted; amends 0054, 0056, 0060 and 0064
+- **Status**: Accepted; amends 0054, 0056, 0060 and 0064; a `policy` refusal and the `awaiting_store` held reason amended by 0069
 - **Date**: 2026-11-26
 
 ## Context

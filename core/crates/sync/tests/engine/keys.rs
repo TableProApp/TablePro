@@ -507,3 +507,56 @@ async fn envelopes_held_while_the_key_tables_rebuild_are_read_again_once_the_reb
 fn personal_key(record_id: &str) -> tablepro_sync::api::ids::RecordKey {
     tablepro_sync::api::ids::RecordKey::new(ScopeName::Personal, Kind::SecretEnvelope, record_id)
 }
+
+fn stored_envelope(server: &FakeServer, n: u8) -> Option<Value> {
+    server
+        .stored(super::harness::personal(), "secret_envelope", &envelope_id(n))
+        .filter(|record| record.deleted.is_none())
+        .and_then(|record| record.fields)
+}
+
+// A `policy` refusal stands only while the switch that refused it is off: turned on again, the same change goes up,
+// which a refusal of any other code would hold until the change differs (0069, Policies).
+#[tokio::test]
+async fn an_envelope_the_policy_refused_goes_up_once_password_sync_is_on_again() {
+    use tablepro_sync::api::control::HeldRecordReason;
+    use tablepro_sync_testing::service::Policies;
+
+    let server = FakeServer::new();
+    let secrets = envelopes();
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&secrets))
+        .build()
+        .await;
+    let other = Device::new(&server, "dev_other").await;
+    rotate(&other, 1).await;
+    mac.sync().await;
+    secrets.put(&envelope_id(1), sealed(1));
+    let (reached, release) = mac.wire.hold_next_pull(ScopeName::Personal);
+    let turn_off = async {
+        reached.notified().await;
+        server.set_policies(Policies {
+            password_sync: false,
+            ..Policies::default()
+        });
+        release.notify_one();
+    };
+
+    let (raced, ()) = tokio::join!(mac.pass(), turn_off);
+    let refused = mac.sync.held_records().await.unwrap();
+    mac.sync().await;
+    let while_off = stored_envelope(&server, 1);
+    server.set_policies(Policies::default());
+    mac.sync().await;
+
+    assert!(raced.is_ok(), "{raced:?}");
+    assert!(
+        refused.iter().any(|held| held.reason
+            == HeldRecordReason::Refused {
+                code: "policy".to_owned()
+            }),
+        "{refused:?}"
+    );
+    assert_eq!(while_off, None);
+    assert_eq!(stored_envelope(&server, 1), Some(sealed(1)));
+}

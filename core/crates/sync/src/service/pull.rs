@@ -168,6 +168,8 @@ impl PageWrites {
         };
         let reason = if refilling {
             HeldReason::RefusedInRefill
+        } else if key.kind.known() == Some(Kind::SecretEnvelope) && record.deleted.is_none() {
+            HeldReason::AwaitingStore
         } else {
             HeldReason::Unreadable
         };
@@ -214,6 +216,14 @@ fn kept_copy_base(key: &RecordKey, deferred: &PulledRecord) -> Option<BaseRow> {
         fields: Some(fields.clone()),
         created_ms: None,
     })
+}
+
+// A live envelope held only because its store refused it: the keys judged it before the store saw it, and they hold
+// every one they refuse as unreadable (`envelope_opens`).
+fn taken_by_keys(row: &HeldRow) -> bool {
+    row.record.kind.known() == Some(Kind::SecretEnvelope)
+        && row.record.deleted.is_none()
+        && matches!(row.reason, HeldReason::AwaitingStore | HeldReason::RefusedInRefill)
 }
 
 fn held(reason: HeldReason, key: RecordKey, record: PulledRecord) -> HeldRow {
@@ -409,8 +419,10 @@ impl ServiceSync {
     // copy each row keeps, so a store or a build that now takes them does, with no change on the server and after a
     // restart too (0054, Rules for both providers). The rows are the newest copy the server served, and their bases
     // never moved past what the store holds. A record held again as it was writes nothing. A live envelope or history
-    // entry is judged at its place in the server's order, which a row does not keep, so it waits for the server to
-    // serve it again; their deletions need no key and go again like any other.
+    // entry is judged at its place in the server's order, which a row does not keep, so one the keys refused waits for
+    // the server to serve it again; their deletions need no key and go again like any other. An envelope the keys took
+    // and only its store refused goes to the store again without a second judgement, which the order it was taken in
+    // no longer holds for.
     async fn retry_held(
         &self,
         ctx: &mut PassCtx,
@@ -425,12 +437,16 @@ impl ServiceSync {
             .into_iter()
             .filter_map(|row| match row {
                 Row::Held(row)
-                    if matches!(row.reason, HeldReason::Unreadable | HeldReason::RefusedInRefill)
-                        && (row.record.fields_json.is_some()
-                            || row.record.fields.is_some()
-                            || row.record.deleted.is_some())
+                    if matches!(
+                        row.reason,
+                        HeldReason::Unreadable | HeldReason::RefusedInRefill | HeldReason::AwaitingStore
+                    ) && (row.record.fields_json.is_some()
+                        || row.record.fields.is_some()
+                        || row.record.deleted.is_some())
                         && row.record.kind.known().is_some_and(|kind| {
-                            (row.record.deleted.is_some() || !matches!(kind, Kind::SecretEnvelope | Kind::HistoryEntry))
+                            (row.record.deleted.is_some()
+                                || taken_by_keys(&row)
+                                || !matches!(kind, Kind::SecretEnvelope | Kind::HistoryEntry))
                                 && adapters.iter().any(|adapter| adapter.kind() == kind)
                         }) =>
                 {
@@ -454,8 +470,10 @@ impl ServiceSync {
             if refill {
                 pull.pull_wins = batch.iter().filter_map(|row| row.record.kind.known()).collect();
             }
-            let records = batch.iter().map(|row| row.record.clone()).collect();
-            let taken = self.take_page(pull, adapters, records).await;
+            let (taken, records): (Vec<&HeldRow>, Vec<&HeldRow>) = batch.iter().partition(|row| taken_by_keys(row));
+            let records = records.into_iter().map(|row| row.record.clone()).collect();
+            let taken = taken.into_iter().map(|row| row.record.clone()).collect();
+            let taken = self.take_again(pull, adapters, records, taken).await;
             pull.pull_wins = wins;
             let mut writes = taken?;
             ctx.report.store_refused.extend(writes.refused.iter().cloned());
@@ -466,6 +484,18 @@ impl ServiceSync {
             }
         }
         Ok(())
+    }
+
+    async fn take_again(
+        &self,
+        pull: &mut Pull,
+        adapters: &[Arc<dyn RecordAdapter>],
+        records: Vec<PulledRecord>,
+        taken: Vec<PulledRecord>,
+    ) -> Result<PageWrites, SyncError> {
+        let mut writes = self.take_page(pull, adapters, records).await?;
+        self.settle_all(pull, adapters, taken, &mut writes).await?;
+        Ok(writes)
     }
 
     async fn held_refills(&self, scope: ScopeName) -> Result<HashSet<RecordKey>, SyncError> {
@@ -1018,6 +1048,12 @@ impl ServiceSync {
                 None => grouped.push((index, vec![(record, change)])),
             }
         }
+        // An envelope lands only on its record as the store holds it, so the records of the same page go first.
+        grouped.sort_by_key(|(index, _)| {
+            adapters
+                .get(*index)
+                .is_some_and(|adapter| adapter.kind() == Kind::SecretEnvelope)
+        });
         for (index, changes) in grouped {
             if let Some(adapter) = adapters.get(index) {
                 let applied = apply_keeping(adapter.as_ref(), scope, changes, || self.check_stop()).await?;
