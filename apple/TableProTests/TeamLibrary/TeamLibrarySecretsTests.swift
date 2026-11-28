@@ -42,7 +42,8 @@ struct TeamLibrarySecretsTests {
         engine.hold(secrets: [
             TeamSecretArg(kind: "password", value: "s3cret"),
             TeamSecretArg(kind: "ssh_password", value: "tunnel"),
-            TeamSecretArg(kind: "plugin.token", value: "kept elsewhere")
+            TeamSecretArg(kind: "plugin.token", value: "kept elsewhere"),
+            TeamSecretArg(kind: "ssh_key_passphrase", value: "an older build's")
         ], for: "c1")
         let fixture = try await TeamLibraryFixture(engine: engine)
         try await fixture.start()
@@ -67,7 +68,7 @@ struct TeamLibrarySecretsTests {
         edited.port = 5_433
 
         let result = try await fixture.library.publishConnectionEdit(
-            edited, of: original, secrets: [.password: "rotated", .sshPassword: ""]
+            edited, of: original, secrets: [.password: "rotated", .sshPassword: "", .sshKeyPassphrase: "key file"]
         )
         _ = try await fixture.library.publishConnectionEdit(edited, of: original, secrets: nil)
 

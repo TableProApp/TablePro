@@ -67,6 +67,30 @@ struct ConnectionEditorStoreTeamCopyTests {
         #expect(!store.isPublishingTeamCopy)
     }
 
+    @Test("A team edit with key passphrases set sends no passphrase: they belong to this Mac's key files")
+    func keyPassphrasesStayHere() async throws {
+        let (team, original) = try await teamCopy()
+        let editor = try ConnectionEditorStoreFixture()
+        let store = editor.makeStore(
+            .editTeamCopy(TeamCopyTarget(original: original, secrets: [.password: "s3cret", .sshKeyPassphrase: "kept"])),
+            teamLibrary: team.library
+        )
+        var dismissed = false
+        store.dismissAction = { dismissed = true }
+
+        #expect(store.draft.ssh.keyPassphrase.isEmpty)
+        store.update {
+            $0.portText = "5433"
+            $0.ssh.keyPassphrase = "key file"
+            $0.ssl.clientKeyPassphrase = "client key"
+        }
+        _ = store.save()
+
+        try await waitUntil { dismissed }
+        let edit = try #require(team.engine.connectionEdits.first)
+        #expect(edit.secrets?.map { $0.kind } == ["password"])
+    }
+
     @Test("With the team's secrets unread and none typed, Save leaves the team's envelopes as they are")
     func unreadSecretsAreKept() async throws {
         let (team, original) = try await teamCopy()

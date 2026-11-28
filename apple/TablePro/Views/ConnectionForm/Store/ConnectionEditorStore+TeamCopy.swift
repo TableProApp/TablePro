@@ -50,9 +50,7 @@ extension ConnectionEditorStore {
         var secrets = DraftSecrets()
         secrets.password = target.secrets?[.password]
         secrets.sshPassword = target.secrets?[.sshPassword]
-        secrets.sshKeyPassphrase = target.secrets?[.sshKeyPassphrase]
         secrets.totpSecret = target.secrets?[.totpSecret]
-        secrets.sslClientKeyPassphrase = target.secrets?[.sslClientKeyPassphrase]
         draft = ConnectionDraft.loaded(from: record, secrets: secrets, traits: traits)
         baseline = draft
         loadedRecord = record
@@ -87,7 +85,8 @@ extension ConnectionEditorStore {
         return .failure(.teamPublishInFlight)
     }
 
-    // Every secret the form holds once the team's opened or one was typed; nil keeps the team's envelopes.
+    // Every team secret the form holds once the team's opened or one was typed; nil keeps the team's envelopes. A key
+    // file's passphrase stays on this Mac, as the team's copy names no key file.
     func teamSecrets(
         of saving: ConnectionDraft,
         loaded: [ConnectionSecretItem: String]?
@@ -95,9 +94,7 @@ extension ConnectionEditorStore {
         let values: [ConnectionSecretItem: String] = [
             .password: saving.credentials.password,
             .sshPassword: saving.ssh.password,
-            .sshKeyPassphrase: saving.ssh.keyPassphrase,
             .totpSecret: saving.ssh.totpSecret,
-            .sslClientKeyPassphrase: saving.ssl.clientKeyPassphrase,
         ].filter { !$0.value.isEmpty }
         guard loaded != nil || !values.isEmpty else { return nil }
         return values

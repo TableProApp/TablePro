@@ -132,7 +132,7 @@ struct WelcomeViewModelTeamLibraryTests {
         #expect(!syncing.contains("replaces"))
     }
 
-    @Test("A publish whose passwords stayed on this Mac says why, and one to a team that syncs none says nothing more")
+    @Test("A publish whose passwords stayed on this Mac says why, whatever the reason")
     func passwordsLeftOutAreNamed() throws {
         let unconfirmed = TeamPublishInfo(
             edits: 1, conflicts: 0, unsent: 0, problem: nil, secretsLeftOut: "sync.team_library.not_confirmed"
@@ -142,7 +142,8 @@ struct WelcomeViewModelTeamLibraryTests {
         )
 
         #expect(try TeamLibrary.result(of: unconfirmed) == .publishedWithoutPasswords(1, .notConfirmed))
-        #expect(try TeamLibrary.result(of: off) == .published(1))
+        #expect(try TeamLibrary.result(of: off) == .publishedWithoutPasswords(1, .off))
+        #expect(try TeamLibrary.result(of: TeamPublishInfo(edits: 1, conflicts: 0, unsent: 0, problem: nil)) == .published(1))
         #expect(TeamLibraryPublishing.message(for: .publishedWithoutPasswords(1, .notConfirmed)) != nil)
         #expect(TeamLibraryPublishing.message(for: .published(1)) == nil)
     }

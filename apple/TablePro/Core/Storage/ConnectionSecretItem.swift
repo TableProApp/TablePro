@@ -5,7 +5,8 @@
 
 import Foundation
 
-// The connection secrets a team envelope carries, by their Keychain item and by core ADR 0056's envelope table name.
+// A connection's secrets by their Keychain item, and the ones a team envelope carries by core ADR 0056's name. A key
+// file's passphrase never goes to the team: the team's copy names no key file of this device (core ADR 0079).
 nonisolated enum ConnectionSecretItem: CaseIterable, Hashable, Sendable {
     case password
     case sshPassword
@@ -23,18 +24,19 @@ nonisolated enum ConnectionSecretItem: CaseIterable, Hashable, Sendable {
         }
     }
 
-    var envelopeKind: String {
+    var teamEnvelopeKind: String? {
         switch self {
         case .password: "password"
         case .sshPassword: "ssh_password"
-        case .sshKeyPassphrase: "ssh_key_passphrase"
         case .totpSecret: "ssh_totp_secret"
-        case .sslClientKeyPassphrase: "ssl_key_passphrase"
+        case .sshKeyPassphrase, .sslClientKeyPassphrase: nil
         }
     }
 
-    init?(envelopeKind: String) {
-        guard let item = Self.allCases.first(where: { $0.envelopeKind == envelopeKind }) else { return nil }
+    static let teamEnvelopeItems = allCases.filter { $0.teamEnvelopeKind != nil }
+
+    init?(teamEnvelopeKind: String) {
+        guard let item = Self.teamEnvelopeItems.first(where: { $0.teamEnvelopeKind == teamEnvelopeKind }) else { return nil }
         self = item
     }
 }

@@ -182,7 +182,7 @@ internal final class TeamLibrary: ObservableObject {
             guard session == shownSession else { return nil }
             var secrets: [ConnectionSecretItem: String] = [:]
             for secret in opened {
-                guard let item = ConnectionSecretItem(envelopeKind: secret.kind) else { continue }
+                guard let item = ConnectionSecretItem(teamEnvelopeKind: secret.kind) else { continue }
                 secrets[item] = secret.value
             }
             return secrets
@@ -204,8 +204,9 @@ internal final class TeamLibrary: ObservableObject {
         var record = LibraryRecordMapping.record(edited, keeping: nil)
         record.connection.id = original.id
         let arguments = secrets.map { secrets in
-            ConnectionSecretItem.allCases.compactMap { item in
-                secrets[item].flatMap { $0.isEmpty ? nil : TeamSecretArg(kind: item.envelopeKind, value: $0) }
+            ConnectionSecretItem.teamEnvelopeItems.compactMap { item -> TeamSecretArg? in
+                guard let kind = item.teamEnvelopeKind, let value = secrets[item], !value.isEmpty else { return nil }
+                return TeamSecretArg(kind: kind, value: value)
             }
         }
         return try await publish(to: destination(original.teamID)) { engine, owner in
@@ -273,8 +274,7 @@ internal final class TeamLibrary: ObservableObject {
             return .queued(failure)
         }
         guard publish.edits > 0 else { return .unchanged }
-        // The confirmation already said a team with password sync off takes none.
-        if let leftOut = TeamPasswordsLeftOut(code: publish.secretsLeftOut), leftOut != .off {
+        if let leftOut = TeamPasswordsLeftOut(code: publish.secretsLeftOut) {
             return .publishedWithoutPasswords(Int(publish.edits), leftOut)
         }
         return .published(Int(publish.edits))
