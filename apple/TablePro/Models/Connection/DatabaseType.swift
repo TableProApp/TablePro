@@ -61,6 +61,7 @@ extension DatabaseType {
     static let firestore = DatabaseType(rawValue: "Firestore")
     static let firebaseRealtimeDatabase = DatabaseType(rawValue: "Firebase Realtime Database")
     static let kafka = DatabaseType(rawValue: "Kafka")
+    static let hydradb = DatabaseType(rawValue: "HydraDB")
     static let neo4j = DatabaseType(rawValue: "Neo4j")
     static let sapHana = DatabaseType(rawValue: "SAP HANA")
 }
