@@ -49,6 +49,7 @@ mod runtime;
 mod safe_mode_gate;
 mod saved_queries;
 mod saved_query_database;
+mod script;
 mod session;
 mod sql_import;
 mod statement_at;
@@ -158,13 +159,16 @@ pub use prompter::{HostPrompter, PromptAnswer, PromptFieldInfo, PromptPurposeTag
 pub use references::{FollowedReference, ReferenceRefusal, RowReferenceChoice, RowReferences, TableKeys};
 pub use results::{CellBytes, CellTextHead, GridCopy, GridCopyFormat, ResultColumnInfo, ResultSet, ValueKind};
 pub use row_edits::{
-    CellChange, CellEdit, EditColumnInfo, EditLock, EditStart, PlannedStatement, RowEdit, RowSave, RowSaveOutcome,
-    SaveGate, TableEditor,
+    CellEdit, EditColumnInfo, EditLock, EditStart, GridOverlay, OverlayCell, OverlayRow, PendingCell, PendingKind,
+    PendingSummary, PlannedStatement, RowSaveOutcome, SaveGate, SavePreview, TableEditor,
 };
 pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TransactionStateTag, TruncationTag};
 pub use safe_mode_gate::RunGate;
 pub use saved_queries::{SavedQueriesInfo, SavedQueryDraft, SavedQueryFolderInfo, SavedQueryInfo, SavedQueryStore};
 pub use saved_query_database::{SavedQueryDatabaseStore, StoreFilesInfo};
+pub use script::{
+    BatchErrorPolicyTag, ScriptBatch, ScriptEntryInfo, ScriptRun, ScriptRunEvent, ScriptRunSummary, VerdictTag,
+};
 pub use session::{
     ColumnSort, DatabaseLayoutTag, DatabaseSession, FailureCauseTag, PageResume, RowEstimate, SessionHealthTag,
     TableInfoRecord, TablePageRead,

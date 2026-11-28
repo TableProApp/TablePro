@@ -12,21 +12,21 @@ public sealed class RowEditTests
         using var editor = await database.Session.OpenTableEditorAsync(People, refresh: false, cancellationToken);
         using var page = await PageAsync(database, cancellationToken);
 
-        using var save = editor.Plan(page.Rows,
-        [
-            new RowEdit.Update(0, [new CellChange(2, new CellEdit.Text("first"))]),
-            new RowEdit.Insert([CellEdit.ServerDefault.Instance, new CellEdit.Text("Edsger"), CellEdit.Null.Instance]),
-            new RowEdit.Delete(1),
-        ]);
-        var outcome = await save.RunAsync(confirmed: false, cancellationToken);
+        editor.SetCell(page.Rows, 0, 2, new CellEdit.Text("first"));
+        editor.InsertRow();
+        // The draft sits after the three data rows; its key and note are left to the server, its name typed.
+        editor.SetCell(page.Rows, 3, 1, new CellEdit.Text("Edsger"));
+        editor.DeleteRows(page.Rows, [1]);
+        var preview = editor.Preview();
+        var outcome = await editor.SaveAsync(page.Rows, confirmed: false, cancellationToken);
         var names = await ReadAsync(database, "SELECT name || ':' || coalesce(note, 'NULL') FROM people ORDER BY id", cancellationToken);
 
-        Assert.Equal(SaveGate.Run, save.Gate);
-        Assert.Equal(3, save.Statements.Count);
-        Assert.Equal(["'first'", "1"], save.Statements[0].Values);
-        Assert.StartsWith("INSERT", save.Statements[1].Sql, StringComparison.Ordinal);
-        Assert.StartsWith("DELETE", save.Statements[2].Sql, StringComparison.Ordinal);
-        Assert.Equal(["2"], save.Statements[2].Values);
+        Assert.Equal(SaveGate.Run, preview.Gate);
+        Assert.Equal(3, preview.Statements.Count);
+        Assert.Equal(["'first'", "1"], preview.Statements[0].Values);
+        Assert.StartsWith("INSERT", preview.Statements[1].Sql, StringComparison.Ordinal);
+        Assert.StartsWith("DELETE", preview.Statements[2].Sql, StringComparison.Ordinal);
+        Assert.Equal(["2"], preview.Statements[2].Values);
         Assert.Equal(new RowSaveOutcome.Saved(3), outcome);
         Assert.Equal(["Ada:first", "Zoë 👋:中文", "Edsger:NULL"], names);
     }
@@ -79,14 +79,17 @@ public sealed class RowEditTests
         using var editor = await database.Session.OpenTableEditorAsync(People, refresh: false, cancellationToken);
         using var page = await PageAsync(database, cancellationToken);
 
-        using var save = editor.Plan(page.Rows, [new RowEdit.Update(2, [new CellChange(1, new CellEdit.Text("Zoë 👋"))])]);
+        editor.SetCell(page.Rows, 2, 1, new CellEdit.Text("changed"));
+        editor.SetCell(page.Rows, 2, 1, new CellEdit.Text("Zoë 👋"));
+        var preview = editor.Preview();
 
-        Assert.True(save.IsEmpty);
-        Assert.Empty(save.Statements);
+        Assert.True(preview.IsEmpty);
+        Assert.Empty(preview.Statements);
+        Assert.Equal(0, editor.Pending.PendingCount);
     }
 
     [Fact]
-    public async Task ARowThatChangedUnderTheSaveRollsBackAndNamesItsEdit()
+    public async Task ARowThatChangedUnderTheSaveRollsBackAndNamesItsRow()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var database = await SqliteDatabase.CreateAsync();
@@ -94,17 +97,14 @@ public sealed class RowEditTests
         using var page = await PageAsync(database, cancellationToken);
         await database.ExecuteAsync("DELETE FROM people WHERE id = 3");
 
-        using var save = editor.Plan(page.Rows,
-        [
-            new RowEdit.Update(0, [new CellChange(2, new CellEdit.Text("kept back"))]),
-            new RowEdit.Update(2, [new CellChange(2, new CellEdit.Text("gone"))]),
-        ]);
-        var outcome = await save.RunAsync(confirmed: false, cancellationToken);
+        editor.SetCell(page.Rows, 0, 2, new CellEdit.Text("kept back"));
+        editor.SetCell(page.Rows, 2, 2, new CellEdit.Text("gone"));
+        var outcome = await editor.SaveAsync(page.Rows, confirmed: false, cancellationToken);
         var notes = await ReadAsync(database, "SELECT coalesce(note, 'NULL') FROM people WHERE id = 1", cancellationToken);
 
         var rolledBack = Assert.IsType<RowSaveOutcome.RolledBack>(outcome);
         Assert.Equal("driver.row_guard_failed", rolledBack.Error.Code);
-        Assert.Equal(1, rolledBack.Edit);
+        Assert.Equal(2, rolledBack.Row);
         Assert.Equal(["NULL"], notes);
     }
 

@@ -140,6 +140,17 @@ impl ResultStore {
         }
     }
 
+    // A script run's set ended; `cut` says rows it held were dropped, by the driver or the run's budget.
+    pub(crate) fn finish_cut(&self, total_rows: Option<u64>, cut: bool) {
+        let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
+        state.finished = true;
+        state.total = total_rows;
+        state.cut = cut;
+        if let Some(chunk) = state.chunks.last_mut() {
+            chunk.columns.iter_mut().for_each(ColumnCells::shrink);
+        }
+    }
+
     // The run ended, as a cancel or an error ends it, before the set said it was finished: rows may follow.
     pub(crate) fn finish_with_run(&self) {
         let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);

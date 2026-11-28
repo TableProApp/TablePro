@@ -49,6 +49,18 @@ public sealed partial class DefinitionTabView : UserControl, ITabContent, IDefin
 
     public bool GridIsTarget => false;
 
+    public bool CanUndoEdit => false;
+
+    public bool CanRedoEdit => false;
+
+    public void UndoEdit()
+    {
+    }
+
+    public void RedoEdit()
+    {
+    }
+
     public TextBox? MessagesTarget => DefinitionText.Visibility == Visibility.Visible ? DefinitionText : null;
 
     public bool Shows(ObjectEntry entry) => _model.Entry == entry;

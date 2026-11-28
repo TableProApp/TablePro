@@ -83,6 +83,23 @@ impl SaveRejection {
     }
 }
 
+// The core row tracker refuses a save with a coded rejection (ADR 0068);
+// the app words it. Only the variants the tracker produces are mapped;
+// the structure save adds the rest.
+impl From<tablepro_core::edits::TrackerRejection> for SaveRejection {
+    fn from(rejection: tablepro_core::edits::TrackerRejection) -> Self {
+        use tablepro_core::edits::TrackerRejection as Core;
+        match rejection {
+            Core::OutcomeUnknown => Self::OutcomeUnknown,
+            Core::AlreadySaving => Self::AlreadySaving,
+            Core::ColumnsNotRead => Self::ColumnsNotRead,
+            Core::Build(error) => Self::Build(error),
+            Core::ColumnsChanged(columns) => Self::ColumnsChanged(columns),
+            Core::KeyChanged => Self::KeyChanged,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use tablepro_core::ddl::DraftProblem;
