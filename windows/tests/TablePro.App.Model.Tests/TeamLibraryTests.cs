@@ -169,77 +169,13 @@ public sealed class TeamLibraryTests
     }
 
     [Fact]
-    public async Task SignOutAsksAboutUnsentEditsUploadsAndAsksAgainWhenTheyStay()
+    public void AnUnsentEditWithNoNameIsNamedByItsId()
     {
-        _calls.Unsent.Add(new UnsentTeamEdit(Team, new TeamItemRef(TeamItemKind.Query, "Q-1"), "Top users", false,
-            UnsentTeamEditState.Pending, null));
-        _calls.UploadSends = false;
-        var asked = new List<TeamSignOutQuestion>();
-        var answers = new Queue<TeamSignOutAnswer>([TeamSignOutAnswer.Upload, TeamSignOutAnswer.Discard]);
+        var edit = new UnsentTeamEdit(Team, new TeamItemRef(TeamItemKind.Folder, "F-1"), null, true,
+            UnsentTeamEditState.Refused, "sync.validation_failed");
 
-        var proceed = await TeamSignOut.SettleUnsentAsync(_calls, _calls.Owner!, question =>
-        {
-            asked.Add(question);
-            return Task.FromResult(answers.Dequeue());
-        });
-
-        Assert.True(proceed);
-        Assert.Equal(["Top users"], asked[0].Names!);
-        Assert.Null(asked[0].UploadFailure);
-        Assert.Equal("sync.team_library.not_pulled", asked[1].UploadFailure);
-        // Discard leaves them to the delete after the sign-out.
-        Assert.Equal(["unsent", "sync now", "unsent"], _calls.Calls);
-    }
-
-    [Fact]
-    public async Task ADiscardChosenUnderOneOwnerDiscardsNothingOnceAnotherShows()
-    {
-        var library = Library();
-        await library.RefreshAsync();
-        var chosen = library.Owner!;
-
-        _calls.Owner = new TeamLibraryOwner("https://api.tablepro.app", "acct-2");
-        await library.RefreshAsync();
-        var refused = await library.DiscardAsync(null, chosen);
-        var discarded = await library.DiscardAsync(null, library.Owner!);
-
-        Assert.Equal(KeyErrors.Changed.Code, refused?.Code);
-        Assert.Null(discarded);
-        Assert.Single(_calls.Calls, call => call.StartsWith("discard", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task SignOutAsksEvenWhenTheEditsCouldNotBeListed()
-    {
-        _calls.Fails["unsent"] = SyncErrors.Of("sync.state_io");
-        TeamSignOutQuestion? asked = null;
-
-        var kept = await TeamSignOut.SettleUnsentAsync(_calls, _calls.Owner!, question =>
-        {
-            asked = question;
-            return Task.FromResult(TeamSignOutAnswer.Cancel);
-        });
-
-        Assert.False(kept);
-        Assert.NotNull(asked);
-        Assert.Null(asked.Names);
-    }
-
-    [Fact]
-    public async Task SignOutWithNothingUnsentAsksNothingAndCancelKeepsTheSignIn()
-    {
-        var owner = _calls.Owner!;
-        var nothing = await TeamSignOut.SettleUnsentAsync(_calls, owner, _ => Task.FromResult(TeamSignOutAnswer.Cancel));
-        _calls.Unsent.Add(new UnsentTeamEdit(Team, new TeamItemRef(TeamItemKind.Folder, "F-1"), null, true,
-            UnsentTeamEditState.Refused, "sync.validation_failed"));
-        var kept = await TeamSignOut.SettleUnsentAsync(_calls, owner, _ => Task.FromResult(TeamSignOutAnswer.Cancel));
-        _calls.Fails["delete"] = SyncErrors.Of("sync.team_library.delete_failed");
-        var deleted = await TeamSignOut.DeleteDataAsync(_calls, owner);
-
-        Assert.True(nothing);
-        Assert.False(kept);
-        Assert.Equal("sync.team_library.delete_failed", deleted?.Code);
-        Assert.Equal("F-1", TeamLibraryModel.Name(_calls.Unsent[0]));
+        Assert.Equal("F-1", TeamLibraryModel.Name(edit));
+        Assert.Equal("Top users", TeamLibraryModel.Name(edit with { Name = "Top users" }));
     }
 
     [Fact]

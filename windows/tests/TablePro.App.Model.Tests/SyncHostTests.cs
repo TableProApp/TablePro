@@ -60,26 +60,6 @@ public sealed class SyncHostTests
     }
 
     [Fact]
-    public async Task ALeaseKeepsTheServiceOfASignInThatEndedUntilItIsReleased()
-    {
-        using var host = new SyncHost(_app);
-        host.Start();
-        var first = (FakeSyncEngine)(await host.GetEngineAsync())!;
-        var lease = await host.LeaseAsync();
-
-        _app.SignIn = "account-2";
-        host.SignInChanged();
-        var kept = !first.IsDisposed;
-        Assert.Same(first.TeamCalls, lease!.Team);
-        lease.Dispose();
-        lease.Dispose();
-
-        Assert.True(kept);
-        Assert.True(first.IsDisposed);
-        Assert.NotSame(first, await host.GetEngineAsync());
-    }
-
-    [Fact]
     public void ASignInChangeOpensNothingThatWasNeitherOpenNorWanted()
     {
         using var host = new SyncHost(_app);

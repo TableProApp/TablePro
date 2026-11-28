@@ -630,9 +630,8 @@ public sealed partial class SettingsView : UserControl
         }
     }
 
-    // Team Library edits not uploaded are settled first, then this computer's keys are erased before the sign-in is
-    // revoked; when they could not be, the person decides (core ADR 0056, Sign Out). The account's Team Library data
-    // goes once it signed out, through the service of the sign-in that ended.
+    // This computer's keys are erased before the sign-in is revoked; when they could not be, the person decides
+    // (core ADR 0056, Sign Out).
     private async Task SignOutAsync()
     {
         if (_accountBusy)
@@ -643,86 +642,30 @@ public sealed partial class SettingsView : UserControl
         var session = _workbench.SignInSession;
         _accountBusy = true;
         ShowAccount();
-        SyncLease? lease = null;
-        TeamLibraryOwner? owner = null;
+        bool erased;
         try
         {
-            bool erased;
-            try
-            {
-                // Read before the sign-out, so the delete after it reaches this account's library and no other.
-                lease = await _workbench.Sync.LeaseAsync();
-                owner = lease?.Team.Owner;
-                while (lease is null || owner is null)
+            erased = await KeysSignOut.RunAsync(
+                _workbench.Sync.GetKeyFlowsAsync,
+                () => _workbench.SignInSession == session,
+                reason =>
                 {
-                    // Without the service the edits cannot be listed or uploaded, so the person is asked as when
-                    // listing fails; Upload tries the service again.
-                    if (!_workbench.TeamLibraryAvailable && _workbench.TeamLibrary.Unsent.Count == 0)
-                    {
-                        break;
-                    }
-
-                    var answer = await TeamDialogs.SignOutUnsentAsync(this, new TeamSignOutQuestion(null, null));
-                    if (answer == TeamSignOutAnswer.Cancel || _workbench.SignInSession != session)
-                    {
-                        return;
-                    }
-
-                    if (answer == TeamSignOutAnswer.Discard)
-                    {
-                        break;
-                    }
-
-                    lease ??= await _workbench.Sync.LeaseAsync();
-                    owner = lease?.Team.Owner;
-                }
-
-                if (lease is not null && owner is not null && !await TeamSignOut.SettleUnsentAsync(
-                        lease.Team,
-                        owner,
-                        question => TeamDialogs.SignOutUnsentAsync(this, question)))
-                {
-                    return;
-                }
-
-                erased = _workbench.SignInSession == session && await KeysSignOut.RunAsync(
-                    _workbench.Sync.GetKeyFlowsAsync,
-                    () => _workbench.SignInSession == session,
-                    reason =>
-                    {
-                        CrashLog.Note("keys sign out", reason.Code);
-                        return KeyDialogs.SignOutFailedAsync(this, reason);
-                    });
-
-                // The key erase may have started the service the first read could not reach.
-                if (erased && owner is null && _workbench.SignInSession == session)
-                {
-                    lease ??= await _workbench.Sync.LeaseAsync();
-                    owner = lease?.Team.Owner;
-                }
-            }
-            finally
-            {
-                _accountBusy = false;
-            }
-
-            // Another sign-in meanwhile was not the one asked to end, and its keys were not erased.
-            if (!erased || _workbench.SignInSession != session)
-            {
-                return;
-            }
-
-            await RunAccountAsync(account => account.SignOutAsync());
-            if (lease is not null && owner is not null && _workbench.SignInSession != session
-                && await TeamSignOut.DeleteDataAsync(lease.Team, owner) is { } failure)
-            {
-                CrashLog.Note("team library delete", failure.Code);
-                _accountError ??= failure;
-            }
+                    CrashLog.Note("keys sign out", reason.Code);
+                    return KeyDialogs.SignOutFailedAsync(this, reason);
+                });
         }
         finally
         {
-            lease?.Dispose();
+            _accountBusy = false;
+        }
+
+        // Another sign-in meanwhile was not the one asked to end, and its keys were not erased.
+        if (erased && _workbench.SignInSession == session)
+        {
+            await RunAccountAsync(account => account.SignOutAsync());
+        }
+        else
+        {
             ShowAccount();
         }
     }
