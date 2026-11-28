@@ -44,7 +44,7 @@ pub use service::{
     TeamConflictInfo,
 };
 pub use team_library::{
-    TeamDeclinedArg, TeamFolderArg, TeamImportedEditArg, TeamLibraryImportArg, TeamLibraryItemInfo, TeamLibraryItemRef,
-    TeamLibraryKindTag, TeamLibraryOwnerArg, TeamLibraryTeamInfo, TeamPublishInfo, TeamQueryArg, TeamScopeStatusInfo,
-    UnsentTeamEditInfo, UnsentTeamEditTag,
+    LocalUseInfo, TeamDeclinedArg, TeamFolderArg, TeamImportedEditArg, TeamLibraryImportArg, TeamLibraryItemInfo,
+    TeamLibraryItemRef, TeamLibraryKindTag, TeamLibraryOwnerArg, TeamLibraryTeamInfo, TeamPublishInfo, TeamQueryArg,
+    TeamScopeStatusInfo, UnsentTeamEditInfo, UnsentTeamEditTag,
 };

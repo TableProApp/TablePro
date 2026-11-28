@@ -6,12 +6,13 @@
 use std::sync::Arc;
 
 use serde_json::Value;
+use tablepro_core::DriverRegistry;
 use tablepro_keys::encoding::{AccountId, Origin};
 use tablepro_storage::{
     ChangeJournal, ConnectionListState, SshProfile, StoragePaths, TeamLibraryKind, TeamLibraryOwner, TeamLibraryStore,
 };
 use tablepro_sync::SyncError;
-use tablepro_sync::adapters::library::{DriverNames, team_bundle, team_connection};
+use tablepro_sync::adapters::library::{DriverNames, LocalUse, shared_row_local_uses, team_bundle, team_connection};
 use tablepro_sync::adapters::store_journal::StoreJournal;
 use tablepro_sync::api::ids::{ScopeName, typeid_uuid};
 use tablepro_sync::api::scopes::Role;
@@ -348,6 +349,54 @@ fn status_info(status: TeamScopeStatus) -> TeamScopeStatusInfo {
 }
 
 // The bundle the team gets, built the one way every platform builds it; the publish strips every secret key.
+// A use of this device that a row from another origin would make (`shared_row_local_uses`), which the app asks about
+// once per destination before the first connect.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum LocalUseInfo {
+    SshAgent { host: String, port: u16 },
+    SshKeyFile { host: String, port: u16, path: String },
+    SshDefaultKeys { host: String, port: u16 },
+    SshProfile { id: String },
+    // A database file or a server's socket on this device.
+    File { path: String },
+}
+
+impl From<LocalUse> for LocalUseInfo {
+    fn from(used: LocalUse) -> Self {
+        match used {
+            LocalUse::SshAgent { host, port } => Self::SshAgent { host, port },
+            LocalUse::SshKeyFile { host, port, path } => Self::SshKeyFile {
+                host,
+                port,
+                path: path.to_string_lossy().into_owned(),
+            },
+            LocalUse::SshDefaultKeys { host, port } => Self::SshDefaultKeys { host, port },
+            LocalUse::SshProfile { id } => Self::SshProfile { id: id.to_string() },
+            LocalUse::File { path } => Self::File { path },
+        }
+    }
+}
+
+#[uniffi::export]
+impl Core {
+    // What `record`, a Team Library or shared folder row, would use of this device when it connects.
+    pub fn shared_row_local_uses(&self, record: LibraryConnectionRecord) -> Result<Vec<LocalUseInfo>, CoreError> {
+        local_uses(record, &self.registry())
+    }
+}
+
+fn local_uses(record: LibraryConnectionRecord, registry: &DriverRegistry) -> Result<Vec<LocalUseInfo>, CoreError> {
+    let id = entity(&record.connection.id, "connection id")?;
+    let saved = stored_connection(id, record, None)?;
+    let file_based = registry
+        .get(&saved.driver_id)
+        .is_some_and(|driver| driver.capabilities().is_file_based());
+    Ok(shared_row_local_uses(&saved, file_based)
+        .into_iter()
+        .map(LocalUseInfo::from)
+        .collect())
+}
+
 fn connection(
     record: LibraryConnectionRecord,
     names: DriverNames,
@@ -805,6 +854,48 @@ mod tests {
                 "type": "PostgreSQL"})
         );
         assert_eq!(refused.unwrap_err().code(), "sync.team_library.malformed");
+    }
+
+    // The app gets the core's one list for a shared row: a key-less tunnel's agent and default keys, and a SQLite file.
+    #[cfg(feature = "engines")]
+    #[test]
+    fn a_shared_row_s_uses_of_this_device_cross_the_boundary() {
+        let registry = crate::drivers::registry();
+        let tunneled = team_connection(
+            Uuid::from_u128(1),
+            &json!({"name": "Orders", "host": "db", "port": 5432, "database": "orders", "username": "ro",
+                "type": "PostgreSQL", "sshConfig": {"enabled": true, "host": "bastion", "username": "ops",
+                "authMethod": "Private Key", "privateKeyPath": "", "agentSocketPath": ""}}),
+            DriverNames::Core,
+        );
+        let mut file = LibraryConnectionRecord::from(&team_connection(
+            Uuid::from_u128(2),
+            &json!({"name": "Local", "host": "", "port": 0, "database": "/data/app.sqlite", "username": "",
+                "type": "SQLite"}),
+            DriverNames::Core,
+        ));
+
+        assert_eq!(
+            local_uses(LibraryConnectionRecord::from(&tunneled), &registry).unwrap(),
+            [
+                LocalUseInfo::SshAgent {
+                    host: "bastion".to_owned(),
+                    port: 22
+                },
+                LocalUseInfo::SshDefaultKeys {
+                    host: "bastion".to_owned(),
+                    port: 22
+                },
+            ]
+        );
+        assert_eq!(
+            local_uses(file.clone(), &registry).unwrap(),
+            [LocalUseInfo::File {
+                path: "/data/app.sqlite".to_owned()
+            }]
+        );
+        "not a uuid".clone_into(&mut file.connection.id);
+        assert!(local_uses(file, &registry).is_err());
     }
 
     // A team's connection reads as a library connection; a folder or a query carries none.
