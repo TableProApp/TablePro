@@ -8,6 +8,7 @@
 use std::path::PathBuf;
 
 use serde::Deserialize;
+use tablepro_core::is_local_socket_host;
 use tablepro_storage::{SavedConnection, SavedSshAuth};
 use uuid::Uuid;
 
@@ -32,9 +33,19 @@ struct Attached {
     path: String,
 }
 
-// A path that names no file here: MotherDuck's `md:`, a URL, or an in-memory database.
+// Schemes a database value names a server by rather than a file here.
+const REMOTE_SCHEMES: [&str; 6] = ["md:", "libsql://", "http://", "https://", "ws://", "wss://"];
+
+// A path that names no file here: MotherDuck's `md:`, a server URL, or an in-memory database. A path from the root or
+// the home folder is always a file, whatever it holds.
 fn remote(path: &str) -> bool {
-    path.starts_with("md:") || path.contains("://") || path == ":memory:"
+    if path.starts_with('/') || path.starts_with('~') {
+        return false;
+    }
+    path == ":memory:"
+        || REMOTE_SCHEMES
+            .iter()
+            .any(|scheme| path.to_ascii_lowercase().starts_with(scheme))
 }
 
 fn local_path(value: Option<&String>) -> Option<String> {
@@ -44,7 +55,8 @@ fn local_path(value: Option<&String>) -> Option<String> {
         .map(str::to_owned)
 }
 
-// `file_based` is whether the connection's driver opens `database` as a file on this device.
+// `file_based` is whether the connection's driver opens `database` as a file on this device. The SSH uses are this core's
+// transports': every method may try the agent, which signs with a named key it holds too.
 pub fn shared_row_local_uses(saved: &SavedConnection, file_based: bool) -> Vec<LocalUse> {
     let mut uses = Vec::new();
     let tunnel = saved.ssh.as_ref().filter(|ssh| ssh.enabled);
@@ -54,19 +66,18 @@ pub fn shared_row_local_uses(saved: &SavedConnection, file_based: bool) -> Vec<L
             _ => None,
         };
         let (host, port) = (ssh.host.clone(), ssh.port.unwrap_or(SSH_PORT));
+        // An agent that holds the named key signs with it, so a named key may use the agent too.
+        uses.push(LocalUse::SshAgent {
+            host: host.clone(),
+            port,
+        });
         match &named_key {
             Some(path) => uses.push(LocalUse::SshKeyFile {
                 host,
                 port,
                 path: path.clone(),
             }),
-            None => {
-                uses.push(LocalUse::SshAgent {
-                    host: host.clone(),
-                    port,
-                });
-                uses.push(LocalUse::SshDefaultKeys { host, port });
-            }
+            None => uses.push(LocalUse::SshDefaultKeys { host, port }),
         }
         for hop in &ssh.jump_hosts {
             let (host, port) = (hop.host.clone(), hop.port.unwrap_or(SSH_PORT));
@@ -113,11 +124,13 @@ pub fn shared_row_local_uses(saved: &SavedConnection, file_based: bool) -> Vec<L
     {
         uses.push(LocalUse::File { path });
     }
-    // A tunnel goes to its forwarded port, never this device's socket.
-    if tunnel.is_none()
-        && let Some(path) = local_path(fields.get(SOCKET_FIELD))
-    {
-        uses.push(LocalUse::File { path });
+    // A tunnel goes to its forwarded port, never this device's socket. A host given as a path is a socket, or the
+    // folder that holds one, as the drivers read it.
+    if tunnel.is_none() {
+        let host = Some(&saved.host).filter(|host| is_local_socket_host(host));
+        for path in [host, fields.get(SOCKET_FIELD)].into_iter().filter_map(local_path) {
+            uses.push(LocalUse::File { path });
+        }
     }
     let mut seen = Vec::new();
     uses.retain(|used| {

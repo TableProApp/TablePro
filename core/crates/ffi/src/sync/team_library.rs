@@ -379,18 +379,30 @@ impl From<LocalUse> for LocalUseInfo {
 
 #[uniffi::export]
 impl Core {
-    // What `record`, a Team Library or shared folder row, would use of this device when it connects.
-    pub fn shared_row_local_uses(&self, record: LibraryConnectionRecord) -> Result<Vec<LocalUseInfo>, CoreError> {
-        local_uses(record, &self.registry())
+    // What `record`, a Team Library or shared folder row, would use of this device when it connects. `file_based` is
+    // whether its engine opens the database as a file here, for an app whose engines this core does not hold; None asks
+    // this core's drivers.
+    pub fn shared_row_local_uses(
+        &self,
+        record: LibraryConnectionRecord,
+        file_based: Option<bool>,
+    ) -> Result<Vec<LocalUseInfo>, CoreError> {
+        local_uses(record, file_based, &self.registry())
     }
 }
 
-fn local_uses(record: LibraryConnectionRecord, registry: &DriverRegistry) -> Result<Vec<LocalUseInfo>, CoreError> {
+fn local_uses(
+    record: LibraryConnectionRecord,
+    file_based: Option<bool>,
+    registry: &DriverRegistry,
+) -> Result<Vec<LocalUseInfo>, CoreError> {
     let id = entity(&record.connection.id, "connection id")?;
     let saved = stored_connection(id, record, None)?;
-    let file_based = registry
-        .get(&saved.driver_id)
-        .is_some_and(|driver| driver.capabilities().is_file_based());
+    let file_based = file_based.unwrap_or_else(|| {
+        registry
+            .get(&saved.driver_id)
+            .is_some_and(|driver| driver.capabilities().is_file_based())
+    });
     Ok(shared_row_local_uses(&saved, file_based)
         .into_iter()
         .map(LocalUseInfo::from)
@@ -876,7 +888,7 @@ mod tests {
         ));
 
         assert_eq!(
-            local_uses(LibraryConnectionRecord::from(&tunneled), &registry).unwrap(),
+            local_uses(LibraryConnectionRecord::from(&tunneled), None, &registry).unwrap(),
             [
                 LocalUseInfo::SshAgent {
                     host: "bastion".to_owned(),
@@ -888,14 +900,16 @@ mod tests {
                 },
             ]
         );
+        let opened = [LocalUseInfo::File {
+            path: "/data/app.sqlite".to_owned(),
+        }];
+        assert_eq!(local_uses(file.clone(), None, &registry).unwrap(), opened);
         assert_eq!(
-            local_uses(file.clone(), &registry).unwrap(),
-            [LocalUseInfo::File {
-                path: "/data/app.sqlite".to_owned()
-            }]
+            local_uses(file.clone(), Some(true), &DriverRegistry::new()).unwrap(),
+            opened
         );
         "not a uuid".clone_into(&mut file.connection.id);
-        assert!(local_uses(file, &registry).is_err());
+        assert!(local_uses(file, None, &registry).is_err());
     }
 
     // A team's connection reads as a library connection; a folder or a query carries none.

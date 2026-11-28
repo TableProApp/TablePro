@@ -43,8 +43,8 @@ fn file(path: &str) -> LocalUse {
     LocalUse::File { path: path.to_owned() }
 }
 
-// Every method but a named key may try the agent and the default keys, a password tunnel too, as the core's transports
-// do after the password.
+// Every method may try the agent, which signs with a named key it holds too, and every method but a named key the
+// default keys, a password tunnel too, as the core's transports do after the password.
 #[test]
 fn a_tunnel_names_the_agent_and_default_keys_unless_it_names_a_key() {
     for auth in ["SSH Agent", "Private Key", "Password", "Keyboard Interactive", "None"] {
@@ -62,7 +62,10 @@ fn a_tunnel_names_the_agent_and_default_keys_unless_it_names_a_key() {
 
     assert_eq!(
         shared_row_local_uses(&named, false),
-        [key("bastion", 2222, "/Users/ada/.ssh/id_ed25519")]
+        [
+            agent("bastion", 2222),
+            key("bastion", 2222, "/Users/ada/.ssh/id_ed25519")
+        ]
     );
 }
 
@@ -83,6 +86,7 @@ fn each_hop_names_the_host_it_signs_in_to() {
     assert_eq!(
         shared_row_local_uses(&saved, false),
         [
+            agent("bastion", 2222),
             key("bastion", 2222, "/k/main"),
             agent("gate", 22),
             key("gate", 22, "/k/main"),
@@ -139,6 +143,32 @@ fn a_file_or_socket_on_this_device_is_named_and_a_remote_one_is_not() {
     assert_eq!(shared_row_local_uses(&socket, false), [file("/tmp/mysql.sock")]);
     assert!(
         !shared_row_local_uses(&over_ssh, true)
+            .iter()
+            .any(|used| matches!(used, LocalUse::File { .. }))
+    );
+}
+
+// A host given as a path is the server's socket, or its folder, here; a file whose name holds `://` is still a file.
+#[test]
+fn a_socket_host_and_an_odd_file_name_are_named() {
+    let postgres = row(
+        json!({"name": "Local PG", "host": "/run/postgresql", "port": 5432, "database": "app",
+        "username": "app", "type": "PostgreSQL"}),
+    );
+    let odd = row(
+        json!({"name": "Odd", "host": "", "port": 0, "database": "/data/cache://app.sqlite", "username": "",
+        "type": "SQLite"}),
+    );
+    let tunneled_socket = {
+        let mut saved = postgres.clone();
+        saved.ssh = tunneled("Password").ssh;
+        saved
+    };
+
+    assert_eq!(shared_row_local_uses(&postgres, false), [file("/run/postgresql")]);
+    assert_eq!(shared_row_local_uses(&odd, true), [file("/data/cache://app.sqlite")]);
+    assert!(
+        !shared_row_local_uses(&tunneled_socket, false)
             .iter()
             .any(|used| matches!(used, LocalUse::File { .. }))
     );
