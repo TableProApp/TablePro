@@ -489,7 +489,7 @@ async fn saved_secrets(
         .ssh_profile_id
         .filter(|linked| profiles.iter().any(|held| held.id == *linked));
     let mut found = Vec::new();
-    for kind in TEAM_SECRETS {
+    for kind in PUBLISHED_SECRETS {
         let (parent, parent_id) = match (&kind, saved.details.credential_profile_id, ssh_profile) {
             (SecretKind::Password, Some(profile), _) => (Kind::CredentialProfile, profile),
             (SecretKind::SshPassword | SecretKind::SshKeyPassphrase | SecretKind::SshTotpSecret, _, Some(profile)) => {
@@ -516,7 +516,11 @@ async fn saved_secrets(
     Ok(TeamSecrets::Set(found))
 }
 
-// The secret kinds a team connection's envelopes hold that a store here keeps; a driver's own fields have none yet.
+// The secrets a publish reads here. A key passphrase stays: it opens a key file on this device, which a team copy does
+// not name.
+const PUBLISHED_SECRETS: [SecretKind; 3] = [SecretKind::Password, SecretKind::SshPassword, SecretKind::SshTotpSecret];
+
+// The secret kinds a team edit may name, as 0056 lists them for a team connection; a driver's own fields have none yet.
 const TEAM_SECRETS: [SecretKind; 5] = [
     SecretKind::Password,
     SecretKind::SslKeyPassphrase,
@@ -1415,7 +1419,8 @@ mod tests {
     }
 
     // A connection linked to a credential profile and an SSH profile signs in with theirs, so the team gets theirs; the
-    // rest are the connection's own, and an empty one is none.
+    // rest are the connection's own, and an empty one is none. A key passphrase, which opens a key file on this device,
+    // never goes.
     #[tokio::test]
     async fn a_saved_connection_publishes_the_secrets_it_signs_in_with_its_profiles_first() {
         let (credential, ssh) = (Uuid::from_u128(20), Uuid::from_u128(21));
@@ -1430,7 +1435,9 @@ mod tests {
         let device: Arc<dyn DeviceSecrets> = Arc::new(Kept(vec![
             (Kind::Connection, saved.id, SecretKind::Password, "own"),
             (Kind::Connection, saved.id, SecretKind::SshPassword, "own-tunnel"),
-            (Kind::Connection, saved.id, SecretKind::SshKeyPassphrase, ""),
+            (Kind::Connection, saved.id, SecretKind::SshKeyPassphrase, "own-key"),
+            (Kind::Connection, saved.id, SecretKind::SslKeyPassphrase, "own-tls-key"),
+            (Kind::Connection, saved.id, SecretKind::SshTotpSecret, ""),
             (Kind::CredentialProfile, credential, SecretKind::Password, "profile"),
             (Kind::SshProfile, ssh, SecretKind::SshPassword, "profile-tunnel"),
         ]));

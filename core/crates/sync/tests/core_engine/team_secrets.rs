@@ -161,6 +161,34 @@ fn held_envelopes(device: &Device, team: TeamId) -> Vec<String> {
         .unwrap_or_default()
 }
 
+// A key passphrase opens a key file on the device that published, which a team copy does not name, so none goes up even
+// when the publish carries one.
+#[tokio::test]
+async fn a_publish_seals_no_key_passphrase() {
+    let world = world().await;
+    let mut fields = tunnelled(5432);
+    fields["sshConfig"]["authMethod"] = json!("Private Key");
+    fields["sshConfig"]["privateKeyPath"] = json!("~/.ssh/id_ed25519");
+    fields["sslConfig"] = json!({"mode": "Verify CA", "clientKeyPath": "~/certs/me.key"});
+    let secrets = TeamSecrets::Set(vec![
+        secret(SecretKind::Password, "s3cret"),
+        secret(SecretKind::SshKeyPassphrase, "key-pass"),
+        secret(SecretKind::SslKeyPassphrase, "tls-pass"),
+    ]);
+
+    let published = world
+        .owner
+        .sync
+        .publish_team_connections(world.team, vec![connection(fields, secrets)])
+        .await
+        .unwrap();
+
+    assert_eq!(published.secrets_left_out, None);
+    assert!(stored(&world, "password").is_some());
+    assert!(stored(&world, "ssh_key_passphrase").is_none());
+    assert!(stored(&world, "ssl_key_passphrase").is_none());
+}
+
 #[tokio::test]
 async fn an_owner_s_password_goes_up_sealed_and_an_editor_and_a_viewer_connect_with_it() {
     let world = world().await;
