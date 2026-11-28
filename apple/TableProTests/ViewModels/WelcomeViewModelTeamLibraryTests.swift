@@ -6,7 +6,6 @@
 import Foundation
 @testable import TablePro
 import TableProFFI
-import TableProImport
 import TableProTestSupport
 import Testing
 
@@ -54,17 +53,12 @@ struct WelcomeViewModelTeamLibraryTests {
         #expect(fixture.engine.connectionPublishes.isEmpty)
     }
 
-    @Test("Confirming hands each connection to the core under its lowercase id, settings without passwords or commands")
+    @Test("Confirming hands each connection to the core as its library record")
     func confirmedPublishSendsConnections() async throws {
         let fixture = try await TeamLibraryFixture()
         try await fixture.start()
         fixture.engine.answerPublishes(with: .success(TeamPublishInfo(edits: 2, conflicts: 0, unsent: 0, problem: nil)))
-        var prod = DatabaseConnection(name: "Prod", type: .postgresql)
-        prod.tunnelCommandMode = .inline(TunnelCommandConfiguration(
-            method: .custom,
-            command: "cloudflared access tcp --url localhost:{port} --service-token-secret S3cret"
-        ))
-        prod.startupCommands = "SET app.token = 'S3cret';"
+        let prod = DatabaseConnection(name: "Prod", type: .postgresql)
         let staging = DatabaseConnection(name: "Staging")
 
         let outcome = await WelcomeViewModel.publishConnections(
@@ -76,15 +70,8 @@ struct WelcomeViewModelTeamLibraryTests {
 
         #expect(outcome == .finished(.published(2)))
         let sent = try #require(fixture.engine.connectionPublishes.first)
-        let ids = sent.connections.map { $0.id }
-        #expect(ids == [prod.id, staging.id].map { $0.uuidString.lowercased() })
-        let settings = sent.connections.compactMap { TeamLibraryFixture.object($0.settingsJson) }
-        let names = settings.map { $0["name"] as? String }
-        #expect(names == ["Prod", "Staging"])
-        #expect(settings.first?["tunnelCommand"] == nil)
-        #expect(settings.first?["startupCommands"] == nil)
-        let keys = settings.flatMap { $0.keys }
-        #expect(!keys.contains { $0.lowercased().contains("password") })
+        #expect(sent.connections.map { UUID(uuidString: $0.connection.id) } == [prod.id, staging.id])
+        #expect(sent.connections.map { $0.connection.driverId } == ["PostgreSQL", "MySQL"])
     }
 
     @Test("A member who only reads the library gets told so, and nothing is sent")

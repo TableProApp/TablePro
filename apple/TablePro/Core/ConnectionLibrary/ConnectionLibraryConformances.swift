@@ -12,6 +12,19 @@ extension ConnectionTag: LibraryTagRepresentable {}
 
 extension SQLFavorite: SavedQueryRepresentable {}
 
+internal extension DatabaseConnection {
+    var libraryExternalEntry: LibraryExternalEntry {
+        LibraryExternalEntry(
+            id: id,
+            name: name,
+            host: host,
+            database: database,
+            username: username,
+            typeName: type.displayName
+        )
+    }
+}
+
 internal extension LinkedConnection {
     var libraryEntry: LibraryExternalEntry {
         LibraryExternalEntry(

@@ -10,9 +10,11 @@ import TableProFFI
 import TableProTestSupport
 
 // The core's Team Library as one sign-in's sync service holds it. Once the sign-in it was opened with ends, it refuses
-// what reads or sends that sign-in's data, and still lists, discards, reports and deletes.
+// what reads or sends that sign-in's data, and still lists, discards, reports and deletes. A call that names another
+// owner than the engine's is refused, as the core refuses it.
 final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @unchecked Sendable {
     private let state = NSLock()
+    private let owner: TeamLibraryOwnerArg
     private var teams: [TeamLibraryTeamInfo]
     private var statuses: [TeamScopeStatusInfo] = []
     private var unsentEdits: [UnsentTeamEditInfo] = []
@@ -24,15 +26,17 @@ final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @u
     private var ended = false
     private var teamReadGate: AsyncGate?
     private var passGate: AsyncGate?
-    private(set) var connectionPublishes: [(team: String, connections: [TeamConnectionArg])] = []
+    private(set) var connectionPublishes: [(team: String, connections: [LibraryConnectionRecord])] = []
     private(set) var queryPublishes: [(team: String, folders: [TeamFolderArg], queries: [TeamQueryArg])] = []
     private(set) var discards: [String?] = []
     private(set) var deletes = 0
     private(set) var imports: [[TeamLibraryImportArg]] = []
     private(set) var passes = 0
+    private(set) var namedOwners: [TeamLibraryOwnerArg] = []
 
-    init(teams: [TeamLibraryTeamInfo] = [TeamLibraryFixture.acme()]) {
+    init(teams: [TeamLibraryTeamInfo] = [TeamLibraryFixture.acme()], owner: TeamLibraryOwnerArg = TeamLibraryFixture.owner) {
         self.teams = teams
+        self.owner = owner
         super.init()
     }
 
@@ -85,7 +89,17 @@ final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @u
         }
     }
 
-    func teamLibrary() async throws -> [TeamLibraryTeamInfo] {
+    private func check(_ expected: TeamLibraryOwnerArg) throws {
+        state.withLock { namedOwners.append(expected) }
+        guard expected == owner else { throw TeamConflictFixture.failure("sync.team_library.other_owner") }
+    }
+
+    func teamLibraryOwner() -> TeamLibraryOwnerArg? {
+        owner
+    }
+
+    func teamLibrary(expectedOwner: TeamLibraryOwnerArg) async throws -> [TeamLibraryTeamInfo] {
+        try check(expectedOwner)
         try signedIn()
         let (answer, gate) = state.withLock { () -> ([TeamLibraryTeamInfo], AsyncGate?) in
             let gate = teamReadGate
@@ -96,7 +110,12 @@ final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @u
         return answer
     }
 
-    func publishTeamConnections(teamId: String, connections: [TeamConnectionArg]) async throws -> TeamPublishInfo {
+    func publishTeamConnections(
+        expectedOwner: TeamLibraryOwnerArg,
+        teamId: String,
+        connections: [LibraryConnectionRecord]
+    ) async throws -> TeamPublishInfo {
+        try check(expectedOwner)
         try signedIn()
         return try state.withLock {
             connectionPublishes.append((teamId, connections))
@@ -104,7 +123,13 @@ final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @u
         }
     }
 
-    func publishTeamSavedQueries(teamId: String, folders: [TeamFolderArg], queries: [TeamQueryArg]) async throws -> TeamPublishInfo {
+    func publishTeamSavedQueries(
+        expectedOwner: TeamLibraryOwnerArg,
+        teamId: String,
+        folders: [TeamFolderArg],
+        queries: [TeamQueryArg]
+    ) async throws -> TeamPublishInfo {
+        try check(expectedOwner)
         try signedIn()
         return try state.withLock {
             queryPublishes.append((teamId, folders, queries))
@@ -112,21 +137,24 @@ final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @u
         }
     }
 
-    func unsentTeamEdits() async throws -> [UnsentTeamEditInfo] {
-        try state.withLock {
+    func unsentTeamEdits(expectedOwner: TeamLibraryOwnerArg) async throws -> [UnsentTeamEditInfo] {
+        try check(expectedOwner)
+        return try state.withLock {
             if let unsentFailure { throw unsentFailure }
             return unsentEdits
         }
     }
 
-    func discardTeamEdits(teamId: String?) async throws {
+    func discardTeamEdits(expectedOwner: TeamLibraryOwnerArg, teamId: String?) async throws {
+        try check(expectedOwner)
         state.withLock {
             discards.append(teamId)
             unsentEdits.removeAll { teamId == nil || $0.teamId == teamId }
         }
     }
 
-    func deleteTeamLibraryData() async throws {
+    func deleteTeamLibraryData(expectedOwner: TeamLibraryOwnerArg) async throws {
+        try check(expectedOwner)
         try state.withLock {
             if let deleteFailure { throw deleteFailure }
             deletes += 1
@@ -135,11 +163,13 @@ final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @u
         }
     }
 
-    func teamScopeStatus() async throws -> [TeamScopeStatusInfo] {
-        state.withLock { statuses }
+    func teamScopeStatus(expectedOwner: TeamLibraryOwnerArg) async throws -> [TeamScopeStatusInfo] {
+        try check(expectedOwner)
+        return state.withLock { statuses }
     }
 
-    func importTeamLibrary(teams: [TeamLibraryImportArg]) async throws {
+    func importTeamLibrary(expectedOwner: TeamLibraryOwnerArg, teams: [TeamLibraryImportArg]) async throws {
+        try check(expectedOwner)
         try signedIn()
         try state.withLock {
             if let importFailure { throw importFailure }
@@ -274,13 +304,30 @@ final class TeamLibraryFixture {
         _ fields: [String: Any],
         updatedBy: String? = nil
     ) -> TeamLibraryItemInfo {
-        TeamLibraryItemInfo(kind: kind, id: id, fieldsJson: json(fields), updatedBy: updatedBy, updatedAtMs: nil)
+        TeamLibraryItemInfo(kind: kind, id: id, fieldsJson: json(fields), connection: nil, updatedBy: updatedBy, updatedAtMs: nil)
     }
 
-    nonisolated static func connection(_ id: String, name: String, extra: [String: Any] = [:]) -> TeamLibraryItemInfo {
-        var fields: [String: Any] = ["name": name, "host": "db.internal", "port": 5_432, "database": "app", "username": "app", "type": "PostgreSQL"]
-        fields.merge(extra) { _, new in new }
-        return item(.connection, id, fields)
+    // A connection item as the core reads it; `readable` false is one it read as none, such as a copy whose SSH host
+    // ssh would refuse.
+    nonisolated static func connection(
+        _ id: String,
+        name: String,
+        additionalFields: [String: String] = [:],
+        readable: Bool = true
+    ) -> TeamLibraryItemInfo {
+        var connection = DatabaseConnection(
+            name: name, host: "db.internal", port: 5_432, database: "app", username: "app", type: .postgresql
+        )
+        connection.additionalFields = additionalFields
+        let fields: [String: Any] = ["name": name, "host": "db.internal", "port": 5_432, "database": "app", "username": "app", "type": "PostgreSQL"]
+        return TeamLibraryItemInfo(
+            kind: .connection,
+            id: id,
+            fieldsJson: json(fields),
+            connection: readable ? LibraryRecordMapping.record(connection, keeping: nil) : nil,
+            updatedBy: nil,
+            updatedAtMs: nil
+        )
     }
 
     nonisolated static func unsent(_ name: String, state: UnsentTeamEditTag = .pending) -> UnsentTeamEditInfo {
