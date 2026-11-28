@@ -1,6 +1,6 @@
 # 0030: Saved queries, favourites, history pins, CSV import and connection copies cross the FFI
 
-- **Status**: Accepted
+- **Status**: Accepted; the saved queries' and favourites' stores amended by 0069
 - **Date**: 2026-11-15
 
 ## Context

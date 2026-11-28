@@ -11,6 +11,7 @@ pub mod approval;
 pub mod carry;
 pub mod categories;
 pub mod conflict;
+pub mod envelopes;
 pub mod fields;
 pub mod history;
 pub mod library;

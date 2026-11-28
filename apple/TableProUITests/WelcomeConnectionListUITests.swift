@@ -102,6 +102,31 @@ final class WelcomeConnectionListUITests: UITestCase {
         )
     }
 
+    // XCUITest cannot send Show Menu, so the keyboard's menu key stands in: AppKit opens both through
+    // `showContextMenuForSelection(_:)`, at the selected row.
+    func testTheMenuKeyOpensTheSelectedConnectionsMenu() throws {
+        try seedSQLiteSession([ConnectionSeed(name: "alpha-staging", tabs: [], isOpen: false)])
+        let app = try launchApp(arguments: projectArguments(named: "Billing"))
+        let welcome = welcomeWindow(in: app)
+        XCTAssertTrue(welcome.waitToExist(timeout: 15))
+        let list = welcomeConnectionList(in: welcome)
+        let row = welcomeConnectionRow(named: "alpha-staging", in: list)
+        XCTAssertTrue(waitUntilHittable(row, timeout: 15))
+        row.click()
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { self.holdsKeyboardFocus(list) && row.isSelected },
+            "A click must select the row and give the list the keyboard"
+        )
+
+        app.typeKey(.return, modifierFlags: .control)
+
+        let move = contextMenuItem("Move to Project", in: app)
+        XCTAssertTrue(waitUntilHittable(move, timeout: 5), "Control-Return must open the selected connection's menu")
+        XCTAssertTrue(contextMenuItem("Rename", in: app).isHittable, "The menu must be the connection's, with Rename")
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitForPredicate(timeout: 5) { !move.isHittable }, "Escape must close the menu")
+    }
+
     func testReturnOnASelectedConnectionOpensIt() throws {
         try seedSQLiteSession([ConnectionSeed(name: "alpha-staging", tabs: [], isOpen: false)])
         let app = try launchApp()
@@ -116,5 +141,12 @@ final class WelcomeConnectionListUITests: UITestCase {
         app.typeKey(.return, modifierFlags: [])
 
         XCTAssertTrue(mainWindow(in: app).waitToExist(timeout: 30), "Return must open the selected connection")
+    }
+
+    // Move to Project is offered only once a project exists.
+    private func projectArguments(named name: String) -> [String] {
+        let projects = #"[{"id":"\#(UUID().uuidString)","name":"\#(name)","sortOrder":0}]"#
+        let hex = Data(projects.utf8).map { String(format: "%02x", $0) }.joined()
+        return ["-com.TablePro.projects", "<\(hex)>"]
     }
 }

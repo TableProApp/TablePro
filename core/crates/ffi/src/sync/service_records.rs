@@ -195,7 +195,8 @@ impl From<HeldRecordReason> for HeldReasonTag {
                 Self::Unreadable
             }
             HeldRecordReason::Held(HeldReason::UnknownKind) => Self::UnknownKind,
-            HeldRecordReason::Held(HeldReason::AwaitingApproval) => Self::AwaitingApproval,
+            // A secret mostly waits for its record's approval, so the app shows it with what waits for the person.
+            HeldRecordReason::Held(HeldReason::AwaitingApproval | HeldReason::AwaitingStore) => Self::AwaitingApproval,
             HeldRecordReason::Held(HeldReason::AwaitingDeviceApproval) => Self::AwaitingDeviceApproval,
             HeldRecordReason::Refused { code } => Self::Refused { code },
         }
