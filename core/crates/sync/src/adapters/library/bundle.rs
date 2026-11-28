@@ -60,6 +60,16 @@ const HOP_MEMBERS: [(&str, &str); 4] = [
 
 const SSL_MEMBERS: [(&str, &str); 1] = [("mode", "mode")];
 
+// Path members the Mac's bundle decoder requires (`ExportableSSHConfig`, `ExportableJumpHost`), and the TLS ones it
+// writes, which a team copy carries empty.
+const SSH_BLANK: [&str; 2] = ["privateKeyPath", "agentSocketPath"];
+const HOP_BLANK: [&str; 1] = ["privateKeyPath"];
+const SSL_BLANK: [&str; 3] = ["caCertificatePath", "clientCertificatePath", "clientKeyPath"];
+
+fn blank(members: &[&str]) -> impl Iterator<Item = (String, Value)> + '_ {
+    members.iter().map(|member| ((*member).to_owned(), Value::from("")))
+}
+
 fn team_fields(fields: &BTreeMap<String, String>) -> BTreeMap<String, String> {
     let mut kept = portable_fields(fields, true);
     kept.retain(|key, _| field_trust(key) != Some(FieldTrust::LocalFile));
@@ -103,13 +113,18 @@ pub fn team_bundle(saved: &SavedConnection, profile: Option<&SshProfile>, names:
         let mut bundle = Map::new();
         bundle.insert("enabled".to_owned(), Value::Bool(true));
         bundle.extend(renamed(ssh, &SSH_MEMBERS, true));
+        bundle.extend(blank(&SSH_BLANK));
         bundle.retain(|key, value| !defaulted(key, value));
         let hops: Vec<Value> = ssh
             .get("jump_hosts")
             .and_then(Value::as_array)
             .map(|hops| {
                 hops.iter()
-                    .map(|hop| Value::Object(renamed(hop, &HOP_MEMBERS, true)))
+                    .map(|hop| {
+                        let mut out = renamed(hop, &HOP_MEMBERS, true);
+                        out.extend(blank(&HOP_BLANK));
+                        Value::Object(out)
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -122,7 +137,9 @@ pub fn team_bundle(saved: &SavedConnection, profile: Option<&SshProfile>, names:
         .get("ssl_config")
         .filter(|ssl| ssl.get("mode").and_then(Value::as_str) != Some("Disabled"))
     {
-        out.insert("sslConfig".to_owned(), Value::Object(renamed(ssl, &SSL_MEMBERS, true)));
+        let mut tls = renamed(ssl, &SSL_MEMBERS, true);
+        tls.extend(blank(&SSL_BLANK));
+        out.insert("sslConfig".to_owned(), Value::Object(tls));
     }
     if let Some(level) = wire.get("safe_mode_level").filter(|level| *level != "silent") {
         out.insert("safeModeLevel".to_owned(), level.clone());

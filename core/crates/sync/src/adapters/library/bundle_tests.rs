@@ -50,17 +50,14 @@ fn full() -> Value {
     })
 }
 
-// `full()` with no path on the device that wrote it: no key, agent socket, TLS file or SSH profile.
+// `full()` with no path on the device that wrote it: the key, agent socket and TLS members empty, as the Mac's decoder
+// needs them, and no SSH profile.
 fn full_without_device_paths() -> Value {
     let mut bundle = full();
-    for member in ["privateKeyPath", "agentSocketPath"] {
-        bundle["sshConfig"].as_object_mut().unwrap().remove(member);
-    }
-    bundle["sshConfig"]["jumpHosts"][0]
-        .as_object_mut()
-        .unwrap()
-        .remove("privateKeyPath");
-    bundle["sslConfig"] = json!({"mode": "Verify CA"});
+    bundle["sshConfig"]["privateKeyPath"] = json!("");
+    bundle["sshConfig"]["agentSocketPath"] = json!("");
+    bundle["sshConfig"]["jumpHosts"][0]["privateKeyPath"] = json!("");
+    bundle["sslConfig"]["caCertificatePath"] = json!("");
     bundle
 }
 
