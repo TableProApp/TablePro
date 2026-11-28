@@ -7568,8 +7568,6 @@ dependencies = [
  "glib-build-tools",
  "glycin",
  "gtk4",
- "icu_decimal",
- "icu_locale_core",
  "indexmap 2.14.2",
  "libadwaita",
  "log",
