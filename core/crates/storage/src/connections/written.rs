@@ -1,6 +1,6 @@
 // Library writes the core commits itself, for a host that tags `connections.json` and re-tags only a digest the core
-// reports (the Mac). Each is recorded beside the file before the file is written, under the same two locks, so a
-// crash before the host reads it loses nothing. A record carries a seal made with the host's key: a record anyone
+// reports (the Mac). Each is recorded beside the file before the file is written, under the same two locks, and stays
+// until the host acknowledges it, so a crash before the host has stamped it loses nothing. A record carries a seal made with the host's key: a record anyone
 // else wrote beside the file is dropped, so a planted file is never vouched for. A host's own write through
 // `replace_library_blocking` or `rebuild_library_blocking` returns its digest instead.
 
@@ -93,21 +93,15 @@ impl ConnectionStore {
         *self.report_key_slot() = Some(key);
     }
 
-    // The writes recorded since the last take, oldest first, each once. A record `key` did not seal is dropped.
-    pub fn take_written_blocking(&self) -> Result<Vec<CommittedWrite>, StorageError> {
+    // The writes recorded and not acknowledged yet, oldest first. Each comes again until `ack_written_blocking` names
+    // it or a later one, so a host that stops between this and its stamp loses nothing. A record `key` did not seal is
+    // left out.
+    pub fn peek_written_blocking(&self) -> Result<Vec<CommittedWrite>, StorageError> {
         let Some(key) = self.report_key() else {
             return Ok(Vec::new());
         };
         let _held = self.lock_to_write();
-        let path = written_path(&self.inner.path);
-        let records = read(&path);
-        match std::fs::remove_file(&path) {
-            Err(source) if source.kind() != std::io::ErrorKind::NotFound => {
-                return Err(StorageError::Io { path, source });
-            }
-            _ => {}
-        }
-        Ok(records
+        Ok(read(&written_path(&self.inner.path))
             .writes
             .into_iter()
             .filter(|record| sealed_by(&key, record))
@@ -117,6 +111,38 @@ impl ConnectionStore {
                 at: crate::unix_time::from_unix_millis(record.at),
             })
             .collect())
+    }
+
+    // Once the host has stamped them: clears every record through the sealed one whose digest is `through`, oldest
+    // first, the ones before it a peek left out included. A digest no sealed record holds clears nothing, as when
+    // another process acknowledged it already. Returns how many records went.
+    pub fn ack_written_blocking(&self, through: &str) -> Result<usize, StorageError> {
+        let Some(key) = self.report_key() else {
+            return Ok(0);
+        };
+        let _held = self.lock_to_write();
+        let path = written_path(&self.inner.path);
+        let mut records = read(&path);
+        let Some(at) = records
+            .writes
+            .iter()
+            .position(|record| record.digest == through && sealed_by(&key, record))
+        else {
+            return Ok(0);
+        };
+        records.writes.drain(..=at);
+        if records.writes.is_empty() {
+            match std::fs::remove_file(&path) {
+                Err(source) if source.kind() != std::io::ErrorKind::NotFound => {
+                    return Err(StorageError::Io { path, source });
+                }
+                _ => {}
+            }
+        } else {
+            records.version = VERSION;
+            write(&path, &records)?;
+        }
+        Ok(at + 1)
     }
 
     // Before the file is written, under the locks the write holds. Only a write that holds the lock beside the file

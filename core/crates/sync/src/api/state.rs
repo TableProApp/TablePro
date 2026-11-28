@@ -396,6 +396,10 @@ pub enum HeldReason {
     // A team library record whose id another of its kind holds in other case: neither is applied, listed or sent, as
     // the publish plan leaves both out (0052, Team scope).
     Collides,
+    // An envelope the keys took that its store did not, as while its record waits for the person or points elsewhere
+    // than it was sealed for (0056, Envelopes and history, At use). Each pull offers it to the store again, unlike one
+    // the keys refused, which waits for the server to serve it again.
+    AwaitingStore,
 }
 
 #[derive(Debug, Clone, PartialEq)]

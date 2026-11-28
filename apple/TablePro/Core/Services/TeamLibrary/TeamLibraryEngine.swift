@@ -9,20 +9,27 @@ import TableProFFI
 
 // Team Library on the core engine (core ADR 0054, team scopes always use the service), so the app's tests run over a
 // fake engine. Every call is bound to the sign-in the service opened with and refused once it ends; the unsent edits,
-// their discard, the status and the delete still answer after, as a sign-out needs.
+// their discard, the status and the delete still answer after, as a sign-out needs. Each call names the owner it is
+// for, and the engine refuses one for another owner with `sync.team_library.other_owner`.
 nonisolated protocol TeamLibraryEngine: TeamConflictEngine {
-    func teamLibrary() async throws -> [TeamLibraryTeamInfo]
-    func publishTeamConnections(teamId: String, connections: [TeamConnectionArg]) async throws -> TeamPublishInfo
+    func teamLibraryOwner() -> TeamLibraryOwnerArg?
+    func teamLibrary(expectedOwner: TeamLibraryOwnerArg) async throws -> [TeamLibraryTeamInfo]
+    func publishTeamConnections(
+        expectedOwner: TeamLibraryOwnerArg,
+        teamId: String,
+        connections: [LibraryConnectionRecord]
+    ) async throws -> TeamPublishInfo
     func publishTeamSavedQueries(
+        expectedOwner: TeamLibraryOwnerArg,
         teamId: String,
         folders: [TeamFolderArg],
         queries: [TeamQueryArg]
     ) async throws -> TeamPublishInfo
-    func unsentTeamEdits() async throws -> [UnsentTeamEditInfo]
-    func discardTeamEdits(teamId: String?) async throws
-    func deleteTeamLibraryData() async throws
-    func teamScopeStatus() async throws -> [TeamScopeStatusInfo]
-    func importTeamLibrary(teams: [TeamLibraryImportArg]) async throws
+    func unsentTeamEdits(expectedOwner: TeamLibraryOwnerArg) async throws -> [UnsentTeamEditInfo]
+    func discardTeamEdits(expectedOwner: TeamLibraryOwnerArg, teamId: String?) async throws
+    func deleteTeamLibraryData(expectedOwner: TeamLibraryOwnerArg) async throws
+    func teamScopeStatus(expectedOwner: TeamLibraryOwnerArg) async throws -> [TeamScopeStatusInfo]
+    func importTeamLibrary(expectedOwner: TeamLibraryOwnerArg, teams: [TeamLibraryImportArg]) async throws
     func syncNow(why: PassReasonTag) async throws
 }
 

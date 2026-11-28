@@ -133,12 +133,10 @@ final class CoreLibraryStore {
         readCount += 1
         let before = image
         let loaded: LibraryImage
-        if digestsTheCoreVouchesFor().contains(digest) {
-            // Tagged before anything else: the core forgets a report once it handed it over.
-            let stamped = integrity.stamp(Self.tag(forDigest: digest), fileURL: coreFileURL)
+        if tagsTheCoresOwnWrite(digest) {
             let profilesWere = profilesTrusted
-            loaded = adopt(contents, verdict: stamped ? .trusted : .unavailable)
-            profilesTrusted = profilesWere && stamped
+            loaded = adopt(contents, verdict: .trusted)
+            profilesTrusted = profilesWere
             settleProfilesSeal(loaded.credentialProfiles)
         } else {
             loaded = adopt(contents, verdict: integrityKeyAnswered ? .modified : .unavailable)
@@ -335,11 +333,8 @@ final class CoreLibraryStore {
             return importLegacy(legacy, digest: legacyDigest, into: library, over: .noFile)
         }
         var verdict = integrity.verify(Self.tag(forDigest: coreDigest), fileURL: coreFileURL)
-        // The core's own writes since this store last tagged the file, a pull's before a quit among them. Taken on every
-        // launch, so a report never outlives the file it vouched for.
-        let vouched = digestsTheCoreVouchesFor()
-        if verdict != .trusted, vouched.contains(coreDigest),
-           integrity.stamp(Self.tag(forDigest: coreDigest), fileURL: coreFileURL) {
+        // The core's own writes this store has not acknowledged, a pull's before a quit among them.
+        if tagsTheCoresOwnWrite(coreDigest) {
             verdict = .trusted
         }
         let taggedOutside = verdict == .modified || verdict == .unstamped
@@ -623,26 +618,40 @@ final class CoreLibraryStore {
         )
     }
 
-    // The writes the core made itself since the last look, each made over a file this store vouched for or over another
-    // of them. One made over anything else, a file planted outside TablePro, never reaches the tag. Taken once: the
-    // core forgets what it handed over.
-    private func digestsTheCoreVouchesFor() -> Set<String> {
+    // Tags the file holding `digest` when the core reports it as its own write, made over a file this store vouched for
+    // or over another such write, and only then acknowledges the reports through it: a stop between the two hands the
+    // same reports over again, and tagging the same digest twice changes nothing. One made over anything else, a file
+    // planted outside TablePro, never reaches the tag. True when the file is tagged now.
+    private func tagsTheCoresOwnWrite(_ digest: String) -> Bool {
+        let core: Core
         let reports: [LibraryWriteReport]
         do {
-            let core = try host.core()
-            reports = try Self.blocking { try await core.takeLibraryWrites() }
+            core = try host.core()
+            reports = try Self.blocking { try await core.peekLibraryWrites() }
         } catch {
             Self.logger.error("The core's own library writes could not be read: \(LogRedaction.publicDescription(of: error), privacy: .public)")
-            return []
+            return false
         }
-        var vouched: Set<String> = []
-        for report in reports {
-            guard let over = report.over else { continue }
-            if vouched.contains(over) || integrity.verify(Self.tag(forDigest: over), fileURL: coreFileURL) == .trusted {
-                vouched.insert(report.digest)
+        guard reports.contains(where: { $0.digest == digest }) else { return false }
+        if integrity.verify(Self.tag(forDigest: digest), fileURL: coreFileURL) != .trusted {
+            var vouched: Set<String> = []
+            for report in reports {
+                guard let over = report.over else { continue }
+                if vouched.contains(over) || integrity.verify(Self.tag(forDigest: over), fileURL: coreFileURL) == .trusted {
+                    vouched.insert(report.digest)
+                }
+            }
+            guard vouched.contains(digest), integrity.stamp(Self.tag(forDigest: digest), fileURL: coreFileURL) else {
+                return false
             }
         }
-        return vouched
+        do {
+            try Self.blocking { try await core.ackLibraryWrites(throughDigest: digest) }
+        } catch {
+            // The reports come again at the next look, and the tag they lead to is in place by then.
+            Self.logger.error("The core's own library writes were not acknowledged: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+        }
+        return true
     }
 
     nonisolated private static func code(of error: any Error) -> String? {

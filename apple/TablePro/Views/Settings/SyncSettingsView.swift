@@ -530,7 +530,7 @@ private struct SyncUpdateActionButton: View {
 }
 
 // Reads like Time Machine's latest backup ("Today at 14:50") and moves to "Yesterday" without a reopen.
-private struct SyncLastSyncedText: View {
+struct SyncLastSyncedText: View {
     let date: Date?
 
     private static let formatter: DateFormatter = {
@@ -545,7 +545,10 @@ private struct SyncLastSyncedText: View {
     var body: some View {
         if let date {
             TimelineView(.everyMinute) { context in
-                Text(verbatim: Self.formatter.string(from: min(date, context.date)))
+                let text = Self.formatter.string(from: min(date, context.date))
+                // As in the Status row: a grouped form keeps the accessibility value a text was first given.
+                Text(verbatim: text)
+                    .id(text)
                     .accessibilityIdentifier("settings-sync-last-synced")
             }
         } else {

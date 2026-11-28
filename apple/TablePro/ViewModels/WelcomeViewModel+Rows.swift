@@ -15,8 +15,16 @@ extension WelcomeViewModel {
             if section.acceptsSavedConnections, let connection = connectionsById[id] {
                 return .connection(savedRowModel(connection, section: section))
             }
-            guard let shared = sharedConnectionsById[id] else { return .empty }
-            return .connection(WelcomeRowPresentation.sharedConnection(shared, section: section))
+            switch sharedConnectionsById[id] {
+            case .linked(let linked):
+                return .connection(WelcomeRowPresentation.sharedConnection(linked, section: section))
+            case .team(let connection):
+                return .connection(WelcomeRowPresentation.savedConnection(
+                    connection, section: section, tags: [], group: nil, groupPath: [], isDriverRejected: false
+                ))
+            case nil:
+                return .empty
+            }
         }
     }
 

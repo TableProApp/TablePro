@@ -5,7 +5,6 @@
 
 import Foundation
 import TableProFFI
-import TableProImport
 
 internal struct TeamLibraryTeam: Equatable, Identifiable, Sendable {
     let id: String
@@ -15,7 +14,8 @@ internal struct TeamLibraryTeam: Equatable, Identifiable, Sendable {
 internal struct TeamLibraryConnection: Equatable, Identifiable, Sendable {
     // The lowercase id, so a connection keeps its row whatever case the team stores it in.
     let id: String
-    let settings: ExportableConnection
+    // Under an id of its own: the team's copy of a connection this Mac published has that connection's.
+    let connection: DatabaseConnection
 }
 
 internal struct TeamLibraryQuery: Equatable, Identifiable, Sendable {
@@ -88,6 +88,7 @@ internal struct TeamLibraryContent: Equatable, Sendable {
     var queries: [TeamLibraryQuery]
 
     static let empty = TeamLibraryContent(connections: [], queries: [])
+    private static let connectionNamespace = UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
 
     init(connections: [TeamLibraryConnection], queries: [TeamLibraryQuery]) {
         self.connections = connections
@@ -109,8 +110,8 @@ internal struct TeamLibraryContent: Equatable, Sendable {
                 let id = item.id.lowercased()
                 switch item.kind {
                 case .connection:
-                    if let settings = Self.connection(item) {
-                        connections[id] = TeamLibraryConnection(id: id, settings: settings)
+                    if let connection = Self.connection(item, id: id) {
+                        connections[id] = TeamLibraryConnection(id: id, connection: connection)
                     }
                 case .query:
                     guard let query = Self.decode(TeamLibraryQueryData.self, item) else { continue }
@@ -129,7 +130,7 @@ internal struct TeamLibraryContent: Equatable, Sendable {
             }
         }
         self.connections = connections.values
-            .sorted { ($0.settings.name.localizedLowercase, $0.id) < ($1.settings.name.localizedLowercase, $1.id) }
+            .sorted { ($0.connection.name.localizedLowercase, $0.id) < ($1.connection.name.localizedLowercase, $1.id) }
         self.queries = queries.values
             .sorted { lhs, rhs in
                 let left = (lhs.query.folderName ?? "", lhs.order, lhs.query.name.localizedLowercase, lhs.query.id)
@@ -157,14 +158,13 @@ internal struct TeamLibraryContent: Equatable, Sendable {
         try? JSONDecoder().decode(type, from: Data(item.fieldsJson.utf8))
     }
 
-    // Another account wrote it, and it lands here with no confirmation step, so anything the app would run by itself is
-    // dropped before it is shown, and so is a connection whose SSH host ssh would refuse. The row is never saved and
-    // asks before it signs in with a credential this Mac holds, so its sign-in choice stays.
-    private static func connection(_ item: TeamLibraryItemInfo) -> ExportableConnection? {
-        guard let settings = decode(ExportableConnection.self, item), settings.refusedSSHDestination == nil else {
-            return nil
-        }
-        return settings.sanitizedForImport(keepingLocalCredentials: true).withoutStartupCommands().withoutTunnelCommand()
+    // Another account wrote it, and it lands here with no confirmation step, so the core reads it with nothing the app
+    // would run by itself, and a copy whose SSH host ssh would refuse as none. The row is never saved and asks before it
+    // signs in with a credential this Mac holds, so its sign-in choice stays.
+    private static func connection(_ item: TeamLibraryItemInfo, id: String) -> DatabaseConnection? {
+        guard var record = item.connection else { return nil }
+        record.connection.id = LinkedFolderWatcher.stableId(namespace: connectionNamespace, key: id).uuidString
+        return LibraryRecordMapping.connection(record, isFavorite: false)
     }
 }
 

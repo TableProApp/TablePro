@@ -59,6 +59,10 @@ internal final class TreeOutlineCellView: NSTableCellView, NSTextFieldDelegate {
         didSet { applyStyle() }
     }
 
+    override internal func accessibilityPerformShowMenu() -> Bool {
+        showEnclosingRowContextMenu() || super.accessibilityPerformShowMenu()
+    }
+
     internal func configure(content: TreeRowContent, fonts: TreeOutlineFonts, accessibilityDescription: String) {
         self.content = content
         valueFont = fonts.value

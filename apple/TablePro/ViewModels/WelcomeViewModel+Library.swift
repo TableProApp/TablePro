@@ -8,6 +8,27 @@ import Foundation
 import TableProConnectionLibrary
 import TableProImport
 
+// A row the list shows but never saves: a linked folder's file or a team's copy.
+internal enum WelcomeSharedConnection {
+    case linked(LinkedConnection)
+    case team(DatabaseConnection)
+
+    var name: String {
+        switch self {
+        case .linked(let linked): linked.connection.name
+        case .team(let connection): connection.name
+        }
+    }
+
+    @MainActor
+    func databaseConnection() -> DatabaseConnection {
+        switch self {
+        case .linked(let linked): linked.databaseConnection()
+        case .team(let connection): connection.sharedCopy(from: .teamLibrary)
+        }
+    }
+}
+
 internal struct WelcomeResolvedRows: Equatable {
     internal var savedConnectionIds: [UUID] = []
     internal var sharedConnectionIds: [UUID] = []
@@ -78,8 +99,8 @@ extension WelcomeViewModel {
         }
         let shared = sharedConnectionsById
         for id in resolved.sharedConnectionIds {
-            guard let linked = shared[id] else { continue }
-            connectToLinkedConnection(linked)
+            guard let connection = shared[id] else { continue }
+            connectToSharedConnection(connection)
         }
     }
 
@@ -160,7 +181,7 @@ extension WelcomeViewModel {
         case .group(let id):
             return groupsById[id]?.name
         case .connection(let id, _):
-            return connectionsById[id]?.name ?? sharedConnectionsById[id]?.connection.name
+            return connectionsById[id]?.name ?? sharedConnectionsById[id]?.name
         case .section:
             return nil
         }

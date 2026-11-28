@@ -37,6 +37,10 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         fatalError("WorkspaceRailCellView does not support NSCoder init")
     }
 
+    override internal func accessibilityPerformShowMenu() -> Bool {
+        showEnclosingRowContextMenu() || super.accessibilityPerformShowMenu()
+    }
+
     private static func makeLabel() -> NSTextField {
         let label = NSTextField(labelWithString: "")
         label.translatesAutoresizingMaskIntoConstraints = false
