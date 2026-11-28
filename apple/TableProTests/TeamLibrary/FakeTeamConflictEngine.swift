@@ -20,6 +20,8 @@ class FakeTeamConflictEngine: TeamConflictEngine, @unchecked Sendable {
     private var resolveGate: AsyncGate?
     private(set) var choices: [(record: SyncRecordRef, keep: ConflictChoiceTag)] = []
     private(set) var reads = 0
+    private var waiting: [RecordApprovalInfo] = []
+    private(set) var approvalDecisions: [(record: SyncRecordRef, field: String, approve: Bool)] = []
 
     init(_ conflicts: [TeamConflictInfo] = []) {
         held = conflicts
@@ -27,6 +29,11 @@ class FakeTeamConflictEngine: TeamConflictEngine, @unchecked Sendable {
 
     func set(_ conflicts: [TeamConflictInfo]) {
         lock.withLock { held = conflicts }
+    }
+
+    // The values pulls hold for the person, as the approval list gives them.
+    func hold(approvals: [RecordApprovalInfo]) {
+        lock.withLock { waiting = approvals }
     }
 
     func failResolves(with error: CoreError?) {
@@ -80,6 +87,22 @@ class FakeTeamConflictEngine: TeamConflictEngine, @unchecked Sendable {
             }
             choices.append((record, keep))
             held.removeAll { $0.record == record }
+        }
+    }
+
+    func approvals() async throws -> [RecordApprovalInfo] {
+        lock.withLock { waiting }
+    }
+
+    // A value decided by the digest listed leaves the list; one a pull changed since answers `sync.changed`.
+    func decideApproval(record: SyncRecordRef, field: String, digest: String, approve: Bool) async throws {
+        try lock.withLock {
+            guard let index = waiting.firstIndex(where: { $0.record == record }),
+                  let value = waiting[index].fields.first(where: { $0.field == field })
+            else { throw TeamConflictFixture.failure("sync.unknown") }
+            guard value.digest == digest else { throw TeamConflictFixture.failure("sync.changed") }
+            approvalDecisions.append((record, field, approve))
+            waiting[index].fields.removeAll { $0.field == field }
         }
     }
 }

@@ -19,8 +19,9 @@ extension WelcomeViewModel {
             case .linked(let linked):
                 return .connection(WelcomeRowPresentation.sharedConnection(linked, section: section))
             case .team(let connection):
-                return .connection(WelcomeRowPresentation.savedConnection(
-                    connection, section: section, tags: [], group: nil, groupPath: [], isDriverRejected: false
+                let team = TeamLibrary.shared.content.connection(rowID: connection.id)
+                return .connection(WelcomeRowPresentation.teamConnection(
+                    connection, section: section, lastWriter: team?.lastWriter, lastChangedAt: team?.lastChangedAt
                 ))
             case nil:
                 return .empty

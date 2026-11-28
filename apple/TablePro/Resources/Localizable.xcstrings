@@ -115664,6 +115664,12 @@
     "Last Analyze" : {
 
     },
+    "Last changed by %@" : {
+
+    },
+    "Last changed by %1$@ on %2$@" : {
+
+    },
     "Last checked: %@" : {
       "localizations" : {
         "fr" : {

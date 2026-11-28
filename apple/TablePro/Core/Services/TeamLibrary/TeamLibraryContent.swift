@@ -21,6 +21,9 @@ internal struct TeamLibraryConnection: Equatable, Identifiable, Sendable {
     let teamID: String
     // The role the core reports for this account in the team: owners, admins and editors write its library.
     let canWrite: Bool
+    // Who last changed the team's copy and when, as the last pull named them; nil before a pull names anyone.
+    var lastWriter: String?
+    var lastChangedAt: Date?
 }
 
 internal struct TeamLibraryQuery: Equatable, Identifiable, Sendable {
@@ -120,7 +123,9 @@ internal struct TeamLibraryContent: Equatable, Sendable {
                             id: id,
                             connection: connection,
                             teamID: team.teamId,
-                            canWrite: team.canWrite
+                            canWrite: team.canWrite,
+                            lastWriter: Self.writer(of: item),
+                            lastChangedAt: item.updatedAtMs.map { Date(timeIntervalSince1970: TimeInterval($0) / 1_000) }
                         )
                     }
                 case .query:

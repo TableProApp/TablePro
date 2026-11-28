@@ -93,6 +93,33 @@ struct WelcomeRowPresentationTests {
         #expect(!text.contains("·"))
     }
 
+    @Test("A team row's tooltip names who last changed it and when, as the core reports, and no middle dots")
+    func teamRowNamesItsLastChange() {
+        let connection = DatabaseConnection(name: "Prod", host: "db.acme.io", database: "app", type: .postgresql)
+        let date = Date(timeIntervalSince1970: 1_795_800_000)
+
+        let named = WelcomeRowPresentation.teamConnection(
+            connection, section: .teamLibrary, lastWriter: "Grace Hopper", lastChangedAt: date
+        )
+        let undated = WelcomeRowPresentation.teamConnection(
+            connection, section: .teamLibrary, lastWriter: "Grace Hopper", lastChangedAt: nil
+        )
+        let unnamed = WelcomeRowPresentation.teamConnection(
+            connection, section: .teamLibrary, lastWriter: nil, lastChangedAt: date
+        )
+        let plain = WelcomeRowPresentation.savedConnection(
+            connection, section: .teamLibrary, tags: [], group: nil, groupPath: [], isDriverRejected: false
+        )
+
+        #expect(named.tooltip.hasSuffix(
+            "Last changed by Grace Hopper on " + date.formatted(date: .abbreviated, time: .shortened)
+        ))
+        #expect(undated.tooltip.hasSuffix("Last changed by Grace Hopper"))
+        #expect(named.detail == plain.detail)
+        #expect(unnamed == plain)
+        #expect(!named.tooltip.contains("·"))
+    }
+
     // MARK: - Icons
 
     private static let customIcon = "server.rack"

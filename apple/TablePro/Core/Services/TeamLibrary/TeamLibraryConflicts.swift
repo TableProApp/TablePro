@@ -13,6 +13,8 @@ import TableProFFI
 nonisolated protocol TeamConflictEngine: AnyObject, Sendable {
     func conflicts() async throws -> [TeamConflictInfo]
     func resolveConflict(record: SyncRecordRef, digest: String, keep: ConflictChoiceTag) async throws
+    func approvals() async throws -> [RecordApprovalInfo]
+    func decideApproval(record: SyncRecordRef, field: String, digest: String, approve: Bool) async throws
 }
 
 extension SyncService: TeamConflictEngine {}
@@ -119,6 +121,9 @@ internal final class TeamLibraryConflictsModel: ObservableObject {
             let engine = try await engine()
             guard epoch == self.epoch else { return }
             try await engine.resolveConflict(record: conflict.record, digest: conflict.digest, keep: keep)
+            if keep == .keepTheirs {
+                await approveTheirs(conflict, on: engine)
+            }
         } catch let error as CoreError where Self.code(of: error) == "sync.unknown" {
             Self.logger.notice("A team conflict was settled before the choice reached it")
         } catch let error as CoreError where Self.code(of: error) == "sync.changed" {
@@ -145,6 +150,56 @@ internal final class TeamLibraryConflictsModel: ObservableObject {
             failure = nil
         }
         await refresh()
+    }
+
+    // Keep Theirs is the person's word on the team's values the sheet showed, so a pulled value of a field it showed
+    // that waits for approval is approved with it, by the digest the approval list gave. One the team changed since
+    // the sheet showed it, and a field the sheet did not show, wait in Review.
+    private func approveTheirs(_ conflict: TeamConflictInfo, on engine: any TeamConflictEngine) async {
+        guard let theirs = conflict.theirs.flatMap(Self.json) else { return }
+        let waiting: [RecordApprovalInfo]
+        do {
+            waiting = try await engine.approvals()
+        } catch {
+            Self.logger.error("Reading the approvals after Keep Theirs failed: \(error.publicLogShape, privacy: .public)")
+            return
+        }
+        guard let entry = waiting.first(where: { $0.record == conflict.record }) else { return }
+        for field in entry.fields where Self.sheetShowed(field, of: conflict, theirs: theirs) {
+            do {
+                try await engine.decideApproval(record: conflict.record, field: field.field, digest: field.digest, approve: true)
+            } catch {
+                Self.logger.notice("A value Keep Theirs chose waits in Review: \(error.publicLogShape, privacy: .public)")
+            }
+        }
+    }
+
+    // A field of a member the sheet listed, whose pulled value is the team's value the sheet showed.
+    nonisolated static func sheetShowed(_ field: FieldApprovalInfo, of conflict: TeamConflictInfo, theirs: Any) -> Bool {
+        let tokens = pointerTokens(field.field)
+        guard let member = tokens.first, conflict.fields.contains(member) else { return false }
+        let shown = tokens.reduce(Optional(theirs)) { value, token in
+            (value as? [String: Any])?[token]
+        }
+        switch (shown, field.pulled.flatMap(json)) {
+        case (nil, nil):
+            return true
+        case let (shown?, pulled?):
+            return (shown as AnyObject).isEqual(pulled)
+        default:
+            return false
+        }
+    }
+
+    // RFC 6901: "/a~1b/c~0d" reads as ["a/b", "c~d"].
+    nonisolated static func pointerTokens(_ pointer: String) -> [String] {
+        pointer.split(separator: "/", omittingEmptySubsequences: false).dropFirst().map {
+            $0.replacingOccurrences(of: "~1", with: "/").replacingOccurrences(of: "~0", with: "~")
+        }
+    }
+
+    nonisolated private static func json(_ text: String) -> Any? {
+        try? JSONSerialization.jsonObject(with: Data(text.utf8), options: [.fragmentsAllowed])
     }
 
     private static func code(of error: CoreError) -> String? {

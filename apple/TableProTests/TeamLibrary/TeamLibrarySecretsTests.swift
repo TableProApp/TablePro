@@ -14,7 +14,7 @@ struct TeamLibrarySecretsTests {
     @Test("Each team connection names its team and whether the core's role for this account writes that team's library")
     func connectionsCarryTheirTeamAndRole() async throws {
         let editor = FakeTeamLibraryEngine(teams: [TeamLibraryFixture.acme(role: .editor, items: [
-            TeamLibraryFixture.connection("c1", name: "Prod")
+            TeamLibraryFixture.connection("c1", name: "Prod", updatedBy: "Grace Hopper", updatedAtMs: 1_795_800_000_000)
         ])])
         let member = FakeTeamLibraryEngine(teams: [TeamLibraryFixture.acme(role: .member, canWrite: false, items: [
             TeamLibraryFixture.connection("c1", name: "Prod")
@@ -30,7 +30,10 @@ struct TeamLibrarySecretsTests {
         let written = try #require(writes.library.content.connections.first)
         #expect(written.teamID == TeamLibraryFixture.team)
         #expect(written.canWrite)
+        #expect(written.lastWriter == "Grace Hopper")
+        #expect(written.lastChangedAt == Date(timeIntervalSince1970: 1_795_800_000))
         #expect(reads.library.content.connections.first?.canWrite == false)
+        #expect(reads.library.content.connections.first?.lastWriter == nil)
         #expect(writes.library.content.connection(rowID: written.connection.id) == written)
     }
 

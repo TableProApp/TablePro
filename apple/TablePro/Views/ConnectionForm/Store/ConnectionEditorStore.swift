@@ -332,7 +332,13 @@ final class ConnectionEditorStore: ObservableObject {
         return String(localized: "New Connection")
     }
 
-    var windowSubtitle: String { traits.displayName }
+    // A team's copy names who last changed it, so the person sees whose version they edit.
+    var windowSubtitle: String {
+        guard let original = teamCopy?.original,
+              let lastChange = WelcomeRowPresentation.lastChangeLine(by: original.lastWriter, at: original.lastChangedAt)
+        else { return traits.displayName }
+        return lastChange
+    }
 
     var namePrompt: String {
         ConnectionEditorEngine.fallbackName(draft, traits, context)

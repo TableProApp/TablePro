@@ -191,6 +191,20 @@ struct ConnectionEditorStoreTeamCopyTests {
         #expect(team.engine.connectionEdits.isEmpty)
     }
 
+    @Test("The editor's subtitle names who last changed the team's copy")
+    func subtitleNamesTheLastWriter() async throws {
+        let (team, original) = try await teamCopy()
+        var named = original
+        named.lastWriter = "Grace Hopper"
+        let editor = try ConnectionEditorStoreFixture()
+
+        let store = editor.makeStore(.editTeamCopy(target(named, secrets: nil, in: team)), teamLibrary: team.library)
+        let unnamed = editor.makeStore(.editTeamCopy(target(original, secrets: nil, in: team)), teamLibrary: team.library)
+
+        #expect(store.windowSubtitle == "Last changed by Grace Hopper")
+        #expect(unnamed.windowSubtitle == unnamed.traits.displayName)
+    }
+
     @Test("A copy that was never staged reads as a record that is gone")
     func unstagedCopyIsMissing() throws {
         let editor = try ConnectionEditorStoreFixture()

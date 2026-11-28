@@ -352,7 +352,9 @@ final class TeamLibraryFixture {
         _ id: String,
         name: String,
         additionalFields: [String: String] = [:],
-        readable: Bool = true
+        readable: Bool = true,
+        updatedBy: String? = nil,
+        updatedAtMs: Int64? = nil
     ) -> TeamLibraryItemInfo {
         var connection = DatabaseConnection(
             name: name, host: "db.internal", port: 5_432, database: "app", username: "app", type: .postgresql
@@ -364,8 +366,8 @@ final class TeamLibraryFixture {
             id: id,
             fieldsJson: json(fields),
             connection: readable ? LibraryRecordMapping.record(connection, keeping: nil) : nil,
-            updatedBy: nil,
-            updatedAtMs: nil
+            updatedBy: updatedBy,
+            updatedAtMs: updatedAtMs
         )
     }
 

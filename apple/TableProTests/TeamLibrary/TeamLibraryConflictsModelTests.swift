@@ -109,6 +109,73 @@ struct TeamLibraryConflictsModelTests {
         #expect(model.resolving == nil)
     }
 
+    @Test("Keep Theirs approves the team's value it showed that waits in Review, and nothing else of the record")
+    func keepTheirsApprovesWhatTheSheetShowed() async {
+        let conflict = TeamConflictFixture.conflict(
+            "c1", kind: "library_connection", fields: ["port"],
+            mine: ["name": "Prod", "port": 6_100, "host": "db.internal"],
+            theirs: ["name": "Prod", "port": 7_100, "host": "db.new"]
+        )
+        let engine = FakeTeamConflictEngine([conflict])
+        engine.hold(approvals: [RecordApprovalInfo(
+            record: conflict.record,
+            name: "Prod",
+            newRecord: false,
+            digest: "record",
+            fields: [
+                FieldApprovalInfo(field: "/port", current: "6100", pulled: "7100", digest: "port-7100"),
+                FieldApprovalInfo(field: "/host", current: "\"db.internal\"", pulled: "\"db.new\"", digest: "host")
+            ]
+        )])
+        let model = Self.model(engine)
+        await model.refresh()
+
+        await model.resolve(conflict, keep: .keepTheirs)
+
+        #expect(engine.approvalDecisions.map { "\($0.field) \($0.approve)" } == ["/port true"])
+        #expect(Self.choices(engine) == ["c1 keepTheirs"])
+    }
+
+    @Test("A team value that changed since the sheet showed it still waits in Review after Keep Theirs, as after Keep Mine")
+    func changedValueStillWaits() async {
+        let conflict = TeamConflictFixture.conflict(
+            "c1", kind: "library_connection", fields: ["port"],
+            mine: ["name": "Prod", "port": 6_100],
+            theirs: ["name": "Prod", "port": 7_100]
+        )
+        let engine = FakeTeamConflictEngine([conflict])
+        engine.hold(approvals: [RecordApprovalInfo(
+            record: conflict.record,
+            name: "Prod",
+            newRecord: false,
+            digest: "record",
+            fields: [FieldApprovalInfo(field: "/port", current: "6100", pulled: "7200", digest: "port-7200")]
+        )])
+        let model = Self.model(engine)
+        await model.refresh()
+
+        await model.resolve(conflict, keep: .keepTheirs)
+        #expect(engine.approvalDecisions.isEmpty)
+
+        let other = TeamConflictFixture.conflict(
+            "c2", kind: "library_connection", fields: ["port"], mine: ["port": 1], theirs: ["port": 2]
+        )
+        engine.set([other])
+        engine.hold(approvals: [RecordApprovalInfo(
+            record: other.record, name: nil, newRecord: false, digest: "record",
+            fields: [FieldApprovalInfo(field: "/port", current: "1", pulled: "2", digest: "port-2")]
+        )])
+        await model.refresh()
+        await model.resolve(other, keep: .keepMine)
+        #expect(engine.approvalDecisions.isEmpty)
+    }
+
+    @Test("A JSON Pointer reads its escaped member names")
+    func pointerTokens() {
+        #expect(TeamLibraryConflictsModel.pointerTokens("/sshConfig/host") == ["sshConfig", "host"])
+        #expect(TeamLibraryConflictsModel.pointerTokens("/a~1b/c~0d") == ["a/b", "c~d"])
+    }
+
     @Test("A choice the engine refuses keeps the conflict and says so until a choice is saved")
     func refusedChoiceKeepsTheConflict() async {
         let conflict = TeamConflictFixture.conflict()

@@ -176,6 +176,44 @@ internal enum WelcomeRowPresentation {
         )
     }
 
+    // A team's copy says in its tooltip who last changed it, as the core reports for the item.
+    internal static func teamConnection(
+        _ connection: DatabaseConnection,
+        section: LibrarySectionKind,
+        lastWriter: String?,
+        lastChangedAt: Date?
+    ) -> WelcomeConnectionRowModel {
+        let row = savedConnection(connection, section: section, tags: [], group: nil, groupPath: [], isDriverRejected: false)
+        guard let lastChange = lastChangeLine(by: lastWriter, at: lastChangedAt) else { return row }
+        return WelcomeConnectionRowModel(
+            id: row.id,
+            name: row.name,
+            detail: row.detail,
+            type: row.type,
+            iconName: row.iconName,
+            identityColor: row.identityColor,
+            environment: row.environment,
+            tags: row.tags,
+            hiddenTagCount: row.hiddenTagCount,
+            groupLabel: row.groupLabel,
+            isLocalOnly: row.isLocalOnly,
+            isDriverRejected: row.isDriverRejected,
+            tooltip: row.tooltip + "\n" + lastChange,
+            status: row.status
+        )
+    }
+
+    // Nil when the pull named no one to this account.
+    internal static func lastChangeLine(by writer: String?, at date: Date?) -> String? {
+        guard let writer else { return nil }
+        guard let date else { return String(format: String(localized: "Last changed by %@"), writer) }
+        return String(
+            format: String(localized: "Last changed by %1$@ on %2$@"),
+            writer,
+            date.formatted(date: .abbreviated, time: .shortened)
+        )
+    }
+
     internal static func sharedConnection(_ linked: LinkedConnection, section: LibrarySectionKind) -> WelcomeConnectionRowModel {
         let exportable = linked.connection
         let type = DatabaseType(rawValue: exportable.type)
