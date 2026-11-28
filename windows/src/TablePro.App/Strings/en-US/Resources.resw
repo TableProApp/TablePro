@@ -7128,6 +7128,18 @@ New fingerprint: {2}</value>
   <data name="Error_sync_team_library_signed_in_changed" xml:space="preserve">
     <value>Your TablePro account changed. Open Team Library again.</value>
   </data>
+  <data name="Error_sync_team_library_passwords_off" xml:space="preserve">
+    <value>The connections went to the team without their passwords, because password sync is off for this team or on this computer.</value>
+  </data>
+  <data name="Error_sync_team_library_not_confirmed" xml:space="preserve">
+    <value>The connections went to the team without their passwords, because this computer doesn't hold the team key yet. An owner or admin needs to confirm you.</value>
+  </data>
+  <data name="Error_sync_team_library_rotation_due" xml:space="preserve">
+    <value>The connections went to the team without their passwords, because the team key needs to be rotated first.</value>
+  </data>
+  <data name="Error_sync_team_library_passwords_role" xml:space="preserve">
+    <value>The connections went to the team without their passwords, because your role on this team doesn't share passwords.</value>
+  </data>
   <data name="Error_sync_team_library_unknown_team" xml:space="preserve">
     <value>This team is not on your account.</value>
   </data>

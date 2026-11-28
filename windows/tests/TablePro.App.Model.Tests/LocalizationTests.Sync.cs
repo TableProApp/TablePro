@@ -42,6 +42,10 @@ public sealed partial class LocalizationTests
         Assert.Empty(missing);
     }
 
+    // The team library record fields a conflict can name.
+    private static readonly string[] TeamFields =
+        ["name", "query", "keyword", "folder_client_id", "parent_client_id", "connection_client_id", "sort_order"];
+
     [Fact]
     public void EveryTeamStateTheTeamViewsShowHasItsWords()
     {
@@ -51,8 +55,7 @@ public sealed partial class LocalizationTests
             .Concat(Enum.GetValues<TeamKeyNoticeKind>().Select(kind => "TeamNotice_" + kind))
             .Concat(Enum.GetValues<TeamConflictCase>().SelectMany(conflict =>
                 new[] { "TeamConflictTitle_" + conflict, "TeamConflictMessage_" + conflict }))
-            .Concat(new[] { "name", "query", "keyword", "folder_client_id", "parent_client_id", "connection_client_id", "sort_order" }
-                .Select(field => "TeamField_" + field));
+            .Concat(TeamFields.Select(field => "TeamField_" + field));
 
         var missing = names.Where(name => !s_strings.Value.ContainsKey(name)).ToList();
         Assert.Empty(missing);
