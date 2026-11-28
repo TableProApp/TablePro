@@ -656,7 +656,7 @@ public sealed partial class SettingsView : UserControl
                 if (lease is not null && owner is not null && !await TeamSignOut.SettleUnsentAsync(
                         lease.Team,
                         owner,
-                        (names, failure) => TeamDialogs.SignOutUnsentAsync(this, names, failure)))
+                        question => TeamDialogs.SignOutUnsentAsync(this, question)))
                 {
                     return;
                 }

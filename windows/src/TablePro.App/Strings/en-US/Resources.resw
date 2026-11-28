@@ -7973,6 +7973,9 @@ New fingerprint: {2}</value>
     <value>These Team Library changes are not uploaded yet and are lost if you discard them: {0}.</value>
     <comment>{0} is the list of changes.</comment>
   </data>
+  <data name="TeamSignOutUnlisted" xml:space="preserve">
+    <value>TablePro couldn't list the Team Library changes not uploaded yet. Discarding loses any there are.</value>
+  </data>
   <data name="TeamSignOutUpload" xml:space="preserve">
     <value>Upload and sign out</value>
   </data>

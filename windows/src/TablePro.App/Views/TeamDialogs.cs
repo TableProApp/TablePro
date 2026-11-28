@@ -73,7 +73,9 @@ internal static class TeamDialogs
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(workbench);
         var library = workbench.TeamLibrary;
-        while (library.Conflicts.FirstOrDefault() is { } conflict)
+        // A dialog already closing keeps its answer when the sign-in changes, so each answer is checked against it.
+        var session = workbench.SignInSession;
+        while (workbench.SignInSession == session && library.Conflicts.FirstOrDefault() is { } conflict)
         {
             var dialog = KeyDialogs.Dialog(owner, "TeamConflictDialog");
             dialog.Title = TeamText.ConflictTitle(conflict);
@@ -94,7 +96,7 @@ internal static class TeamDialogs
                 ContentDialogResult.Secondary => ConflictChoice.KeepTheirs,
                 _ => (ConflictChoice?)null,
             };
-            if (keep is not { } choice)
+            if (keep is not { } choice || workbench.SignInSession != session)
             {
                 return;
             }
@@ -181,17 +183,19 @@ internal static class TeamDialogs
     }
 
     // Null when nothing went or the person kept them; else why the discard failed.
-    public static async Task<CoreError?> DiscardUnsentAsync(FrameworkElement owner, Workbench workbench)
+    public static async Task<CoreError?> DiscardUnsentAsync(FrameworkElement parent, Workbench workbench)
     {
-        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentNullException.ThrowIfNull(parent);
         ArgumentNullException.ThrowIfNull(workbench);
         var library = workbench.TeamLibrary;
-        if (library.Unsent.Count == 0)
+        // Taken before the dialog waits: a dialog already closing keeps its answer when the sign-in changes.
+        var session = workbench.SignInSession;
+        if (library.Unsent.Count == 0 || library.Owner is not { } owner)
         {
             return null;
         }
 
-        var dialog = KeyDialogs.Dialog(owner, "TeamDiscardDialog");
+        var dialog = KeyDialogs.Dialog(parent, "TeamDiscardDialog");
         dialog.Title = Strings.Get("TeamDiscardTitle");
         var body = new StackPanel { Spacing = 8, MaxWidth = 480 };
         body.Children.Add(KeyDialogs.Paragraph(Strings.Get("TeamDiscardMessage")));
@@ -206,28 +210,28 @@ internal static class TeamDialogs
         dialog.DefaultButton = ContentDialogButton.Close;
         using (new KeyDialogs.SessionGuard(workbench, dialog))
         {
-            if (await WindowDialogs.ShowAsync(dialog, owner).ConfigureAwait(true) != ContentDialogResult.Primary)
+            if (await WindowDialogs.ShowAsync(dialog, parent).ConfigureAwait(true) != ContentDialogResult.Primary
+                || workbench.SignInSession != session)
             {
                 return null;
             }
         }
 
-        return await library.DiscardAsync(null).ConfigureAwait(true);
+        return await library.DiscardAsync(null, owner).ConfigureAwait(true);
     }
 
     // Sign out's question while Team Library edits are not uploaded (the macOS app's AccountSignOutPrompt).
-    public static async Task<TeamSignOutAnswer> SignOutUnsentAsync(
-        FrameworkElement owner,
-        IReadOnlyList<string> names,
-        string? failure)
+    public static async Task<TeamSignOutAnswer> SignOutUnsentAsync(FrameworkElement owner, TeamSignOutQuestion question)
     {
         ArgumentNullException.ThrowIfNull(owner);
-        ArgumentNullException.ThrowIfNull(names);
+        ArgumentNullException.ThrowIfNull(question);
         var dialog = KeyDialogs.Dialog(owner, "TeamSignOutDialog");
         dialog.Title = Strings.Get("TeamSignOutTitle");
         dialog.Content = KeyDialogs.Paragraph(Strings.Sentences(
-            failure is { } code ? Strings.Format("TeamSignOutUploadFailed", SyncText.Code(code)) : null,
-            Strings.Format("TeamSignOutUnsent", Strings.ListAnd(names))));
+            question.UploadFailure is { } code ? Strings.Format("TeamSignOutUploadFailed", SyncText.Code(code)) : null,
+            question.Names is { } names
+                ? Strings.Format("TeamSignOutUnsent", Strings.ListAnd(names))
+                : Strings.Get("TeamSignOutUnlisted")));
         dialog.PrimaryButtonText = Strings.Get("TeamSignOutUpload");
         dialog.SecondaryButtonText = Strings.Get("TeamSignOutDiscard");
         dialog.CloseButtonText = Strings.Get("Cancel");
