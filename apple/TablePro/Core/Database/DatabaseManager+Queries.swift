@@ -35,15 +35,22 @@ extension DatabaseManager {
 
     /// Test a connection without keeping it open
     func testConnection(
-        _ connection: DatabaseConnection,
+        _ requested: DatabaseConnection,
         sshPassword: String? = nil,
         passwordOverride: String? = nil
     ) async throws -> ConnectionTestResult {
+        // A shared row is tested through the SSH profile as it stands, the one its question names.
+        let connection = requested.isSharedRow ? SSHProfileStorage.shared.refreshingLinkedProfile(requested) : requested
         let timeoutEndpoint = ConnectionTimeoutEndpoint.database(connection.timeoutEndpointName)
         let queryTimeoutSeconds = ConnectionTimeoutPolicy.effectiveQueryTimeoutSeconds(
             configuredSeconds: connection.queryTimeoutSeconds,
             globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
         )
+
+        // A shared row's test signs in as its connect would, with this Mac's SSH credentials or files, so it asks first.
+        if connection.isSharedRow {
+            try await localCredentialConsent.check(connection, trigger: .request)
+        }
 
         // A remote file answers the only question this button asks without moving the file.
         if connection.activeTunnelKind == .remoteFile {

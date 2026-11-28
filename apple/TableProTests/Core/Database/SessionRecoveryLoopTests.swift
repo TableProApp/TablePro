@@ -88,6 +88,27 @@ struct SessionRecoveryLoopTests {
         }
     }
 
+    @Test("A recovery of a team row this Mac never approved stops and dials nothing")
+    func unapprovedSharedRowRecoveryStops() async throws {
+        let fixture = makeFixture { connection in
+            connection.origin = .teamLibrary
+            connection.sshTunnelMode = .inline(
+                SSHConfiguration(enabled: true, host: "ssh.example.com", username: "ops", authMethod: .sshAgent)
+            )
+        }
+        let expected = ConnectionFailureClassifier.info(for: LocalCredentialConsentError.needsPerson)
+
+        fixture.manager.beginRecovery(for: fixture.id, cause: .stoppedResponding)
+        let task = try loopTask(fixture)
+        await runNextAttempt(fixture)
+        await task.value
+
+        #expect(fixture.session?.liveness == .unreachable(expected))
+        #expect(FakeMSSQLPlugin.configurations(for: fixture.id).isEmpty)
+        #expect(await !SSHTunnelManager.shared.hasTunnel(connectionId: fixture.id))
+        await cleanUp(fixture)
+    }
+
     @Test("A dropped tunnel keeps the driver and the data while the loop redials")
     func dropKeepsTheDriverAndData() async {
         let fixture = makeFixture()
