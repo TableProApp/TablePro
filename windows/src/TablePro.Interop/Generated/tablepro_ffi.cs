@@ -770,6 +770,14 @@ static class _UniFFILib {
         ulong @uniffiHandle,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
     );
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void UniffiCallbackInterfaceAiApproverMethod0(
+        ulong @uniffiHandle,RustBuffer @request,IntPtr /*sbyte*/ @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
+    );
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void UniffiCallbackInterfaceAiApproverMethod1(
+        ulong @uniffiHandle,ulong @requestId,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
+    );
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void UniffiCallbackInterfaceAiReplyListenerMethod0(
         ulong @uniffiHandle,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
     );
@@ -943,6 +951,14 @@ static class _UniFFILib {
         public IntPtr @uniffiClone;
         public IntPtr @authenticate;
         public IntPtr @cancel;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct UniffiVTableCallbackInterfaceAiApprover
+    {
+        public IntPtr @uniffiFree;
+        public IntPtr @uniffiClone;
+        public IntPtr @approve;
+        public IntPtr @withdraw;
     }
     [StructLayout(LayoutKind.Sequential)]
     public struct UniffiVTableCallbackInterfaceAiReplyListener
@@ -1999,6 +2015,11 @@ static class _UniFFILib {
     
     
     
+    
+    
+    
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -2007,6 +2028,7 @@ static class _UniFFILib {
         UniffiCallbackInterfaceCloudKitTransport.Register();
         UniffiCallbackInterfaceHostSettings.Register();
         UniffiCallbackInterfaceAccountListener.Register();
+        UniffiCallbackInterfaceAiApprover.Register();
         UniffiCallbackInterfaceAiReplyListener.Register();
         UniffiCallbackInterfaceHostBrowser.Register();
         UniffiCallbackInterfaceHostDeviceStore.Register();
@@ -2393,6 +2415,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_aiassistant_reply(ulong @ptr,ulong @session,RustBuffer @settings,RustBuffer @chat,ulong @listener,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_aiassistant_reply_agentic(ulong @ptr,ulong @session,RustBuffer @settings,RustBuffer @chat,RustBuffer @projectId,ulong @host,ulong @approver,ulong @listener,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -6759,6 +6792,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     void uniffi_tablepro_ffi_fn_init_callback_vtable_aiapprover(IntPtr /*_UniFFILib.UniffiVTableCallbackInterfaceAiApprover*/ @vtable
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      void uniffi_tablepro_ffi_fn_init_callback_vtable_aireplylistener(IntPtr /*_UniFFILib.UniffiVTableCallbackInterfaceAiReplyListener*/ @vtable
     );
 
@@ -8355,6 +8399,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_method_aiassistant_reply(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_aiassistant_reply_agentic(
     );
 
     #if NET8_0_OR_GREATER
@@ -12083,6 +12138,28 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_aiapprover_approve(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_aiapprover_withdraw(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_aireplylistener_events_pending(
     );
 
@@ -12765,6 +12842,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_aiassistant_reply();
             if (checksum != 37338) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_aiassistant_reply` checksum `37338`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_aiassistant_reply_agentic();
+            if (checksum != 8969) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_aiassistant_reply_agentic` checksum `8969`, library returned `{checksum}`");
             }
         }
         {
@@ -14796,6 +14879,18 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_aiapprover_approve();
+            if (checksum != 10062) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_aiapprover_approve` checksum `10062`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_aiapprover_withdraw();
+            if (checksum != 50723) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_aiapprover_withdraw` checksum `50723`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_aireplylistener_events_pending();
             if (checksum != 59424) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_aireplylistener_events_pending` checksum `59424`, library returned `{checksum}`");
@@ -15817,6 +15912,8 @@ internal interface IAiAssistant {
     AiModelInfo[] OfflineModels(AiProviderTag @provider);
     AiReply Reply(DatabaseSession @session, AiSettingsArg @settings, AiChatArg @chat, AiReplyListener @listener);
     /// <exception cref="CoreException"></exception>
+    AiReply ReplyAgentic(DatabaseSession @session, AiSettingsArg @settings, AiChatArg @chat, string? @projectId, McpAppHost @host, AiApprover @approver, AiReplyListener @listener);
+    /// <exception cref="CoreException"></exception>
     Task SetKey(AiProviderTag @provider, SecretString @key);
     /// <exception cref="CoreException"></exception>
     Task<AiConversationStart> StartConversation(DatabaseSession @session, AiConversationArg @conversation, CancelToken? @cancel);
@@ -15974,6 +16071,15 @@ internal class AiAssistant : IAiAssistant, IDisposable {
         return CallWithPointer(thisPtr => FfiConverterTypeAiReply.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_tablepro_ffi_fn_method_aiassistant_reply(thisPtr, FfiConverterTypeDatabaseSession.INSTANCE.Lower(@session), FfiConverterTypeAiSettingsArg.INSTANCE.Lower(@settings), FfiConverterTypeAiChatArg.INSTANCE.Lower(@chat), FfiConverterTypeAiReplyListener.INSTANCE.Lower(@listener), ref _status)
+)));
+    }
+    
+    
+    /// <exception cref="CoreException"></exception>
+    public AiReply ReplyAgentic(DatabaseSession @session, AiSettingsArg @settings, AiChatArg @chat, string? @projectId, McpAppHost @host, AiApprover @approver, AiReplyListener @listener) {
+        return CallWithPointer(thisPtr => FfiConverterTypeAiReply.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_aiassistant_reply_agentic(thisPtr, FfiConverterTypeDatabaseSession.INSTANCE.Lower(@session), FfiConverterTypeAiSettingsArg.INSTANCE.Lower(@settings), FfiConverterTypeAiChatArg.INSTANCE.Lower(@chat), FfiConverterOptionalString.INSTANCE.Lower(@projectId), FfiConverterTypeMcpAppHost.INSTANCE.Lower(@host), FfiConverterTypeAiApprover.INSTANCE.Lower(@approver), FfiConverterTypeAiReplyListener.INSTANCE.Lower(@listener), ref _status)
 )));
     }
     
@@ -26954,6 +27060,52 @@ class FfiConverterTypeAiSettingsArg: FfiConverterRustBuffer<AiSettingsArg> {
 
 
 
+internal record AiWriteRequest (
+    ulong Id, 
+    string ConnectionId, 
+    string ConnectionName, 
+    string? Database, 
+    string Sql, 
+    bool Destructive
+) {
+}
+
+class FfiConverterTypeAiWriteRequest: FfiConverterRustBuffer<AiWriteRequest> {
+    public static FfiConverterTypeAiWriteRequest INSTANCE = new FfiConverterTypeAiWriteRequest();
+
+    public override AiWriteRequest Read(BigEndianStream stream) {
+        return new AiWriteRequest(
+            Id: FfiConverterUInt64.INSTANCE.Read(stream),
+            ConnectionId: FfiConverterString.INSTANCE.Read(stream),
+            ConnectionName: FfiConverterString.INSTANCE.Read(stream),
+            Database: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Sql: FfiConverterString.INSTANCE.Read(stream),
+            Destructive: FfiConverterBoolean.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(AiWriteRequest value) {
+        return 0
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.Id)
+            + FfiConverterString.INSTANCE.AllocationSize(value.ConnectionId)
+            + FfiConverterString.INSTANCE.AllocationSize(value.ConnectionName)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Database)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Sql)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Destructive);
+    }
+
+    public override void Write(AiWriteRequest value, BigEndianStream stream) {
+            FfiConverterUInt64.INSTANCE.Write(value.Id, stream);
+            FfiConverterString.INSTANCE.Write(value.ConnectionId, stream);
+            FfiConverterString.INSTANCE.Write(value.ConnectionName, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Database, stream);
+            FfiConverterString.INSTANCE.Write(value.Sql, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Destructive, stream);
+    }
+}
+
+
+
 internal record ApprovalRequestInfo (
     string Request, 
     string? Device, 
@@ -36067,6 +36219,22 @@ internal record AiReplyEvent {
         string Part
     ) : AiReplyEvent {}
     
+    public record ToolCall (
+        string Id,
+        string Name,
+        string Input
+    ) : AiReplyEvent {}
+    
+    public record ToolStarted (
+        string Id
+    ) : AiReplyEvent {}
+    
+    public record ToolFinished (
+        string Id,
+        string Output,
+        bool IsError
+    ) : AiReplyEvent {}
+    
     public record Finished (
         AiStopTag Stop,
         ulong? InputTokens,
@@ -36095,16 +36263,32 @@ class FfiConverterTypeAiReplyEvent : FfiConverterRustBuffer<AiReplyEvent>{
                     FfiConverterString.INSTANCE.Read(stream)
                 );
             case 2:
+                return new AiReplyEvent.ToolCall(
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 3:
+                return new AiReplyEvent.ToolStarted(
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 4:
+                return new AiReplyEvent.ToolFinished(
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterBoolean.INSTANCE.Read(stream)
+                );
+            case 5:
                 return new AiReplyEvent.Finished(
                     FfiConverterTypeAiStopTag.INSTANCE.Read(stream),
                     FfiConverterOptionalUInt64.INSTANCE.Read(stream),
                     FfiConverterOptionalUInt64.INSTANCE.Read(stream)
                 );
-            case 3:
+            case 6:
                 return new AiReplyEvent.Failed(
                     FfiConverterTypeBoxedErrorInfo.INSTANCE.Read(stream)
                 );
-            case 4:
+            case 7:
                 return new AiReplyEvent.Stopped(
                 );
             default:
@@ -36117,6 +36301,19 @@ class FfiConverterTypeAiReplyEvent : FfiConverterRustBuffer<AiReplyEvent>{
             case AiReplyEvent.Text variant_value:
                 return 4
                     + FfiConverterString.INSTANCE.AllocationSize(variant_value.Part);
+            case AiReplyEvent.ToolCall variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Id)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Name)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Input);
+            case AiReplyEvent.ToolStarted variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Id);
+            case AiReplyEvent.ToolFinished variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Id)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Output)
+                    + FfiConverterBoolean.INSTANCE.AllocationSize(variant_value.IsError);
             case AiReplyEvent.Finished variant_value:
                 return 4
                     + FfiConverterTypeAiStopTag.INSTANCE.AllocationSize(variant_value.Stop)
@@ -36138,18 +36335,34 @@ class FfiConverterTypeAiReplyEvent : FfiConverterRustBuffer<AiReplyEvent>{
                 stream.WriteInt(1);
                 FfiConverterString.INSTANCE.Write(variant_value.Part, stream);
                 break;
-            case AiReplyEvent.Finished variant_value:
+            case AiReplyEvent.ToolCall variant_value:
                 stream.WriteInt(2);
+                FfiConverterString.INSTANCE.Write(variant_value.Id, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.Name, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.Input, stream);
+                break;
+            case AiReplyEvent.ToolStarted variant_value:
+                stream.WriteInt(3);
+                FfiConverterString.INSTANCE.Write(variant_value.Id, stream);
+                break;
+            case AiReplyEvent.ToolFinished variant_value:
+                stream.WriteInt(4);
+                FfiConverterString.INSTANCE.Write(variant_value.Id, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.Output, stream);
+                FfiConverterBoolean.INSTANCE.Write(variant_value.IsError, stream);
+                break;
+            case AiReplyEvent.Finished variant_value:
+                stream.WriteInt(5);
                 FfiConverterTypeAiStopTag.INSTANCE.Write(variant_value.Stop, stream);
                 FfiConverterOptionalUInt64.INSTANCE.Write(variant_value.InputTokens, stream);
                 FfiConverterOptionalUInt64.INSTANCE.Write(variant_value.OutputTokens, stream);
                 break;
             case AiReplyEvent.Failed variant_value:
-                stream.WriteInt(3);
+                stream.WriteInt(6);
                 FfiConverterTypeBoxedErrorInfo.INSTANCE.Write(variant_value.Error, stream);
                 break;
             case AiReplyEvent.Stopped variant_value:
-                stream.WriteInt(4);
+                stream.WriteInt(7);
                 break;
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeAiReplyEvent.Write()", value));
@@ -46124,6 +46337,130 @@ class FfiConverterTypeAccountListener: FfiConverter<AccountListener, ulong> {
     }
 
     public override void Write(AccountListener value, BigEndianStream stream) {
+        stream.WriteULong(Lower(value));
+    }
+}
+
+
+
+internal interface AiApprover {
+    bool Approve(AiWriteRequest @request);
+    void Withdraw(ulong @requestId);
+}
+
+class UniffiCallbackInterfaceAiApprover {
+    static void Approve(ulong @uniffiHandle,RustBuffer @request,IntPtr /*sbyte*/ @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err) {
+        var handle = @uniffiHandle;
+        try {
+            if (!FfiConverterTypeAiApprover.INSTANCE.handleMap.TryGet(handle, out var uniffiObject)) {
+                throw new InternalException($"No callback in handlemap '{handle}'");
+            }
+            var result =
+            uniffiObject.Approve(
+                FfiConverterTypeAiWriteRequest.INSTANCE.Lift(@request));
+            unsafe {
+                *(sbyte*)uniffiOutReturn = FfiConverterBoolean.INSTANCE.Lower(result);
+            }
+
+            _uniffi_out_err.code = UniffiCallbackResponseStatus.SUCCESS;
+        }
+        catch (System.Exception e){
+            _uniffi_out_err.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
+            try {
+                _uniffi_out_err.error_buf = FfiConverterString.INSTANCE.Lower(e.Message);
+            }
+            catch {
+            }
+        }
+    }
+    static void Withdraw(ulong @uniffiHandle,ulong @requestId,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err) {
+        var handle = @uniffiHandle;
+        try {
+            if (!FfiConverterTypeAiApprover.INSTANCE.handleMap.TryGet(handle, out var uniffiObject)) {
+                throw new InternalException($"No callback in handlemap '{handle}'");
+            }
+            uniffiObject.Withdraw(
+                FfiConverterUInt64.INSTANCE.Lift(@requestId));
+
+            _uniffi_out_err.code = UniffiCallbackResponseStatus.SUCCESS;
+        }
+        catch (System.Exception e){
+            _uniffi_out_err.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
+            try {
+                _uniffi_out_err.error_buf = FfiConverterString.INSTANCE.Lower(e.Message);
+            }
+            catch {
+            }
+        }
+    }
+
+    static void UniffiFree(ulong @handle) {
+        FfiConverterTypeAiApprover.INSTANCE.handleMap.Remove(@handle);
+    }
+
+    static ulong UniffiClone(ulong @handle) {
+        try {
+            if (!FfiConverterTypeAiApprover.INSTANCE.handleMap.TryGet(@handle, out var obj)) {
+                throw new InternalException($"No callback in handlemap '{@handle}'");
+            }
+            return FfiConverterTypeAiApprover.INSTANCE.handleMap.Insert(obj);
+        } catch (System.Exception) {
+            return 0; // 0 is never a valid handle; ConcurrentHandleMap starts at 1
+        }
+    }
+    static _UniFFILib.UniffiCallbackInterfaceAiApproverMethod0 _m0 = new _UniFFILib.UniffiCallbackInterfaceAiApproverMethod0(Approve);
+    static _UniFFILib.UniffiCallbackInterfaceAiApproverMethod1 _m1 = new _UniFFILib.UniffiCallbackInterfaceAiApproverMethod1(Withdraw);
+    static _UniFFILib.UniffiCallbackInterfaceFree _callback_interface_free = new _UniFFILib.UniffiCallbackInterfaceFree(UniffiFree);
+    static _UniFFILib.UniffiCallbackInterfaceClone _callback_interface_clone = new _UniFFILib.UniffiCallbackInterfaceClone(UniffiClone);
+
+    private static GCHandle? _vtablePin;
+
+    public static void Register() {
+        if (_vtablePin.HasValue) return;
+        _UniFFILib.UniffiVTableCallbackInterfaceAiApprover _vtable = new _UniFFILib.UniffiVTableCallbackInterfaceAiApprover {
+            @approve = Marshal.GetFunctionPointerForDelegate(_m0),
+            @withdraw = Marshal.GetFunctionPointerForDelegate(_m1),
+            @uniffiFree = Marshal.GetFunctionPointerForDelegate(_callback_interface_free),
+            @uniffiClone = Marshal.GetFunctionPointerForDelegate(_callback_interface_clone),
+        };
+
+        // Pin the vtable so the GC never moves it. The GCHandle is intentionally never freed —
+        // this pin must remain valid for the process lifetime.
+        _vtablePin = GCHandle.Alloc(_vtable, GCHandleType.Pinned);
+        _UniFFILib.uniffi_tablepro_ffi_fn_init_callback_vtable_aiapprover(_vtablePin.Value.AddrOfPinnedObject());
+    }
+}
+
+
+
+
+// The ffiConverter which transforms the Callbacks in to Handles to pass to Rust.
+class FfiConverterTypeAiApprover: FfiConverter<AiApprover, ulong> {
+    public static FfiConverterTypeAiApprover INSTANCE = new FfiConverterTypeAiApprover();
+
+    public ConcurrentHandleMap<AiApprover> handleMap = new ConcurrentHandleMap<AiApprover>();
+
+    public override ulong Lower(AiApprover value) {
+        return handleMap.Insert(value);
+    }
+
+    public override AiApprover Lift(ulong value) {
+        if (handleMap.TryGet(value, out var uniffiCallback)) {
+            return uniffiCallback;
+        } else {
+            throw new InternalException($"No callback in handlemap '{value}'");
+        }
+    }
+
+    public override AiApprover Read(BigEndianStream stream) {
+        return Lift(stream.ReadULong());
+    }
+
+    public override int AllocationSize(AiApprover value) {
+        return 8;
+    }
+
+    public override void Write(AiApprover value, BigEndianStream stream) {
         stream.WriteULong(Lower(value));
     }
 }

@@ -32,7 +32,8 @@ pub use query_tools::{DEFAULT_ROWS, DEFAULT_TIMEOUT_SECONDS, MAX_QUERY_BYTES, MA
 pub use seen_clients::SeenClient;
 pub use token_vault::{ObtainError, TokenVault, obtain_token, replace_token};
 pub use tool_context::ToolContext;
-pub use tool_server::catalog;
+pub use tool_error::ToolError;
+pub use tool_server::{catalog, dispatch_tool};
 
 /// The port a fresh install listens on, the macOS app's as well.
 pub const DEFAULT_PORT: u16 = 23508;
