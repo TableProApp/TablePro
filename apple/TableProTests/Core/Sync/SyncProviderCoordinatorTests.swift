@@ -762,7 +762,7 @@ struct SyncProviderCoordinatorTests {
         fixture.coordinator.start()
         await fixture.coordinator.passesFinished()
         #expect(fixture.engine.read { $0.categories } == [
-            SyncCategoriesArg(offKinds: ["favourite_table"], passwords: false)
+            SyncCategoriesArg(offKinds: ["favourite_table"], passwords: true)
         ])
 
         fixture.settings.syncTableFavorites = true
@@ -770,7 +770,7 @@ struct SyncProviderCoordinatorTests {
         try await waitUntil { fixture.engine.read { $0.categories.count } == 2 }
         await fixture.coordinator.passesFinished()
 
-        #expect(fixture.engine.read { $0.categories }.last == SyncCategoriesArg(offKinds: [], passwords: false))
+        #expect(fixture.engine.read { $0.categories }.last == SyncCategoriesArg(offKinds: [], passwords: true))
         #expect(fixture.passes.last == .person)
     }
 

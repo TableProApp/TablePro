@@ -25,8 +25,32 @@ struct SyncSettingsTests {
         var expected = Self.everythingOn
         expected.syncConnections = false
         expected.syncPasswords = false
+        expected.syncPasswordsOnTableProSync = false
         #expect(result == expected)
         #expect(!result.syncsPasswords)
+    }
+
+    @Test("Passwords sync by default on TablePro Sync, and iCloud Keychain stays off until the person turns it on")
+    func passwordsDefaultPerProvider() {
+        let settings = SyncSettings.default
+
+        #expect(settings.passwordSwitch(on: .tableproSync))
+        #expect(!settings.passwordSwitch(on: .iCloud))
+        #expect(!settings.passwordSwitch(on: .off))
+    }
+
+    @Test("Each provider's Passwords switch changes only its own", arguments: [SyncProviderSetting.tableproSync, .iCloud])
+    func passwordSwitchPerProvider(provider: SyncProviderSetting) {
+        let other: SyncProviderSetting = provider == .tableproSync ? .iCloud : .tableproSync
+        let before = SyncSettings.default.passwordSwitch(on: other)
+
+        let flipped = SyncSettings.default.settingPasswords(
+            !SyncSettings.default.passwordSwitch(on: provider),
+            on: provider
+        )
+
+        #expect(flipped.passwordSwitch(on: provider) != SyncSettings.default.passwordSwitch(on: provider))
+        #expect(flipped.passwordSwitch(on: other) == before)
     }
 
     @Test("Turning Connections on keeps Passwords as it was", arguments: [true, false])
@@ -88,6 +112,16 @@ struct SyncSettingsProviderTests {
     func providerWithTheSwitchOff() throws {
         #expect(try Self.decode(#"{"enabled": false, "provider": "tablepro-sync"}"#).provider == .tableproSync)
         #expect(try Self.decode(#"{"enabled": false, "provider": "icloud"}"#).provider == .off)
+    }
+
+    @Test("Settings written before TablePro Sync had its own Passwords switch read it on, and it is written back")
+    func tableProSyncPasswordsReadOnWhenAbsent() throws {
+        let settings = try Self.decode(#"{"enabled": false, "provider": "tablepro-sync", "syncPasswords": false}"#)
+
+        #expect(settings.syncPasswordsOnTableProSync)
+        #expect(!settings.syncPasswords)
+        #expect(try Self.encoded(settings)["syncPasswordsOnTableProSync"] as? Bool == true)
+        #expect(try Self.decode(#"{"syncPasswordsOnTableProSync": false}"#).syncPasswordsOnTableProSync == false)
     }
 
     @Test("A provider this build does not know reads from the switch and keeps every other field")

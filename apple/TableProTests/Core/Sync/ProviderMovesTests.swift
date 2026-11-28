@@ -612,7 +612,7 @@ struct ProviderMovesTests {
     @Test("On TablePro Sync passwords follow their own switch, not iCloud Keychain's")
     func passwordsOnTableProSync() {
         var settings = SyncSettings.default
-        settings.syncPasswords = true
+        settings.syncPasswords = false
         settings.provider = .tableproSync
         #expect(SyncProviderCoordinator.categories(settings).passwords)
         settings.syncConnections = false
