@@ -42,7 +42,7 @@ internal extension NSTableView {
 
     func contextMenuIdentity(ofRow row: Int) -> AnyHashable? {
         if let outline = self as? NSOutlineView {
-            return (outline.item(atRow: row) as AnyObject?).map { AnyHashable(ObjectIdentifier($0)) }
+            return outline.item(atRow: row).map { AnyHashable(ObjectIdentifier($0 as AnyObject)) }
         }
         return (self as? any ContextMenuRowIdentifying)?.contextMenuRowIdentity(row)
     }
@@ -75,15 +75,32 @@ internal extension NSTableView {
     }
 
     // Deferred, because a Show Menu request has to return before the menu starts tracking or the client times out.
-    // A reload in between can put another item on the row, and then nothing opens.
     func scheduleContextMenu(row: Int, column: Int) {
-        let identity = contextMenuIdentity(ofRow: row)
-        DispatchQueue.main.async { [weak self] in
-            guard let self, (0..<numberOfRows).contains(row), contextMenuIdentity(ofRow: row) == identity,
-                  let event = contextMenuEvent(row: row, column: column),
-                  let menu = menu(for: event) else { return }
-            NSMenu.popUpContextMenu(menu, with: event, for: self)
-        }
+        let request = DeferredContextMenu(table: self, row: row, column: column)
+        DispatchQueue.main.async { request.present() }
+    }
+}
+
+@MainActor
+private final class DeferredContextMenu {
+    private weak var table: NSTableView?
+    private let row: Int
+    private let column: Int
+    private let identity: AnyHashable?
+
+    init(table: NSTableView, row: Int, column: Int) {
+        self.table = table
+        self.row = row
+        self.column = column
+        identity = table.contextMenuIdentity(ofRow: row)
+    }
+
+    // A reload in between can put another item on the row, and then nothing opens.
+    func present() {
+        guard let table, (0..<table.numberOfRows).contains(row), table.contextMenuIdentity(ofRow: row) == identity,
+              let event = table.contextMenuEvent(row: row, column: column),
+              let menu = table.menu(for: event) else { return }
+        NSMenu.popUpContextMenu(menu, with: event, for: table)
     }
 }
 
