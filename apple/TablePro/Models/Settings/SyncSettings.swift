@@ -13,7 +13,10 @@ struct SyncSettings: Codable, Equatable {
     var syncConnections: Bool
     var syncGroupsAndTags: Bool
     var syncSettings: Bool
+    // iCloud Keychain's switch, off until the person turns it on.
     var syncPasswords: Bool
+    // TablePro Sync's: its envelopes are end-to-end encrypted, so everything syncs by default (core ADR 0044).
+    var syncPasswordsOnTableProSync: Bool
     var syncSSHProfiles: Bool
     var syncCredentialProfiles: Bool
     var syncTableFavorites: Bool
@@ -39,6 +42,7 @@ struct SyncSettings: Codable, Equatable {
         syncGroupsAndTags: Bool,
         syncSettings: Bool,
         syncPasswords: Bool = false,
+        syncPasswordsOnTableProSync: Bool = true,
         syncSSHProfiles: Bool = true,
         syncCredentialProfiles: Bool = true,
         syncTableFavorites: Bool = true,
@@ -51,6 +55,7 @@ struct SyncSettings: Codable, Equatable {
         self.syncGroupsAndTags = syncGroupsAndTags
         self.syncSettings = syncSettings
         self.syncPasswords = syncPasswords
+        self.syncPasswordsOnTableProSync = syncPasswordsOnTableProSync
         self.syncSSHProfiles = syncSSHProfiles
         self.syncCredentialProfiles = syncCredentialProfiles
         self.syncTableFavorites = syncTableFavorites
@@ -61,6 +66,7 @@ struct SyncSettings: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case enabled, provider, syncConnections, syncGroupsAndTags, syncSettings, syncPasswords, syncSSHProfiles
+        case syncPasswordsOnTableProSync
         case syncCredentialProfiles, syncTableFavorites, syncDatabaseFavorites, syncSQLFavorites, syncTableFolders
     }
 
@@ -75,6 +81,10 @@ struct SyncSettings: Codable, Equatable {
         syncGroupsAndTags = container.decodeSetting(.syncGroupsAndTags, default: fallback.syncGroupsAndTags)
         syncSettings = container.decodeSetting(.syncSettings, default: fallback.syncSettings)
         syncPasswords = container.decodeSetting(.syncPasswords, default: fallback.syncPasswords)
+        syncPasswordsOnTableProSync = container.decodeSetting(
+            .syncPasswordsOnTableProSync,
+            default: fallback.syncPasswordsOnTableProSync
+        )
         syncSSHProfiles = container.decodeSetting(.syncSSHProfiles, default: fallback.syncSSHProfiles)
         syncCredentialProfiles = container.decodeSetting(.syncCredentialProfiles, default: fallback.syncCredentialProfiles)
         syncTableFavorites = container.decodeSetting(.syncTableFavorites, default: fallback.syncTableFavorites)
@@ -91,6 +101,7 @@ struct SyncSettings: Codable, Equatable {
         try container.encode(syncGroupsAndTags, forKey: .syncGroupsAndTags)
         try container.encode(syncSettings, forKey: .syncSettings)
         try container.encode(syncPasswords, forKey: .syncPasswords)
+        try container.encode(syncPasswordsOnTableProSync, forKey: .syncPasswordsOnTableProSync)
         try container.encode(syncSSHProfiles, forKey: .syncSSHProfiles)
         try container.encode(syncCredentialProfiles, forKey: .syncCredentialProfiles)
         try container.encode(syncTableFavorites, forKey: .syncTableFavorites)
@@ -105,6 +116,7 @@ struct SyncSettings: Codable, Equatable {
         syncGroupsAndTags: true,
         syncSettings: true,
         syncPasswords: false,
+        syncPasswordsOnTableProSync: true,
         syncSSHProfiles: true,
         syncCredentialProfiles: true,
         syncTableFavorites: true,
@@ -118,12 +130,28 @@ struct SyncSettings: Codable, Equatable {
         enabled && syncConnections && syncPasswords
     }
 
+    // The Passwords switch the person sees: each provider keeps its own.
+    func passwordSwitch(on provider: SyncProviderSetting) -> Bool {
+        provider == .tableproSync ? syncPasswordsOnTableProSync : syncPasswords
+    }
+
+    func settingPasswords(_ on: Bool, on provider: SyncProviderSetting) -> SyncSettings {
+        var copy = self
+        if provider == .tableproSync {
+            copy.syncPasswordsOnTableProSync = on
+        } else {
+            copy.syncPasswords = on
+        }
+        return copy
+    }
+
     // Passwords ride on connection records, so turning Connections off turns them off in the same write.
     func settingConnections(_ on: Bool) -> SyncSettings {
         var copy = self
         copy.syncConnections = on
         if !on {
             copy.syncPasswords = false
+            copy.syncPasswordsOnTableProSync = false
         }
         return copy
     }

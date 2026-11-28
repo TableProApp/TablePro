@@ -243,6 +243,7 @@ final class SyncEngineHost {
             items: environment.deviceItems,
             accessGroup: KeychainHelper.resolveAccessGroup()
         )
+        let syncedSecrets = KeychainSyncedSecrets(keychain: environment.keychain)
         return SyncEngineHost(
             transport: transport,
             keepICloudAccount: { account in
@@ -270,6 +271,7 @@ final class SyncEngineHost {
                     settings: settingsHost,
                     deviceStore: deviceStore,
                     legacyMirror: mirror,
+                    syncedSecrets: syncedSecrets,
                     listener: listener
                 )
             }

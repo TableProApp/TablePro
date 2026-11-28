@@ -334,7 +334,7 @@ struct SyncSettingsView: View {
             }
             .accessibilityIdentifier("settings-sync-category-connections")
 
-            Toggle(isOn: $settings.syncPasswords) {
+            Toggle(isOn: passwords) {
                 Text("Passwords")
                 Text(passwordsDetail)
             }
@@ -388,6 +388,15 @@ struct SyncSettingsView: View {
         }
         return String(
             localized: "Stored in iCloud Keychain, end-to-end encrypted. Applies to each password the next time you save it."
+        )
+    }
+
+    // iCloud Keychain and TablePro Sync each keep their own switch.
+    private var passwords: Binding<Bool> {
+        let settings = $settings
+        return Binding(
+            get: { settings.wrappedValue.passwordSwitch(on: settings.wrappedValue.provider) },
+            set: { settings.wrappedValue = settings.wrappedValue.settingPasswords($0, on: settings.wrappedValue.provider) }
         )
     }
 

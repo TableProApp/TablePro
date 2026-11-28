@@ -32,8 +32,8 @@ extension SyncProviderCoordinator {
     }
 
     // The kinds this Mac's switches leave out, and whether passwords ride along. A connection project groups connections,
-    // so it goes with them. The password switch holds on either provider: `syncsPasswords` also asks for iCloud on, which
-    // TablePro Sync turns off, and envelopes would then never sync.
+    // so it goes with them. Only TablePro Sync carries envelopes, so its own Passwords switch decides, whatever provider
+    // the engine is opened for: a move to it plans the passwords it will seal (core ADR 0054, Moving between providers).
     nonisolated static func categories(_ settings: SyncSettings) -> SyncCategoriesArg {
         var off = SyncRecordType.allCases
             .filter { !settings.syncs($0) }
@@ -41,7 +41,10 @@ extension SyncProviderCoordinator {
         if !settings.syncConnections, !off.contains(connectionProjectKind) {
             off.append(connectionProjectKind)
         }
-        return SyncCategoriesArg(offKinds: off, passwords: settings.syncConnections && settings.syncPasswords)
+        return SyncCategoriesArg(
+            offKinds: off,
+            passwords: settings.syncConnections && settings.syncPasswordsOnTableProSync
+        )
     }
 
     nonisolated static let connectionProjectKind = SyncRecordType.project.coreKind

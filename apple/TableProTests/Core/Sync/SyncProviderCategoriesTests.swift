@@ -3,17 +3,28 @@ import TableProFFI
 import Testing
 
 struct SyncProviderCategoriesTests {
-    @Test("With iCloud off, as TablePro Sync leaves it, the password switch still decides whether envelopes sync")
-    func passwordSwitchHoldsOnTableProSync() {
+    @Test("TablePro Sync's own Passwords switch, on by default, decides whether envelopes sync, and iCloud Keychain's never does")
+    func tableProSyncPasswordSwitchDecides() {
         var settings = SyncSettings.default
-        settings.enabled = false
-        settings.syncPasswords = true
+        settings.provider = .tableproSync
 
         #expect(SyncProviderCoordinator.categories(settings).passwords)
 
-        settings.syncPasswords = false
+        settings.syncPasswords = true
+        settings.syncPasswordsOnTableProSync = false
 
         #expect(!SyncProviderCoordinator.categories(settings).passwords)
+    }
+
+    @Test("A move from iCloud plans the passwords it will seal, with iCloud Keychain's switch off as it starts")
+    func moveFromICloudPlansPasswords() {
+        var settings = SyncSettings.default
+        settings.enabled = true
+
+        let config = SyncEngineHost.openConfig(provider: .icloud, settings: settings, icloudAccount: nil)
+
+        #expect(!settings.syncsPasswords)
+        #expect(config.categories.passwords)
     }
 
     @Test("A connection project goes with the connections")
@@ -32,11 +43,10 @@ struct SyncProviderCategoriesTests {
         #expect(SyncProviderCoordinator.categories(settings).offKinds == ["macos_settings"])
     }
 
-    @Test("Sync opened for TablePro Sync, iCloud off and passwords on, tells the engine envelopes sync, as a later change does")
+    @Test("Sync opened for TablePro Sync tells the engine envelopes sync, as a later change does")
     func openOnTableProSyncCarriesPasswords() {
         var settings = SyncSettings.default
-        settings.enabled = false
-        settings.syncPasswords = true
+        settings.provider = .tableproSync
         settings.syncTableFavorites = false
 
         let config = SyncEngineHost.openConfig(provider: .tableproSync, settings: settings, icloudAccount: nil)
