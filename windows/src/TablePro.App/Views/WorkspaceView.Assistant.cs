@@ -135,7 +135,9 @@ public sealed partial class WorkspaceView
             () => (ActiveTab as QueryTabView)?.Editor?.Text,
             () => (ActiveTab as QueryTabView)?.Database,
             InsertFromAssistant,
-            () => Host?.ShowSettings()));
+            () => Host?.ShowSettings(),
+            () => _workbench.McpHost,
+            () => _workbench.ActiveProject));
         pane.CloseRequested += (_, _) =>
         {
             HideSidePane();

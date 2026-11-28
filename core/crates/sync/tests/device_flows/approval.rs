@@ -78,6 +78,25 @@ async fn an_approved_device_approves_a_new_one_after_both_see_the_same_words() {
     );
 }
 
+// The approver lists the request with the row that wrote it, which the server serves beside it and the app names.
+#[tokio::test]
+async fn the_approver_lists_a_request_with_the_row_that_wrote_it() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::new(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::new(&server, account, "dev_n").await;
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+
+    a.pull().await;
+    let listed = a.service.approval_requests().await.unwrap();
+
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].request, request);
+    assert_eq!(listed[0].device, Some(n.row.clone()));
+}
+
 #[tokio::test]
 async fn a_second_open_request_from_one_row_is_request_pending() {
     let server = FakeServer::new();
@@ -1013,10 +1032,18 @@ async fn a_device_whose_rotation_still_settles_does_not_ask_for_approval() {
 async fn approval_under_an_uncompared_dsk(
     server: &std::sync::Arc<FakeServer>,
     account: tablepro_keys::encoding::AccountId,
+    on_disk: bool,
 ) -> (Device, tablepro_keys::encoding::RequestId, [u8; 32]) {
-    let a = Device::new(server, account, "dev_a").await;
+    let device = |row| async move {
+        if on_disk {
+            Device::on_disk(server, account, row).await
+        } else {
+            Device::new(server, account, row).await
+        }
+    };
+    let a = device("dev_a").await;
     a.genesis().await;
-    let n = Device::new(server, account, "dev_n").await;
+    let n = device("dev_n").await;
     n.pull().await;
     let request = n.service.request_approval().await.unwrap();
     a.pull().await;
@@ -1099,7 +1126,7 @@ async fn approval_under_an_uncompared_dsk(
 async fn n_refusing_an_approval_the_server_applied_revokes_the_key_device() {
     let server = FakeServer::new();
     let account = new_account();
-    let (n, request, dsk) = approval_under_an_uncompared_dsk(&server, account).await;
+    let (n, request, dsk) = approval_under_an_uncompared_dsk(&server, account, false).await;
     server.approve(&n.row, dsk);
     let pushes = n.wire.pushed.lock().unwrap().len();
 
@@ -1116,7 +1143,7 @@ async fn n_refusing_an_approval_the_server_applied_revokes_the_key_device() {
 async fn a_revoke_answered_device_removed_is_met() {
     let server = FakeServer::new();
     let account = new_account();
-    let (n, request, dsk) = approval_under_an_uncompared_dsk(&server, account).await;
+    let (n, request, dsk) = approval_under_an_uncompared_dsk(&server, account, false).await;
     server.approve(&n.row, dsk);
     n.wire
         .fail_next_revoke(tablepro_sync::api::transport::TransportError::DeviceRemoved);
@@ -1125,4 +1152,198 @@ async fn a_revoke_answered_device_removed_is_met() {
 
     assert!(n.service.device_keys().await.unwrap().pending.is_none());
     n.service.request_approval().await.unwrap();
+}
+
+// The real state file has one connection, so a flow that begins a transaction while it holds one waits out sqlx's
+// acquire timeout and fails with `sync.state.io`. Each side of the session runs here on that file.
+
+#[tokio::test]
+async fn both_sides_of_a_session_finish_on_the_real_state_file() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::on_disk(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::on_disk(&server, account, "dev_n").await;
+
+    let request = approve(&n, &a).await;
+
+    assert_eq!(n.av().await, 1);
+    assert_eq!(
+        a.service.approval_session(request).await.unwrap().phase,
+        SessionPhase::Approved
+    );
+}
+
+#[tokio::test]
+async fn a_cancel_and_words_that_differ_end_sessions_on_the_real_state_file() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::on_disk(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::on_disk(&server, account, "dev_n").await;
+    n.pull().await;
+    let cancelled = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(cancelled).await.unwrap();
+    a.service.cancel_session(cancelled).await.unwrap();
+    n.pull().await;
+    let differs = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(differs).await.unwrap();
+    n.pull().await;
+    n.words(differs).await;
+
+    n.service.words_differ(differs).await.unwrap();
+    a.pull().await;
+
+    let user = SessionPhase::Cancelled {
+        reason: SessionEnd::User,
+    };
+    let mismatch = SessionPhase::Cancelled {
+        reason: SessionEnd::Mismatch,
+    };
+    assert_eq!(n.service.approval_session(cancelled).await.unwrap().phase, user);
+    assert_eq!(a.service.approval_session(differs).await.unwrap().phase, mismatch);
+}
+
+#[tokio::test]
+async fn a_replace_during_a_session_sends_the_cancel_on_the_real_state_file() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::on_disk(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let n = Device::on_disk(&server, account, "dev_n").await;
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(request).await.unwrap();
+    n.pull().await;
+    n.words(request).await;
+    a.pull().await;
+    a.words(request).await;
+    let draft = a.service.begin_replace(r).await.unwrap();
+    a.service
+        .finish_replace(
+            draft.recovery.draft,
+            crate::harness::typed_back(&draft.recovery),
+            Vec::new(),
+        )
+        .await
+        .unwrap();
+    a.server_approves().await;
+    a.pull().await;
+
+    let error = a.service.confirm_session(request).await.unwrap_err();
+
+    assert_eq!(error.code(), "keys.session");
+    assert!(stored(&server, account, "key.sas", &format!("{}/cancel", request.to_wire())).is_some());
+}
+
+// The server applied the approval and its answer was lost; the pull then serves the objects A holds as candidates, and
+// the next step finds them applied.
+#[tokio::test]
+async fn an_approval_whose_answer_was_lost_finishes_on_the_real_state_file() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::on_disk(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::on_disk(&server, account, "dev_n").await;
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(request).await.unwrap();
+    n.pull().await;
+    n.words(request).await;
+    a.pull().await;
+    a.words(request).await;
+    a.wire.lose_next_answer();
+
+    let lost = a.service.confirm_session(request).await.unwrap();
+    a.pull().await;
+    let applied = a.service.approval_session(request).await.unwrap();
+    n.pull().await;
+    let merged = n.service.confirm_session(request).await.unwrap();
+
+    assert_eq!(lost.phase, SessionPhase::Confirmed);
+    assert_eq!(applied.phase, SessionPhase::Approved);
+    assert_eq!(merged.phase, SessionPhase::Approved);
+}
+
+#[tokio::test]
+async fn an_approval_a_rotation_passed_is_built_again_on_the_real_state_file() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::on_disk(&server, account, "dev_a").await;
+    let r = a.genesis().await;
+    let n = Device::on_disk(&server, account, "dev_n").await;
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(request).await.unwrap();
+    n.pull().await;
+    n.words(request).await;
+    a.pull().await;
+    a.words(request).await;
+    a.wire.refuse_next_push(RejectedCode::BadStatement);
+
+    let confirmed = a.service.confirm_session(request).await.unwrap();
+    let waiting = a.service.approval_session(request).await.unwrap();
+    crate::rotation::rotate_keeping_only_self(&a, &r).await;
+    a.server_approves().await;
+    a.pull().await;
+    a.service.resume_approval(request).await.unwrap();
+    n.pull().await;
+    let merged = n.service.confirm_session(request).await.unwrap();
+
+    assert_eq!(confirmed.phase, SessionPhase::Confirmed);
+    assert_eq!(waiting.phase, SessionPhase::Confirmed);
+    assert_eq!(merged.phase, SessionPhase::Approved);
+}
+
+#[tokio::test]
+async fn n_refusing_an_approval_ends_its_session_on_the_real_state_file() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let (n, request, dsk) = approval_under_an_uncompared_dsk(&server, account, true).await;
+    server.approve(&n.row, dsk);
+
+    let error = n.service.resume_approval(request).await.unwrap_err();
+
+    assert_eq!(error.code(), "keys.not_compared");
+    assert!(!server.is_approved(&n.row));
+    assert_eq!(
+        n.service.approval_session(request).await.unwrap().phase,
+        SessionPhase::Cancelled {
+            reason: SessionEnd::User
+        }
+    );
+}
+
+// A's confirm landed and the commit of the approval it sealed did not: the person confirms again and the session
+// finishes, where it used to end on `keys.session`.
+#[tokio::test]
+async fn a_confirm_whose_step_failed_finishes_when_taken_again() {
+    let server = FakeServer::new();
+    let account = new_account();
+    let a = Device::on_disk(&server, account, "dev_a").await;
+    a.genesis().await;
+    let n = Device::on_disk(&server, account, "dev_n").await;
+    n.pull().await;
+    let request = n.service.request_approval().await.unwrap();
+    a.pull().await;
+    a.service.choose_request(request).await.unwrap();
+    n.pull().await;
+    n.words(request).await;
+    a.pull().await;
+    a.words(request).await;
+    a.fail_commit_after(1);
+
+    let failed = a.service.confirm_session(request).await.unwrap_err();
+    let again = a.service.confirm_session(request).await.unwrap();
+    n.pull().await;
+    let merged = n.service.confirm_session(request).await.unwrap();
+
+    assert_eq!(failed.code(), "sync.state.io");
+    assert_eq!(again.phase, SessionPhase::Approved);
+    assert_eq!(merged.phase, SessionPhase::Approved);
 }
