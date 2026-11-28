@@ -26,7 +26,8 @@ nonisolated enum SyncEngineRules {
         // picks Move my data or Start empty (core ADR 0066), a choice neither app has a sheet for yet.
         case .pullOnly, .newIdentity:
             return .error(.unexpected)
-        case .off, .idle:
+        // Values waiting for the person stop nothing; the count says they wait (core ADR 0044).
+        case .off, .idle, .needsApproval:
             return info.problem.flatMap(error(forProblem:)).map { .error($0) } ?? .idle
         }
     }

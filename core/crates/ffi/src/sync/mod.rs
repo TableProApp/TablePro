@@ -40,10 +40,10 @@ pub use legacy::{
 };
 pub use secrets::{HostSyncedSecrets, SyncedSecretParentTag, SyncedSecretRef};
 pub use service::{
-    ConflictChoiceTag, HeldReasonTag, HeldRecordInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag,
-    NewIdentityPlanInfo, PassReasonTag, PendingApprovalInfo, ScopeStatusInfo, SyncCategoriesArg, SyncConfig,
-    SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag, SyncRecordRef, SyncService, SyncStatusInfo,
-    TeamConflictInfo,
+    ConflictChoiceTag, FieldApprovalInfo, HeldReasonTag, HeldRecordInfo, MoveBackPlanInfo, MovePlanInfo,
+    NewIdentityChoiceTag, NewIdentityPlanInfo, PassReasonTag, RecordApprovalInfo, ScopeStatusInfo, SyncCategoriesArg,
+    SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag, SyncRecordRef, SyncService,
+    SyncStatusInfo, TeamConflictInfo,
 };
 pub use team_library::{
     TeamDeclinedArg, TeamFolderArg, TeamImportedEditArg, TeamLibraryImportArg, TeamLibraryItemInfo, TeamLibraryItemRef,

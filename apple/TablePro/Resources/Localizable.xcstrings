@@ -8970,6 +8970,9 @@
         }
       }
     },
+    "%1$@, from %2$@ to %3$@" : {
+
+    },
     "%1$@, line %2$d: %3$@" : {
       "localizations" : {
         "fr" : {
@@ -12218,6 +12221,9 @@
     "%lld changes here were never uploaded to the earlier account." : {
 
     },
+    "%lld changes need your approval" : {
+
+    },
     "%lld connection" : {
       "localizations" : {
         "fr" : {
@@ -15382,6 +15388,9 @@
       }
     },
     "1 change here was never uploaded to the earlier account." : {
+
+    },
+    "1 change needs your approval" : {
 
     },
     "1 character" : {
@@ -19203,6 +19212,9 @@
           }
         }
       }
+    },
+    "A profile not on this Mac" : {
+
     },
     "A project named “%@” already exists." : {
 
@@ -25839,6 +25851,9 @@
         }
       }
     },
+    "AI Tools Always Allowed" : {
+
+    },
     "AI Walkthrough" : {
       "localizations" : {
         "fr" : {
@@ -30670,6 +30685,12 @@
         }
       }
     },
+    "Applies every change listed on this Mac" : {
+
+    },
+    "Applies these values on this Mac" : {
+
+    },
     "Applies to columns added later. Existing columns keep their character set." : {
 
     },
@@ -31741,6 +31762,9 @@
     "Approve %@" : {
 
     },
+    "Approve All" : {
+
+    },
     "Approve Integration" : {
       "localizations" : {
         "fr" : {
@@ -31927,6 +31951,12 @@
           }
         }
       }
+    },
+    "Approving %lld changes…" : {
+
+    },
+    "Approving 1 change…" : {
+
     },
     "Approximate row count reported by the engine" : {
       "extractionState" : "manual",
@@ -34131,6 +34161,9 @@
           }
         }
       }
+    },
+    "Authentication Database" : {
+
     },
     "Authentication failed for user '%1$@' against database '%2$@'. Check the username, password, and Auth Database in the connection settings." : {
       "extractionState" : "manual",
@@ -42167,7 +42200,19 @@
     "Changed By" : {
 
     },
+    "Changed connection" : {
+
+    },
+    "Changed credential profile" : {
+
+    },
     "Changed Files" : {
+
+    },
+    "Changed item" : {
+
+    },
+    "Changed settings" : {
 
     },
     "Changed since the save" : {
@@ -42209,6 +42254,12 @@
           }
         }
       }
+    },
+    "Changed SSH profile" : {
+
+    },
+    "Changed Team Library connection" : {
+
     },
     "Changes" : {
       "extractionState" : "manual",
@@ -42372,6 +42423,9 @@
 
     },
     "Changes Unavailable" : {
+
+    },
+    "Changes Waiting for Your Approval" : {
 
     },
     "Changes you don’t commit are rolled back." : {
@@ -42572,6 +42626,9 @@
       }
     },
     "Channel" : {
+
+    },
+    "Channel Binding" : {
 
     },
     "Channels" : {
@@ -42998,6 +43055,9 @@
           }
         }
       }
+    },
+    "Chat mode" : {
+
     },
     "Chat, Agent mode, inline suggestions and query actions such as Explain and Optimize." : {
       "localizations" : {
@@ -76713,6 +76773,9 @@
         }
       }
     },
+    "DNS Seed List" : {
+
+    },
     "Do Not Decode" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -77127,6 +77190,12 @@
           }
         }
       }
+    },
+    "Don't Apply" : {
+
+    },
+    "Don't Apply %@" : {
+
     },
     "Don't Confirm %@" : {
 
@@ -113601,6 +113670,12 @@
         }
       }
     },
+    "Keeps this item off this Mac" : {
+
+    },
+    "Keeps this Mac's values" : {
+
+    },
     "Keeps up to %1$d versions from the last %2$d days on this Mac." : {
 
     },
@@ -131190,6 +131265,9 @@
     "New Column" : {
 
     },
+    "New connection" : {
+
+    },
     "New Connection" : {
       "localizations" : {
         "fr" : {
@@ -131349,6 +131427,9 @@
           }
         }
       }
+    },
+    "New credential profile" : {
+
     },
     "New database" : {
       "localizations" : {
@@ -131671,6 +131752,9 @@
     "New Index" : {
 
     },
+    "New item" : {
+
+    },
     "New Jump Host" : {
       "localizations" : {
         "fr" : {
@@ -131877,6 +131961,12 @@
           }
         }
       }
+    },
+    "New settings" : {
+
+    },
+    "New SSH profile" : {
+
     },
     "New Subfolder" : {
       "localizations" : {
@@ -132201,6 +132291,9 @@
           }
         }
       }
+    },
+    "New Team Library connection" : {
+
     },
     "New Theme" : {
       "localizations" : {
@@ -133222,6 +133315,9 @@
           }
         }
       }
+    },
+    "No changes are waiting." : {
+
     },
     "No changes to apply." : {
       "localizations" : {
@@ -167659,6 +167755,9 @@
         }
       }
     },
+    "Remote File Access" : {
+
+    },
     "Remote Server over SSH" : {
 
     },
@@ -170597,6 +170696,9 @@
           }
         }
       }
+    },
+    "Replica Set" : {
+
     },
     "Replies count against your Claude subscription limits. You share those limits with claude.ai and your own Claude Code sessions, so running out here stops your work there too." : {
       "localizations" : {
@@ -174726,6 +174828,9 @@
           }
         }
       }
+    },
+    "Review…" : {
+
     },
     "Revoke" : {
       "localizations" : {
@@ -192366,6 +192471,9 @@
         }
       }
     },
+    "Shows the changes from your other devices that wait for your approval" : {
+
+    },
     "Shows the setting to fix" : {
 
     },
@@ -195558,6 +195666,9 @@
         }
       }
     },
+    "Some items changed again. Review the new versions, then choose." : {
+
+    },
     "Some of these changes were applied before the save failed. The table was read again, and only the changes that were not applied are still staged." : {
 
     },
@@ -197759,6 +197870,9 @@
         }
       }
     },
+    "SSH Authentication" : {
+
+    },
     "SSH authentication cancelled." : {
       "localizations" : {
         "fr" : {
@@ -198376,6 +198490,9 @@
           }
         }
       }
+    },
+    "SSH Route" : {
+
     },
     "SSH Servers" : {
       "localizations" : {
@@ -213234,6 +213351,9 @@
     "The changes are in an open transaction on this connection. Commit or roll it back yourself." : {
 
     },
+    "The changes could not be read." : {
+
+    },
     "The changes to “%@” can't be saved yet." : {
 
     },
@@ -221305,12 +221425,12 @@
     "The server refused a change. The changes before it were saved." : {
 
     },
+    "The server refused the change. Try again." : {
+
+    },
     "The server refused the connection. Check the host and port, and that the Oracle listener is running." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
-    },
-    "The server refused the change. Try again." : {
-
     },
     "The server refused the request. Try again in a moment." : {
 
@@ -239168,6 +239288,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Unnamed" : {
+
+    },
     "Unnamed device" : {
 
     },
@@ -251351,6 +251474,9 @@
     "Your keys were reset." : {
 
     },
+    "Your Library" : {
+
+    },
     "Your license has expired" : {
       "localizations" : {
         "fr" : {
@@ -251518,6 +251644,12 @@
 
     },
     "Your other devices and the web portal show the reset until then." : {
+
+    },
+    "Your other devices changed connections or settings. Review them before they apply on this Mac." : {
+
+    },
+    "Your other devices changed these. They can change where a connection signs in, what it runs when it connects, or what AI features send, so nothing here applies on this Mac until you approve it." : {
 
     },
     "Your other devices sign out and join again from this Mac. Teammates confirm you again before you get team passwords." : {

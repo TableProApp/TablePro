@@ -42,7 +42,7 @@ async fn a_connection_new_to_a_device_waits_whole_until_its_destination_is_appro
 
     mini.sync().await;
     let held = mini.connections.get(&id(1));
-    let waiting = mini.sync.approvals().await.unwrap();
+    let waiting = mini.waiting().await;
     let status = mini.sync.status();
     mini.decide(key(&id(1)), "/host", true).await.unwrap();
     mini.sync().await;
@@ -74,7 +74,7 @@ async fn an_answer_to_a_value_a_pull_changed_since_applies_nothing_and_asks_agai
         .put(&id(1), json!({"name": "Prod", "host": "db.example.com"}));
     mini.sync().await;
     mac.sync().await;
-    let shown = mac.sync.approvals().await.unwrap();
+    let shown = mac.waiting().await;
     mini.connections
         .put(&id(1), json!({"name": "Prod", "host": "attacker.example.com"}));
     mini.sync().await;
@@ -84,7 +84,7 @@ async fn an_answer_to_a_value_a_pull_changed_since_applies_nothing_and_asks_agai
         .sync
         .decide_approval(key(&id(1)), "/host".to_owned(), shown[0].digest, true)
         .await;
-    let asked = mac.sync.approvals().await.unwrap();
+    let asked = mac.waiting().await;
 
     assert_eq!(shown[0].pulled, json!("db.example.com"));
     assert_eq!(answered.unwrap_err().code(), "sync.changed");
@@ -106,7 +106,7 @@ async fn a_connection_new_to_a_device_is_not_taken_on_an_answer_to_a_host_a_pull
         .put(&id(1), json!({"name": "Prod", "host": "db.example.com"}));
     mac.sync().await;
     mini.sync().await;
-    let shown = mini.sync.approvals().await.unwrap();
+    let shown = mini.waiting().await;
     mac.connections
         .put(&id(1), json!({"name": "Prod", "host": "attacker.example.com"}));
     mac.sync().await;
@@ -120,7 +120,7 @@ async fn a_connection_new_to_a_device_is_not_taken_on_an_answer_to_a_host_a_pull
 
     assert_eq!(answered.unwrap_err().code(), "sync.changed");
     assert_eq!(mini.connections.get(&id(1)), None);
-    let asked = mini.sync.approvals().await.unwrap();
+    let asked = mini.waiting().await;
     assert_eq!(asked.len(), 1);
     assert_eq!(asked[0].pulled, json!("attacker.example.com"));
 }
@@ -150,7 +150,7 @@ async fn a_pulled_host_change_waits_and_the_device_never_pushes_its_own_back_ove
         stored(&server, "connection", &id(1)),
         Some(json!({"name": "Prod 3", "host": "elsewhere.example.com"}))
     );
-    let waiting = mini.sync.approvals().await.unwrap();
+    let waiting = mini.waiting().await;
     assert_eq!(waiting.len(), 1);
     assert_eq!(waiting[0].current, Some(json!("db.internal")));
 }
@@ -173,7 +173,7 @@ async fn a_rejection_keeps_the_device_s_value_and_a_newer_pulled_value_asks_agai
     mini.decide(key(&id(1)), "/startup_commands", false).await.unwrap();
     mini.sync().await;
     let kept = mini.connections.get(&id(1));
-    let asked_after_rejecting = mini.sync.approvals().await.unwrap().len();
+    let asked_after_rejecting = mini.waiting().await.len();
     mac.connections
         .put(&id(1), json!({"name": "Prod", "startup_commands": "SET b = 2"}));
     mac.sync().await;
@@ -185,7 +185,7 @@ async fn a_rejection_keeps_the_device_s_value_and_a_newer_pulled_value_asks_agai
         stored(&server, "connection", &id(1)),
         Some(json!({"name": "Prod", "startup_commands": "SET b = 2"}))
     );
-    let waiting = mini.sync.approvals().await.unwrap();
+    let waiting = mini.waiting().await;
     assert_eq!(waiting.len(), 1);
     assert_eq!(waiting[0].pulled, json!("SET b = 2"));
 }
@@ -212,7 +212,7 @@ async fn a_decision_on_a_record_the_store_cannot_read_keeps_the_approval_waiting
 
     assert_eq!(rejected.unwrap_err().code(), "sync.adapter.unreadable");
     assert_eq!(approved.unwrap_err().code(), "sync.adapter.unreadable");
-    assert_eq!(mini.sync.approvals().await.unwrap().len(), 1);
+    assert_eq!(mini.waiting().await.len(), 1);
 }
 
 // A connection new to the device waits whole while a copy the store cannot read takes its id, as a restored file
@@ -520,7 +520,7 @@ async fn a_value_the_device_already_holds_asks_nothing_on_its_first_pass() {
 
     mini.sync().await;
 
-    assert!(mini.sync.approvals().await.unwrap().is_empty());
+    assert!(mini.waiting().await.is_empty());
     assert_eq!(mini.connections.get(&id(1)), Some(prod));
 }
 
@@ -563,14 +563,7 @@ async fn the_ai_options_0061_names_wait_and_the_inert_ones_apply() {
             json!({"chatMode": "ask", "maxToolRoundtrips": 5, "inlineSuggestionDebounceMs": 300})
         ))
     );
-    let mut fields: Vec<String> = mini
-        .sync
-        .approvals()
-        .await
-        .unwrap()
-        .into_iter()
-        .map(|waiting| waiting.field)
-        .collect();
+    let mut fields: Vec<String> = mini.waiting().await.into_iter().map(|waiting| waiting.field).collect();
     fields.sort();
     assert_eq!(fields, ["/options/chatMode", "/options/maxToolRoundtrips"]);
 }
@@ -1020,7 +1013,7 @@ async fn a_record_the_person_deletes_here_leaves_nothing_to_approve() {
     mac.connections.put(&id(1), json!({"name": "Prod", "host": "b"}));
     mac.sync().await;
     mini.sync().await;
-    let waiting = mini.sync.approvals().await.unwrap().len();
+    let waiting = mini.waiting().await.len();
 
     mini.connections.remove(&id(1));
     mini.sync().await;

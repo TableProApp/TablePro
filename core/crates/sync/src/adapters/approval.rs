@@ -10,13 +10,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use tablepro_records::Kind;
 use tablepro_records::merge::Merged;
 
 use super::carry::holds;
 use super::fields::{Rule, get, members, set};
 use crate::api::adapter::{LocalChange, RecordAdapter};
-use crate::api::control::{PendingApproval, approval_digest};
+use crate::api::control::{PendingApproval, RecordApproval, approval_digest, record_approval_digest};
 use crate::api::error::{AdapterError, SyncError};
 use crate::api::ids::{KindName, RecordKey, ScopeName};
 use crate::api::state::{
@@ -94,6 +95,20 @@ pub fn split(kind: Kind, key: &RecordKey, stored: Option<&Value>, merged: &Value
         }
         waiting = true;
         set(&mut out.fields, &pointer, old.cloned());
+    }
+    // A record new to the device lands only whole: once a pull brings a value the person has not seen, the values
+    // refused with it wait again, so the person decides the record as it is now.
+    if stored.is_none() && !out.put.is_empty() {
+        let again: Vec<ApprovalRow> = rows
+            .iter()
+            .filter(|row| matches!(row.decision, ApprovalDecision::Rejected { .. }) && seen.contains(&row.field))
+            .filter(|row| !out.clear.contains(&row.field) && !out.put.iter().any(|put| put.field == row.field))
+            .map(|row| ApprovalRow {
+                decision: ApprovalDecision::Waiting,
+                ..row.clone()
+            })
+            .collect();
+        out.put.extend(again);
     }
     out.clear.extend(
         rows.iter()
@@ -226,6 +241,46 @@ pub async fn held_members(
     Ok(held)
 }
 
+// What the person calls a record: its name, else its settings category.
+fn display_name(fields: &Value) -> Option<String> {
+    ["name", "category"]
+        .into_iter()
+        .find_map(|member| fields.get(member).and_then(Value::as_str))
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Tally {
+    // Records with at least one value waiting.
+    pub records: u32,
+    // SHA-256 over every waiting value, so a listener hears of a change the count alone would hide.
+    pub mark: [u8; 32],
+}
+
+// Over the rows the caller shows, in the state file's order.
+pub fn tally<'a>(rows: impl Iterator<Item = &'a ApprovalRow>) -> Tally {
+    let mut records = BTreeSet::new();
+    let mut hasher = Sha256::new();
+    for row in rows.filter(|row| row.decision == ApprovalDecision::Waiting) {
+        for part in [
+            row.key.scope.to_string().as_str(),
+            row.key.kind.as_str(),
+            row.key.record_id.as_str(),
+            row.field.as_str(),
+        ] {
+            hasher.update(u64::try_from(part.len()).unwrap_or(u64::MAX).to_be_bytes());
+            hasher.update(part.as_bytes());
+        }
+        hasher.update(approval_digest(&row.pulled));
+        records.insert(&row.key);
+    }
+    Tally {
+        records: u32::try_from(records.len()).unwrap_or(u32::MAX),
+        mark: hasher.finalize().into(),
+    }
+}
+
 // The store's copy of a record an approval waits on.
 enum StoreCopy {
     Held(Value),
@@ -293,31 +348,50 @@ impl Queue<'_> {
             .map_or(StoreCopy::Gone, |record| StoreCopy::Held(record.fields)))
     }
 
-    pub async fn waiting(&self) -> Result<Vec<PendingApproval>, SyncError> {
+    // One entry per record with a value waiting, its values in the state file's order, which `decide_record` reads
+    // them in too.
+    pub async fn waiting(&self) -> Result<Vec<RecordApproval>, SyncError> {
         let mut txn = self.state.begin().await?;
         let rows = txn.scan(&RowRange::Table(Table::Approvals)).await?;
-        drop(txn);
-        let mut out = Vec::new();
-        let mut copies: BTreeMap<RecordKey, Option<Value>> = BTreeMap::new();
+        let mut grouped: BTreeMap<RecordKey, Vec<ApprovalRow>> = BTreeMap::new();
         for row in rows {
             let Row::Approval(row) = row else { continue };
-            if row.decision != ApprovalDecision::Waiting {
-                continue;
+            if row.decision == ApprovalDecision::Waiting {
+                grouped.entry(row.key.clone()).or_default().push(row);
             }
-            if !copies.contains_key(&row.key) {
-                let copy = self.stored(&row.key).await?;
-                copies.insert(row.key.clone(), copy);
+        }
+        let mut pulled_copies = BTreeMap::new();
+        for key in grouped.keys() {
+            if let Some(Row::Held(held)) = txn.get(&RowKey::Held(key.clone())).await?
+                && held.reason == HeldReason::AwaitingApproval
+            {
+                pulled_copies.insert(key.clone(), held.record.fields);
             }
-            let current = copies
-                .get(&row.key)
-                .and_then(|copy| get(copy.as_ref(), &row.field))
-                .cloned();
-            out.push(PendingApproval {
-                key: row.key,
-                field: row.field,
-                digest: approval_digest(&row.pulled),
-                pulled: row.pulled,
-                current,
+        }
+        drop(txn);
+        let mut out = Vec::new();
+        for (key, rows) in grouped {
+            let stored = self.stored(&key).await?;
+            let held = pulled_copies.remove(&key);
+            let fields: Vec<PendingApproval> = rows
+                .into_iter()
+                .map(|row| PendingApproval {
+                    current: get(stored.as_ref(), &row.field).cloned(),
+                    digest: approval_digest(&row.pulled),
+                    field: row.field,
+                    pulled: row.pulled,
+                })
+                .collect();
+            let name = stored
+                .as_ref()
+                .or(held.as_ref().and_then(Option::as_ref))
+                .and_then(display_name);
+            out.push(RecordApproval {
+                new_record: held.is_some() && stored.is_none(),
+                digest: record_approval_digest(&fields),
+                key,
+                name,
+                fields,
             });
         }
         Ok(out)
@@ -327,12 +401,45 @@ impl Queue<'_> {
     // is asked about the new value (0066, Rules).
     pub async fn decide(&self, key: &RecordKey, field: &str, seen: [u8; 32], approve: bool) -> Result<(), SyncError> {
         let mut txn = self.state.begin().await?;
-        let Some(Row::Approval(mut row)) = txn.get(&RowKey::Approval(key.clone(), field.to_owned())).await? else {
+        let Some(Row::Approval(row)) = txn.get(&RowKey::Approval(key.clone(), field.to_owned())).await? else {
             return Err(SyncError::Unknown { what: "approval" });
         };
         if approval_digest(&row.pulled) != seen {
             return Err(SyncError::Changed { what: "approval" });
         }
+        drop(txn);
+        self.decide_rows(key, vec![row], approve).await
+    }
+
+    // Every value of the record that waits, as `waiting` listed them under `seen`.
+    pub async fn decide_record(&self, key: &RecordKey, seen: [u8; 32], approve: bool) -> Result<(), SyncError> {
+        let mut txn = self.state.begin().await?;
+        let rows: Vec<ApprovalRow> = rows_of(txn.as_mut(), key)
+            .await?
+            .into_iter()
+            .filter(|row| row.decision == ApprovalDecision::Waiting)
+            .collect();
+        drop(txn);
+        if rows.is_empty() {
+            return Err(SyncError::Unknown { what: "approval" });
+        }
+        let listed: Vec<PendingApproval> = rows
+            .iter()
+            .map(|row| PendingApproval {
+                field: row.field.clone(),
+                pulled: row.pulled.clone(),
+                digest: approval_digest(&row.pulled),
+                current: None,
+            })
+            .collect();
+        if record_approval_digest(&listed) != seen {
+            return Err(SyncError::Changed { what: "approval" });
+        }
+        self.decide_rows(key, rows, approve).await
+    }
+
+    async fn decide_rows(&self, key: &RecordKey, rows: Vec<ApprovalRow>, approve: bool) -> Result<(), SyncError> {
+        let mut txn = self.state.begin().await?;
         let held = match txn.get(&RowKey::Held(key.clone())).await? {
             Some(Row::Held(held)) if held.reason == HeldReason::AwaitingApproval => Some(held),
             _ => None,
@@ -340,14 +447,16 @@ impl Queue<'_> {
         drop(txn);
         let stored = self.decided_copy(key).await?;
         if let Some(held) = held {
-            return self.decide_held(row, held.record.fields, approve).await;
+            return self.decide_held(key, rows, held.record.fields, approve).await;
         }
         let adapter = self.adapter(key);
         let mut txn = self.state.begin().await?;
         match (stored, adapter) {
             (Some(mut fields), Some(adapter)) if approve => {
-                set(&mut fields, field, as_member(&row.pulled));
-                // The store first: a crash before the state commits leaves a row that a later pull clears.
+                for row in &rows {
+                    set(&mut fields, &row.field, as_member(&row.pulled));
+                }
+                // The store first: a crash before the state commits leaves rows that a later pull clears.
                 self.fence.check()?;
                 adapter
                     .apply(
@@ -358,16 +467,24 @@ impl Queue<'_> {
                         }],
                     )
                     .await?;
-                txn.delete(&RowKey::Approval(key.clone(), field.to_owned())).await?;
+                for row in rows {
+                    txn.delete(&RowKey::Approval(row.key, row.field)).await?;
+                }
             }
             (Some(fields), Some(_)) => {
-                row.decision = ApprovalDecision::Rejected {
-                    local: pulled_value(get(Some(&fields), field)),
-                };
-                txn.put(Row::Approval(row)).await?;
+                for mut row in rows {
+                    row.decision = ApprovalDecision::Rejected {
+                        local: pulled_value(get(Some(&fields), &row.field)),
+                    };
+                    txn.put(Row::Approval(row)).await?;
+                }
             }
             // The store no longer holds the record: nothing is left to decide.
-            _ => txn.delete(&RowKey::Approval(key.clone(), field.to_owned())).await?,
+            _ => {
+                for row in rows {
+                    txn.delete(&RowKey::Approval(row.key, row.field)).await?;
+                }
+            }
         }
         // The wait ends with its last approved member, and the copy from before it with it, so a later wait keeps its
         // own.
@@ -384,21 +501,29 @@ impl Queue<'_> {
     }
 
     // A record new to the device goes into the store once every member that waited is approved. A refusal keeps the
-    // whole record off this device, the only value it had of it.
-    async fn decide_held(&self, mut row: ApprovalRow, pulled: Option<Value>, approve: bool) -> Result<(), SyncError> {
-        let key = row.key.clone();
-        row.decision = if approve {
-            ApprovalDecision::Approved
-        } else {
-            ApprovalDecision::Rejected { local: Value::Null }
-        };
+    // whole record off this device, the only value it had of it. The decisions commit before the store write, so a
+    // crash between them lands the record on the next pass without asking again (`finish_decided`).
+    async fn decide_held(
+        &self,
+        key: &RecordKey,
+        decided: Vec<ApprovalRow>,
+        pulled: Option<Value>,
+        approve: bool,
+    ) -> Result<(), SyncError> {
         let mut txn = self.state.begin().await?;
-        txn.put(Row::Approval(row)).await?;
-        let rows = rows_of(txn.as_mut(), &key).await?;
+        for mut row in decided {
+            row.decision = if approve {
+                ApprovalDecision::Approved
+            } else {
+                ApprovalDecision::Rejected { local: Value::Null }
+            };
+            txn.put(Row::Approval(row)).await?;
+        }
+        let rows = rows_of(txn.as_mut(), key).await?;
         self.fence.check()?;
         txn.commit().await?;
         if rows.iter().all(|row| row.decision == ApprovalDecision::Approved) {
-            self.apply_held(&key, pulled, rows).await?;
+            self.apply_held(key, pulled, rows).await?;
         }
         Ok(())
     }
@@ -467,16 +592,6 @@ impl Queue<'_> {
             self.apply_held(&held.key, held.record.fields, rows).await?;
         }
         Ok(())
-    }
-
-    pub async fn count(&self) -> Result<u32, SyncError> {
-        let mut txn = self.state.begin().await?;
-        let rows = txn.scan(&RowRange::Table(Table::Approvals)).await?;
-        let waiting = rows
-            .iter()
-            .filter(|row| matches!(row, Row::Approval(row) if row.decision == ApprovalDecision::Waiting))
-            .count();
-        Ok(u32::try_from(waiting).unwrap_or(u32::MAX))
     }
 }
 
@@ -601,6 +716,69 @@ mod tests {
 
         assert!(!split.hold);
         assert_eq!(split.fields, merged);
+    }
+
+    #[test]
+    fn another_value_for_a_refused_new_record_asks_about_every_value_of_it_again() {
+        let refused = |field: &str, pulled: Value| ApprovalRow {
+            decision: ApprovalDecision::Rejected { local: Value::Null },
+            ..waiting(field, pulled)
+        };
+        let rows = [refused("/host", json!("db")), refused("/port", json!(5432))];
+
+        let same = split(
+            Kind::Connection,
+            &key(),
+            None,
+            &json!({"name": "New", "host": "db", "port": 5432}),
+            &rows,
+        );
+        let moved = split(
+            Kind::Connection,
+            &key(),
+            None,
+            &json!({"name": "New", "host": "db2", "port": 5432}),
+            &rows,
+        );
+
+        assert!(same.hold && same.put.is_empty());
+        assert!(moved.hold);
+        assert_eq!(
+            moved.put,
+            vec![waiting("/host", json!("db2")), waiting("/port", json!(5432))]
+        );
+    }
+
+    // 0056's secrets travel only as envelopes, so no kind's wire schema names one at any depth, and a driver's secret
+    // field a pull brings is never asked about or written, not even for a record new to the device.
+    #[test]
+    fn no_secret_ever_waits_for_the_person() {
+        use tablepro_records::schema::{paths, schema};
+
+        let secrets = [
+            "password",
+            "ssl_key_passphrase",
+            "ssh_password",
+            "ssh_key_passphrase",
+            "ssh_totp_secret",
+            "ai_key",
+        ];
+        for kind in Kind::ALL {
+            for path in paths(schema(kind).fields) {
+                let leaf = path.rsplit('.').next().unwrap_or_default();
+                assert!(!secrets.contains(&leaf), "{kind:?} names {path}");
+            }
+        }
+        let merged = json!({"name": "Lake", "additional_fields": [
+            {"id": "awsSecretAccessKey", "value": "hunter2"},
+            {"id": "awsRegion", "value": "eu-west-1"}
+        ]});
+
+        let split = split(Kind::Connection, &key(), None, &merged, &[]);
+
+        assert!(split.put.iter().all(|row| !row.field.contains("awsSecretAccessKey")));
+        assert!(split.put.iter().all(|row| row.pulled != json!("hunter2")));
+        assert!(!split.fields.to_string().contains("hunter2"));
     }
 
     #[test]

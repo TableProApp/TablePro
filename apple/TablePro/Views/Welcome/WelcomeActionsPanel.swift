@@ -5,6 +5,7 @@ struct WelcomeActionsPanel: View {
     @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var updates = UpdateCenter.shared
     @ObservedObject private var syncCoordinator = SyncProviderCoordinator.shared
+    @ObservedObject var approvals = SyncApprovalsModel.shared
     let onSignIn: () -> Void
     let onNewConnection: () -> Void
     let onOpenFile: () -> Void
@@ -16,6 +17,7 @@ struct WelcomeActionsPanel: View {
 
     // Captured once: the same appearance that reads the stored value overwrites it.
     @State private var showsWhatsNew: Bool?
+    @State private var reviewsApprovals = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,6 +32,9 @@ struct WelcomeActionsPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear(perform: recordAppVersion)
+        .sheet(isPresented: $reviewsApprovals) {
+            SyncApprovalReviewSheet(model: approvals)
+        }
     }
 
     private var identity: some View {
@@ -72,6 +77,7 @@ struct WelcomeActionsPanel: View {
             VStack(spacing: 4) {
                 licenseLine
                 syncLine
+                approvalsLine
                 if featureAccess.supportAudience == .prospect {
                     prospectLinks
                 }
@@ -168,6 +174,19 @@ struct WelcomeActionsPanel: View {
             .buttonStyle(.link)
             .help(presentation.message ?? "")
             .accessibilityIdentifier("welcome-sync-line")
+        }
+    }
+
+    // Changes another device made wait for the person whatever the provider; the link opens them here, never on its own.
+    @ViewBuilder
+    private var approvalsLine: some View {
+        if approvals.waiting > 0 {
+            Button(SyncApprovalPresentation.waitingLine(approvals.waiting)) {
+                reviewsApprovals = true
+            }
+            .buttonStyle(.link)
+            .help(String(localized: "Your other devices changed connections or settings. Review them before they apply on this Mac."))
+            .accessibilityIdentifier("welcome-sync-approvals-line")
         }
     }
 }

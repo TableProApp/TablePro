@@ -198,41 +198,15 @@ impl KeyService {
     // the same objects; one the server refuses because a rotation passed that `av` is built again after the next pull,
     // at the new one.
     pub(super) async fn send_approval(&self, record: &mut SessionRecord) -> Result<(), SyncError> {
-        let mut txn = self.begin().await?;
-        let own = self.approved_device_account(txn.as_mut(), "approve a device").await?;
-        // A replace or a reset changed the IK the words covered: the session ends.
-        if own.ik != record.ik {
-            record.cancel(SessionEnd::User).ok();
-            self.send_cancel(record, SessionEnd::User).await?;
-            return Err(KeysError::Session.into());
-        }
-        if self
-            .approval_av_failed(record.request)
-            .await?
-            .is_some_and(|failed| own.av <= failed)
-        {
-            self.hooks().pass_soon();
-            return Ok(());
-        }
-        let objects = match self.held_approval(txn.as_mut(), record, &own).await? {
-            Held::Applied(objects) => return self.approval_applied(record, &objects).await,
-            Held::Candidates(objects) => objects,
-            // Another writer's approval at these ids, which this side never sealed: the session cannot complete.
-            Held::Foreign => {
-                drop(txn);
+        let (own, objects) = match self.approval_to_send(record).await? {
+            ToSend::Push { own, objects } => (own, objects),
+            ToSend::Nothing => return Ok(()),
+            // A replace or a reset changed the IK the words covered, or another writer's approval holds these ids,
+            // which this side never sealed: the session cannot complete.
+            ToSend::Cancel(error) => {
                 record.cancel(SessionEnd::User).ok();
                 self.send_cancel(record, SessionEnd::User).await?;
-                return Err(KeysError::Conflict.into());
-            }
-            Held::None => {
-                let trust = trust_of(&held_tables(txn.as_mut()).await?, self.account());
-                let objects = change_set::build(self.origin(), self.account(), &own, &record.n, &trust)?;
-                for object in &objects {
-                    self.hold_object(txn.as_mut(), ScopeName::Personal, object, false)
-                        .await?;
-                }
-                txn.commit().await?;
-                objects
+                return Err(error.into());
             }
         };
         let changes = objects.iter().map(create_change).collect::<Result<Vec<_>, _>>()?;
@@ -251,6 +225,48 @@ impl KeyService {
         self.approval_answered(record, &own, objects, answer).await
     }
 
+    // What A has to push, read and sealed in one transaction that ends before the push. An approval already applied
+    // is finished here, in that same transaction.
+    async fn approval_to_send(&self, record: &mut SessionRecord) -> Result<ToSend, SyncError> {
+        let mut txn = self.begin().await?;
+        let own = self.approved_device_account(txn.as_mut(), "approve a device").await?;
+        if own.ik != record.ik {
+            return Ok(ToSend::Cancel(KeysError::Session));
+        }
+        if self
+            .approval_av_failed(txn.as_mut(), record.request)
+            .await?
+            .is_some_and(|failed| own.av <= failed)
+        {
+            self.hooks().pass_soon();
+            return Ok(ToSend::Nothing);
+        }
+        let objects = match self.held_approval(txn.as_mut(), record, &own).await? {
+            Held::Applied(objects) => {
+                self.approval_applied(txn.as_mut(), record, &objects).await?;
+                txn.commit().await?;
+                return Ok(ToSend::Nothing);
+            }
+            Held::Candidates(objects) => objects,
+            Held::Foreign => return Ok(ToSend::Cancel(KeysError::Conflict)),
+            Held::None => {
+                let trust = trust_of(&held_tables(txn.as_mut()).await?, self.account());
+                let objects = change_set::build(self.origin(), self.account(), &own, &record.n, &trust)?;
+                for object in &objects {
+                    self.hold_object(txn.as_mut(), ScopeName::Personal, object, false)
+                        .await?;
+                }
+                txn.commit().await?;
+                objects
+            }
+        };
+        Ok(ToSend::Push {
+            own: Box::new(own),
+            objects,
+        })
+    }
+
+    // The push's answer and the session row it leaves commit together.
     async fn approval_answered(
         &self,
         record: &mut SessionRecord,
@@ -258,28 +274,41 @@ impl KeyService {
         objects: Vec<KeyObject>,
         answer: Pushed,
     ) -> Result<(), SyncError> {
-        match answer {
-            Pushed::Applied => self.approval_applied(record, &objects).await,
-            // Another copy at one of its ids: this side's own, applied, when its wrap names this key device as writer.
+        let refused = match answer {
+            Pushed::Applied => {
+                let mut txn = self.begin().await?;
+                self.approval_applied(txn.as_mut(), record, &objects).await?;
+                txn.commit().await?;
+                return Ok(());
+            }
             // The server holds another copy at one of its ids: the next pull shows whose. The candidates stay, so
             // nothing is sealed again meanwhile.
             Pushed::Refused(RejectedCode::CreateOnly) => {
                 self.hooks().pass_soon();
-                Ok(())
+                return Ok(());
             }
-            Pushed::Refused(RejectedCode::BadStatement) => {
-                self.forget_candidates(&objects).await?;
-                self.note_approval_av_failed(record.request, own.av).await?;
+            Pushed::Refused(code) => code,
+        };
+        let mut txn = self.begin().await?;
+        self.drop_candidates(txn.as_mut(), ScopeName::Personal, &objects)
+            .await?;
+        match refused {
+            RejectedCode::BadStatement => {
+                self.note_approval_av_failed(txn.as_mut(), record.request, own.av)
+                    .await?;
+                txn.commit().await?;
                 self.hooks().pass_soon();
                 Ok(())
             }
-            Pushed::Refused(RejectedCode::RequestClosed) => {
-                self.forget_candidates(&objects).await?;
+            RejectedCode::RequestClosed => {
                 record.expire_if_due(i64::MAX);
-                self.save_session(record).await
+                self.put_session(txn.as_mut(), record).await?;
+                txn.commit().await?;
+                self.settle_comparison(record.request, record.needs_comparison());
+                Ok(())
             }
-            Pushed::Refused(code) => {
-                self.forget_candidates(&objects).await?;
+            code => {
+                txn.commit().await?;
                 Err(SyncError::Rejected { code })
             }
         }
@@ -340,20 +369,16 @@ impl KeyService {
         )
     }
 
-    async fn forget_candidates(&self, objects: &[KeyObject]) -> Result<(), SyncError> {
-        let mut txn = self.begin().await?;
-        self.drop_candidates(txn.as_mut(), ScopeName::Personal, objects).await?;
-        txn.commit().await?;
-        Ok(())
-    }
-
     // The words covered N's key device id and keys, so A keeps them as an own-device pin (step 8).
-    async fn approval_applied(&self, record: &mut SessionRecord, objects: &[KeyObject]) -> Result<(), SyncError> {
+    async fn approval_applied(
+        &self,
+        txn: &mut dyn StateTxn,
+        record: &mut SessionRecord,
+        objects: &[KeyObject],
+    ) -> Result<(), SyncError> {
         record.approved();
-        let mut txn = self.begin().await?;
         for object in objects {
-            self.hold_object(txn.as_mut(), ScopeName::Personal, object, true)
-                .await?;
+            self.hold_object(txn, ScopeName::Personal, object, true).await?;
         }
         txn.put(Row::KeyDevicePin(KeyDevicePinRow {
             key_device: record.n.key_device,
@@ -361,9 +386,7 @@ impl KeyService {
             dsk: record.n.dsk,
         }))
         .await?;
-        self.put_session(txn.as_mut(), record).await?;
-        txn.commit().await?;
-        Ok(())
+        self.put_session(txn, record).await
     }
 
     // N, once its person confirmed. False while the approval change set or a record it needs has not arrived.
@@ -378,9 +401,21 @@ impl KeyService {
                 what: "the request's device keys",
             });
         };
+        let merged = match self.merge_approval(record, &n_keys).await? {
+            Merging::Waiting => return Ok(false),
+            Merging::Refused(error) => return self.refuse_approval(record, error).await,
+            Merging::Merged(merged) => merged,
+        };
+        self.merged_notices(&merged)?;
+        self.finish_switch(record).await?;
+        Ok(true)
+    }
+
+    // The approval taken and merged into the key tables in one commit, or why not.
+    async fn merge_approval(&self, record: &mut SessionRecord, n_keys: &DeviceKeys) -> Result<Merging, SyncError> {
         let mut txn = self.begin().await?;
-        let Some(found) = self.find_approval(txn.as_mut(), &n_keys).await? else {
-            return Ok(false);
+        let Some(found) = self.find_approval(txn.as_mut(), n_keys).await? else {
+            return Ok(Merging::Waiting);
         };
         let approver = record.peer().ok_or(SyncError::Keys(KeysError::Session))?;
         let arrived = Arrived {
@@ -389,9 +424,9 @@ impl KeyService {
             account_wrap: &found.account_wrap,
             trust_wrap: &found.trust_wrap,
         };
-        let opened = match change_set::open(self.origin(), self.account(), &n_keys, &approver, &record.ik, &arrived) {
+        let opened = match change_set::open(self.origin(), self.account(), n_keys, &approver, &record.ik, &arrived) {
             Ok(opened) => opened,
-            Err(error) => return self.refuse_approval(record, error).await,
+            Err(error) => return Ok(Merging::Refused(error)),
         };
         // A file with no anchor trusts none of its tables: it starts from the approver's pins and versions (0054, A
         // stale file).
@@ -412,9 +447,9 @@ impl KeyService {
             Ok(Merge::Merged(merged)) => merged,
             Ok(Merge::Waiting { .. }) => {
                 self.hooks().pass_soon();
-                return Ok(false);
+                return Ok(Merging::Waiting);
             }
-            Err(error) => return self.refuse_approval(record, error).await,
+            Err(error) => return Ok(Merging::Refused(error)),
         };
         drop(facts);
         // The tables commit first and the device keys switch after, so a crash between the two leaves the session
@@ -433,9 +468,7 @@ impl KeyService {
         // The approver's view replaces what a file with no anchor held, so the anchor stops owing it with this commit.
         txn.settle_keys(KeysSettled::Reapproved);
         txn.commit().await?;
-        self.merged_notices(&merged)?;
-        self.finish_switch(record).await?;
-        Ok(true)
+        Ok(Merging::Merged(merged))
     }
 
     // N: the approved device keys in force, the pending ones gone.
@@ -631,6 +664,21 @@ impl KeyService {
             _ => None,
         })
     }
+}
+
+enum Merging {
+    Waiting,
+    Refused(KeysError),
+    Merged(Box<Merged>),
+}
+
+enum ToSend {
+    Push {
+        own: Box<OwnAccount>,
+        objects: Vec<KeyObject>,
+    },
+    Nothing,
+    Cancel(KeysError),
 }
 
 enum Held {

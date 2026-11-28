@@ -1059,6 +1059,9 @@ struct SyncProviderCoordinatorStatusTests {
         #expect(SyncEngineRules.status(Self.info(.zoneRemoved)) == .error(.blocked(.dataDeletedFromICloud)))
         #expect(SyncEngineRules.status(Self.info(.waiting(retryInMs: 500))) == .error(.busy))
         #expect(SyncEngineRules.status(Self.info(.off)) == .idle)
+        // Values waiting stop nothing; the Sync pane names their count in place of Up to Date.
+        #expect(SyncEngineRules.status(Self.info(.needsApproval)) == .idle)
+        #expect(SyncEngineRules.status(Self.info(.needsApproval, problem: "sync.icloud.network")) == .error(.offline))
         #expect(SyncEngineRules.status(Self.info(.unavailable)) == .error(.blocked(.unavailable)))
         #expect(SyncEngineRules.status(Self.info(.pullOnly)) == .error(.unexpected))
         #expect(SyncEngineRules.status(Self.info(.idle, problem: "sync.icloud.network")) == .error(.offline))
