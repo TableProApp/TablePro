@@ -280,6 +280,34 @@ final class DataGridTableView: NSTableView {
         return controller?.accessibilitySelectedCells() ?? super.accessibilitySelectedCells()
     }
 
+    // A menu opened without a pointer opens on the active cell, so it acts on the selection around it.
+    var contextMenuAnchor: (row: Int, column: Int)? {
+        guard paneKind == .main, let controller, let active = controller.model.selection.activeCell,
+              (0..<numberOfRows).contains(active.row),
+              let column = controller.main.tableIndex(forDisplayPosition: active.displayColumn, columns: controller.model.columns)
+        else { return nil }
+        return (active.row, column)
+    }
+
+    override func accessibilityPerformShowMenu() -> Bool {
+        showContextMenuForActiveCell() || super.accessibilityPerformShowMenu()
+    }
+
+    // AppKit's keyboard menu opens over the last selected row's middle, which can sit in any column. With no
+    // active cell it stays AppKit's, as on every list.
+    @available(macOS 15.0, *)
+    override func showContextMenuForSelection(_ sender: Any?) {
+        guard !showContextMenuForActiveCell() else { return }
+        super.showContextMenuForSelection(sender)
+    }
+
+    private func showContextMenuForActiveCell() -> Bool {
+        guard let anchor = contextMenuAnchor else { return false }
+        controller?.revealActiveCell()
+        scheduleContextMenu(row: anchor.row, column: anchor.column)
+        return true
+    }
+
     // A point inside a row but outside every column resolves to the row, not the table, so the row stays reachable there.
     override func accessibilityHitTest(_ point: NSPoint) -> Any? {
         DataGridAccessibility.markActive()
@@ -290,6 +318,12 @@ final class DataGridTableView: NSTableView {
             return super.accessibilityHitTest(point)
         }
         return rowView.accessibilityHitTest(point) ?? rowView
+    }
+}
+
+extension DataGridTableView: ContextMenuRowIdentifying {
+    func contextMenuRowIdentity(_ row: Int) -> AnyHashable? {
+        controller?.model.rowID(at: row)
     }
 }
 

@@ -86,6 +86,7 @@ async fn open(tasks: &Tasks, parts: impl FnOnce(OpenParts) -> OpenParts) -> Open
         session: None,
         listener: Arc::new(Listener::default()),
         team_library: None,
+        secrets: None,
     });
     let opener = tasks.clone();
     let service = tasks
@@ -225,6 +226,258 @@ async fn with_sync_off_a_sign_in_still_syncs_teams_and_its_keys() {
         "sync.not_allowed",
         "personal data has no engine while sync is off"
     );
+}
+
+// A team with no key yet never holds back the personal pass or the service, and lists its member (core ADR 0056).
+#[tokio::test]
+async fn an_owner_whose_team_has_no_key_yet_still_syncs_personal_data() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let account = AccountId(Uuid::new_v4());
+    let team = TeamId(Uuid::new_v4());
+    server.add_team(team, &[(account, Role::Owner)]);
+    let opened = open(&tasks, |parts| OpenParts {
+        link: Ok(link(&server, account)),
+        ..parts
+    })
+    .await;
+
+    opened.service.sync_now(PassReasonTag::Launch).await.unwrap();
+    let draft = opened.service.begin_genesis().await.unwrap();
+    let words = typed(&draft);
+    opened.service.finish_genesis(draft.draft, words).await.unwrap();
+    let moved = opened.service.choose_provider(SyncProviderTag::TableproSync).await;
+    let passed = opened.service.sync_now(PassReasonTag::Person).await;
+    let conflicts = opened.service.conflicts().await;
+    let team_keys = opened.service.team_keys(ScopeName::Team(team).wire()).await;
+    let status = opened.service.status();
+
+    assert!(moved.is_ok(), "{:?}", moved.map_err(|error| code(&error).to_owned()));
+    assert!(passed.is_ok(), "{:?}", passed.map_err(|error| code(&error).to_owned()));
+    assert!(
+        conflicts.is_ok(),
+        "{:?}",
+        conflicts.map_err(|error| code(&error).to_owned())
+    );
+    assert_ne!(status.phase, SyncPhaseTag::Unavailable, "{status:?}");
+    assert_eq!(status.problem, None, "{status:?}");
+    let team_keys = team_keys.map_err(|error| code(&error).to_owned()).unwrap();
+    assert_eq!(team_keys.members.len(), 1, "{team_keys:?}");
+}
+
+// A service over one Mac's state files, as the app opens each in turn.
+fn on_one_mac(
+    files: &Arc<dyn StateFiles>,
+    device_store: &Arc<FakeDeviceStore>,
+    link: ServiceLink,
+    provider: SyncProviderTag,
+) -> impl FnOnce(OpenParts) -> OpenParts {
+    let (files, device_store) = (Arc::clone(files), Arc::clone(device_store));
+    move |parts| OpenParts {
+        config: config(provider),
+        files: Some(files),
+        device_store: Some(device_store as Arc<dyn tablepro_sync::api::HostDeviceStore>),
+        link: Ok(link),
+        ..parts
+    }
+}
+
+// The first upload, as the Mac makes it on the service it opened Off: keys, then personal data onto TablePro Sync.
+async fn first_upload(service: &SyncService) {
+    service.sync_now(PassReasonTag::Launch).await.unwrap();
+    let draft = service.begin_genesis().await.unwrap();
+    let words = typed(&draft);
+    service.finish_genesis(draft.draft, words).await.unwrap();
+    service.choose_provider(SyncProviderTag::TableproSync).await.unwrap();
+}
+
+// E2E F7: the app opens TablePro Sync's service on the state file before it lets the Off one go. The new one waits
+// for the file instead of reporting the service unavailable, and starts by itself once the Off one closes.
+#[tokio::test]
+async fn the_service_opened_after_a_first_upload_starts_once_the_one_before_closes() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let account = AccountId(Uuid::new_v4());
+    server.add_team(TeamId(Uuid::new_v4()), &[(account, Role::Owner)]);
+    let dir = tempfile::tempdir().unwrap();
+    let device_store = Arc::new(FakeDeviceStore::new());
+    let files: Arc<dyn StateFiles> = Arc::new(SqliteStateFiles::at(dir.path().join("sync"), device_store.clone()));
+    let off = open(
+        &tasks,
+        on_one_mac(&files, &device_store, link(&server, account), SyncProviderTag::Off),
+    )
+    .await;
+    first_upload(&off.service).await;
+
+    let moved = open(
+        &tasks,
+        on_one_mac(
+            &files,
+            &device_store,
+            link(&server, account),
+            SyncProviderTag::TableproSync,
+        ),
+    )
+    .await;
+    let waiting = moved.service.status();
+    drop(off);
+    let mut status = moved.service.status();
+    for _ in 0..100 {
+        if !matches!(status.phase, SyncPhaseTag::Waiting { .. }) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        status = moved.service.status();
+    }
+    let passed = moved.service.sync_now(PassReasonTag::Person).await;
+    let conflicts = moved.service.conflicts().await;
+
+    assert!(matches!(waiting.phase, SyncPhaseTag::Waiting { .. }), "{waiting:?}");
+    assert_eq!(waiting.problem.as_deref(), Some("sync.state.busy"));
+    assert!(
+        !matches!(status.phase, SyncPhaseTag::Waiting { .. } | SyncPhaseTag::Unavailable),
+        "{status:?}"
+    );
+    assert!(passed.is_ok(), "{:?}", passed.map_err(|error| code(&error).to_owned()));
+    assert!(
+        conflicts.is_ok(),
+        "{:?}",
+        conflicts.map_err(|error| code(&error).to_owned())
+    );
+}
+
+// The move's first pass, asked for while the Off service is still closing, waits for it instead of failing.
+#[tokio::test]
+async fn a_pass_asked_for_while_the_service_before_closes_waits_for_it() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let account = AccountId(Uuid::new_v4());
+    let dir = tempfile::tempdir().unwrap();
+    let device_store = Arc::new(FakeDeviceStore::new());
+    let files: Arc<dyn StateFiles> = Arc::new(SqliteStateFiles::at(dir.path().join("sync"), device_store.clone()));
+    let off = open(
+        &tasks,
+        on_one_mac(&files, &device_store, link(&server, account), SyncProviderTag::Off),
+    )
+    .await;
+    first_upload(&off.service).await;
+    let moved = open(
+        &tasks,
+        on_one_mac(
+            &files,
+            &device_store,
+            link(&server, account),
+            SyncProviderTag::TableproSync,
+        ),
+    )
+    .await;
+
+    let closing = tasks.spawn_task(async move {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        drop(off);
+    });
+    let passed = moved.service.sync_now(PassReasonTag::Person).await;
+    closing.await.unwrap();
+
+    assert!(passed.is_ok(), "{:?}", passed.map_err(|error| code(&error).to_owned()));
+}
+
+// E2E F8: a second Mac signs in with sync off to an account whose first Mac set up keys. Its engine reads the scopes
+// once it starts, with no pass asked for, and tells the app the key state moved to needing approval.
+#[tokio::test]
+async fn a_second_mac_signed_in_with_sync_off_learns_by_itself_that_it_needs_approval() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let account = AccountId(Uuid::new_v4());
+    server.add_team(TeamId(Uuid::new_v4()), &[(account, Role::Owner)]);
+    let first = open(&tasks, |parts| OpenParts {
+        link: Ok(link(&server, account)),
+        ..parts
+    })
+    .await;
+    first_upload(&first.service).await;
+
+    let listener = Arc::new(Listener::default());
+    let second = open(&tasks, |parts| OpenParts {
+        link: Ok(second_link(&server, account)),
+        listener: Arc::clone(&listener) as Arc<dyn SyncListener>,
+        ..parts
+    })
+    .await;
+    let mut keys = second.service.key_state().await;
+    for _ in 0..100 {
+        if matches!(keys, Ok(KeyStateInfo::NeedsApproval { .. })) && listener.keys.load(Ordering::SeqCst) > 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        keys = second.service.key_state().await;
+    }
+
+    let keys = keys.map_err(|error| code(&error).to_owned()).unwrap();
+    assert!(matches!(keys, KeyStateInfo::NeedsApproval { .. }), "{keys:?}");
+    assert!(listener.keys.load(Ordering::SeqCst) > 0);
+}
+
+// The key sheets name each key device by the account's row that holds it, this Mac's by its own row; a key device no
+// row holds keeps no row, which the Mac shows as removed with its keys not changed yet.
+#[test]
+fn a_key_device_takes_the_name_platform_and_row_of_the_row_that_holds_it() {
+    use tablepro_keys::encoding::KeyDeviceId;
+    use tablepro_sync::api::key_flows::AccountDevice;
+
+    let (mine, other, gone) = (
+        KeyDeviceId(Uuid::from_u128(1)),
+        KeyDeviceId(Uuid::from_u128(2)),
+        KeyDeviceId(Uuid::from_u128(3)),
+    );
+    let row = |id: &str, name: &str, key_device: Option<KeyDeviceId>| tablepro_account::Device {
+        id: id.to_owned(),
+        machine_id: "0".repeat(64),
+        platform: "macos".to_owned(),
+        name: name.to_owned(),
+        app_version: "1.0.0".to_owned(),
+        os_version: "26.1".to_owned(),
+        last_seen_at: chrono::DateTime::from_timestamp(1_800_000_000, 0).unwrap(),
+        licensed_at: None,
+        offline_until: None,
+        key_device: key_device.map(KeyDeviceId::to_wire),
+    };
+    let rows = super::names::DeviceRows::of(vec![
+        row("dev_a", "Lab (a)", None),
+        row("dev_b", "Lab (b)", Some(other)),
+    ]);
+    let key = |key_device, device: Option<&str>| AccountDevice {
+        key_device,
+        device: device.map(|id| DeviceRowId(id.to_owned())),
+        name: None,
+        platform: None,
+        added_at_us: None,
+        this_device: device.is_some(),
+        compared: false,
+    };
+
+    let this = rows.name(key(mine, Some("dev_a")));
+    let approved = rows.name(key(other, None));
+    let removed = rows.name(key(gone, None));
+
+    assert_eq!(this.name.as_deref(), Some("Lab (a)"));
+    assert_eq!(this.platform.as_deref(), Some("macos"));
+    assert_eq!(approved.device, Some(DeviceRowId("dev_b".to_owned())));
+    assert_eq!(approved.name.as_deref(), Some("Lab (b)"));
+    assert_eq!((removed.device, removed.name), (None, None));
+}
+
+// The same account on another device row, as a second Mac signed in to it.
+fn second_link(server: &Arc<FakeServer>, account: AccountId) -> ServiceLink {
+    let device_row = DeviceRowId("dev_01k8d6wpggfd68tbhz818p4ww5".to_owned());
+    ServiceLink {
+        origin: Origin::parse("https://sync.example.com").unwrap(),
+        sign_in: "sync.example.com".to_owned(),
+        account,
+        device_row: device_row.clone(),
+        transport: Arc::new(server.client(account, device_row)),
+        binding: None,
+    }
 }
 
 #[tokio::test]
@@ -530,6 +783,7 @@ fn a_reviewed_member_names_its_team_and_reads_back_as_the_engine_s() {
 async fn a_start_that_failed_for_a_reason_that_stays_is_not_tried_again() {
     let slot = ServiceSlot::new(
         Err(tablepro_sync::api::TransportError::SignedOut.into()),
+        None,
         None,
         tablepro_sync::api::control::SyncCategories::default(),
     );

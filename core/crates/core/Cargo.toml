@@ -15,6 +15,8 @@ futures.workspace = true
 # The per-process key of a masked value's Stable Hash.
 getrandom = "0.3"
 hmac.workspace = true
+icu_decimal = { version = "2.3", features = ["alloc"] }
+icu_locale_core = { version = "2.3", features = ["alloc"] }
 num-bigint.workspace = true
 percent-encoding.workspace = true
 regex.workspace = true

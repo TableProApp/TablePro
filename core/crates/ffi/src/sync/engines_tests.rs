@@ -55,6 +55,7 @@ async fn the_query_stores_kinds_sync_their_writes_reach_the_engine_and_history_w
         standing,
         store_journal: Arc::clone(&store_journal),
         team_library: None,
+        secrets: None,
     };
     let journal = Journal::new(Wake::new());
     let id = Uuid::new_v4();
@@ -114,6 +115,7 @@ async fn the_library_s_kinds_sync_with_its_standing_and_its_writes_reach_the_eng
         standing: Some(Arc::new(tablepro_sync::adapters::library::StoreStanding(store.clone()))),
         store_journal,
         team_library: None,
+        secrets: None,
     };
     let journal = Journal::new(Wake::new());
 
@@ -130,6 +132,7 @@ async fn the_library_s_kinds_sync_with_its_standing_and_its_writes_reach_the_eng
         Kind::Connection,
         Kind::Group,
         Kind::Tag,
+        Kind::ConnectionProject,
         Kind::SshProfile,
         Kind::CredentialProfile,
         Kind::TableFolder,
@@ -168,6 +171,7 @@ async fn saved_queries_sync_without_the_history() {
         standing: Some(Arc::new(Syncs)),
         store_journal: StoreJournal::new(),
         team_library: None,
+        secrets: None,
     };
 
     let found = kinds(&hosts.adapters(Provider::ICloud));
@@ -205,6 +209,7 @@ async fn an_engine_s_journal_hears_the_stores_once_and_leaves_with_its_engine() 
         standing: Some(Arc::new(Syncs)),
         store_journal: Arc::clone(&store_journal),
         team_library: None,
+        secrets: None,
     };
     let transport: Arc<dyn tablepro_sync::api::CloudKitTransport> =
         Arc::new(tablepro_sync_testing::FakeCloudKit::signed_in("_a"));

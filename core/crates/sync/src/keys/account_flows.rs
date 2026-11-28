@@ -109,6 +109,10 @@ impl AccountFlows for KeyService {
         self.open_personal(&envelope, &fields, in_force).await
     }
 
+    async fn personal_envelope_version(&self) -> Result<Option<Version>, SyncError> {
+        self.personal_writing_version().await
+    }
+
     async fn seal_history_entry(&self, entry: HistoryId, plaintext: Value) -> Result<Value, SyncError> {
         self.seal_history(entry, &plaintext).await
     }

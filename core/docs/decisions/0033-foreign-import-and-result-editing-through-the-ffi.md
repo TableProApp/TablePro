@@ -1,6 +1,6 @@
 # 0033: Importing from other apps and editing a query result cross the FFI
 
-- **Status**: Accepted; the Windows host's Credential Manager reads amended by 0039
+- **Status**: Accepted; the Windows host's Credential Manager reads amended by 0039; result editing's tracker, undo and PK identity move to the core per 0068 (Proposed), which supersedes the result-editing part of this ADR on where they live once it lands
 - **Date**: 2026-11-18
 
 ## Context

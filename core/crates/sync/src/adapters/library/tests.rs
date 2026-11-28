@@ -1,5 +1,8 @@
 use serde_json::json;
-use tablepro_storage::{ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionTag, StoragePaths};
+use tablepro_storage::{
+    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionProject, ConnectionProjectName, ConnectionTag,
+    StoragePaths,
+};
 
 use super::*;
 
@@ -8,7 +11,7 @@ fn store(dir: &std::path::Path) -> ConnectionStore {
 }
 
 fn adapter(store: &ConnectionStore, kind: Kind) -> Arc<dyn RecordAdapter> {
-    LibraryAdapter::all(store, DriverNames::Mac, None)
+    LibraryAdapter::all(store, DriverNames::Mac, Provider::TableproSync, None)
         .into_iter()
         .find(|adapter| adapter.kind() == kind)
         .expect("an adapter for the kind")
@@ -122,7 +125,7 @@ async fn groups_and_tags_round_trip_through_the_store_in_one_write_each() {
 async fn a_new_store_starts_its_generation_and_every_kind_names_the_one_file() {
     let dir = tempfile::tempdir().unwrap();
     let store = store(dir.path());
-    let adapters = LibraryAdapter::all(&store, DriverNames::Mac, None);
+    let adapters = LibraryAdapter::all(&store, DriverNames::Mac, Provider::TableproSync, None);
 
     let first = adapters[0].identity().await.unwrap();
     let again = adapters[1].identity().await.unwrap();
@@ -617,7 +620,8 @@ async fn a_pulled_credential_profile_of_a_name_this_device_holds_settles_the_nam
     assert_eq!(name(other).as_deref(), Some("ops (2)"));
 }
 
-// A pull's write to the library is reported once to a host that tags the file, with the digest of what it wrote.
+// A pull's write to the library is reported to a host that tags the file, with the digest of what it wrote, until the
+// host acknowledges it.
 #[tokio::test]
 async fn a_pull_s_write_is_reported_once_to_a_host_that_tags_the_file() {
     let dir = tempfile::tempdir().unwrap();
@@ -636,7 +640,7 @@ async fn a_pull_s_write_is_reported_once_to_a_host_that_tags_the_file() {
         .await
         .unwrap();
 
-    let taken = store.take_written_blocking().unwrap();
+    let taken = store.peek_written_blocking().unwrap();
     let bytes = std::fs::read(store.path()).unwrap();
     let on_disk = {
         use sha2::Digest;
@@ -646,5 +650,281 @@ async fn a_pull_s_write_is_reported_once_to_a_host_that_tags_the_file() {
         taken.iter().map(|write| write.digest.as_str()).collect::<Vec<_>>(),
         [on_disk.as_str()]
     );
-    assert!(store.take_written_blocking().unwrap().is_empty());
+    assert_eq!(store.ack_written_blocking(&on_disk).unwrap(), 1);
+    assert!(store.peek_written_blocking().unwrap().is_empty());
+}
+
+const PROJECT: &str = "5A2B7C1D-3E4F-4A5B-8C6D-7E8F9A0B1C2D";
+const OTHER_PROJECT: &str = "1B2C3D4E-5F60-4718-8293-A4B5C6D7E8F9";
+
+fn on_icloud(store: &ConnectionStore, kind: Kind) -> Arc<dyn RecordAdapter> {
+    LibraryAdapter::all(store, DriverNames::Mac, Provider::ICloud, None)
+        .into_iter()
+        .find(|adapter| adapter.kind() == kind)
+        .expect("an adapter for the kind")
+}
+
+fn put(record_id: &str, fields: Value) -> Vec<LocalChange> {
+    vec![LocalChange::Put {
+        record_id: record_id.to_owned(),
+        fields,
+    }]
+}
+
+// A project goes up as the Mac's mapper writes one, and a pulled one lands in the store with its colour and place.
+#[tokio::test]
+async fn a_project_goes_up_as_the_mac_writes_it_and_a_pulled_one_lands_in_the_store() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    store
+        .create_project_blocking(ConnectionProject {
+            color: Some(ConnectionColor::Red),
+            ..ConnectionProject::new(ConnectionProjectName::new("Acme").unwrap())
+        })
+        .unwrap();
+    let projects = adapter(&store, Kind::ConnectionProject);
+
+    let records = projects.records(ScopeName::Personal).await.unwrap().records;
+    projects
+        .apply(
+            ScopeName::Personal,
+            put(PROJECT, json!({"name": "Globex", "color": "None", "sort_order": 1})),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(
+        records[0].fields,
+        json!({"name": "Acme", "color": "Red", "sort_order": 0})
+    );
+    let list = store.list_blocking().unwrap();
+    let pulled = list.project(parse_uuid(PROJECT).unwrap()).expect("the pulled project");
+    assert_eq!(pulled.name.as_str(), "Globex");
+    assert_eq!(pulled.color, None);
+    assert_eq!(list.projects.len(), 2);
+}
+
+// The project a pulled record names is the one its connection or group is in: one moves it to another, and a record
+// that names none takes it out of every project.
+#[tokio::test]
+async fn a_pull_moves_a_connection_and_a_group_to_the_project_the_record_names() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    let connections = adapter(&store, Kind::Connection);
+    let groups = adapter(&store, Kind::Group);
+    let in_project = |project: Option<&str>| {
+        let mut fields = mac_connection();
+        if let Some(project) = project {
+            fields["project_id"] = json!(project);
+        }
+        fields
+    };
+    let stored = |store: &ConnectionStore| store.list_blocking().unwrap().connections[0].project_id;
+
+    connections
+        .apply(ScopeName::Personal, put(CONNECTION, in_project(Some(PROJECT))))
+        .await
+        .unwrap();
+    let first = stored(&store);
+    let records = connections.records(ScopeName::Personal).await.unwrap().records;
+    connections
+        .apply(ScopeName::Personal, put(CONNECTION, in_project(Some(OTHER_PROJECT))))
+        .await
+        .unwrap();
+    let moved = stored(&store);
+    connections
+        .apply(ScopeName::Personal, put(CONNECTION, in_project(None)))
+        .await
+        .unwrap();
+    groups
+        .apply(
+            ScopeName::Personal,
+            put(
+                GROUP,
+                json!({"name": "Work", "color": "None", "sort_order": 0, "project_id": PROJECT}),
+            ),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(first, parse_uuid(PROJECT));
+    assert_eq!(records[0].fields["project_id"], json!(PROJECT));
+    assert_eq!(moved, parse_uuid(OTHER_PROJECT));
+    assert_eq!(stored(&store), None);
+    let list = store.list_blocking().unwrap();
+    assert_eq!(list.groups[0].project_id, parse_uuid(PROJECT));
+    let group_records = groups.records(ScopeName::Personal).await.unwrap().records;
+    assert_eq!(group_records[0].fields["project_id"], json!(PROJECT));
+}
+
+// A pulled deletion takes the project. Its members keep the id, which no project holds then, so they read as in none.
+#[tokio::test]
+async fn a_pulled_project_deletion_leaves_its_members_in_no_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    let projects = adapter(&store, Kind::ConnectionProject);
+    projects
+        .apply(
+            ScopeName::Personal,
+            put(PROJECT, json!({"name": "Acme", "color": "None", "sort_order": 0})),
+        )
+        .await
+        .unwrap();
+    let mut fields = mac_connection();
+    fields["project_id"] = json!(PROJECT);
+    fields.as_object_mut().unwrap().remove("group_id");
+    adapter(&store, Kind::Connection)
+        .apply(ScopeName::Personal, put(CONNECTION, fields))
+        .await
+        .unwrap();
+    let before = store.list_blocking().unwrap();
+    assert_eq!(before.effective_project(&before.connections[0]), parse_uuid(PROJECT));
+
+    projects
+        .apply(
+            ScopeName::Personal,
+            vec![LocalChange::Delete {
+                record_id: PROJECT.to_owned(),
+            }],
+        )
+        .await
+        .unwrap();
+
+    let list = store.list_blocking().unwrap();
+    assert!(list.projects.is_empty());
+    assert_eq!(list.effective_project(&list.connections[0]), None);
+    assert_eq!(list.connections[0].project_id, parse_uuid(PROJECT));
+}
+
+// Until iCloud's Production holds the project type and both fields, no record iCloud brings names a project, so a pull
+// keeps the project this device filed a connection or a group in.
+#[tokio::test]
+async fn an_icloud_pull_keeps_the_project_this_device_filed_a_connection_and_a_group_in() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    let mut filed = mac_connection();
+    filed["project_id"] = json!(PROJECT);
+    adapter(&store, Kind::Connection)
+        .apply(ScopeName::Personal, put(CONNECTION, filed))
+        .await
+        .unwrap();
+    adapter(&store, Kind::Group)
+        .apply(
+            ScopeName::Personal,
+            put(
+                GROUP,
+                json!({"name": "Work", "color": "None", "sort_order": 0, "project_id": PROJECT}),
+            ),
+        )
+        .await
+        .unwrap();
+
+    on_icloud(&store, Kind::Connection)
+        .apply(ScopeName::Personal, put(CONNECTION, mac_connection()))
+        .await
+        .unwrap();
+    on_icloud(&store, Kind::Group)
+        .apply(
+            ScopeName::Personal,
+            put(GROUP, json!({"name": "Work 2", "color": "None", "sort_order": 0})),
+        )
+        .await
+        .unwrap();
+
+    let list = store.list_blocking().unwrap();
+    assert_eq!(list.connections[0].project_id, parse_uuid(PROJECT));
+    assert_eq!(list.groups[0].project_id, parse_uuid(PROJECT));
+    assert_eq!(list.groups[0].name.as_str(), "Work 2");
+}
+
+// A name is required: a pulled project with none the store can hold, and no stored one to keep, is refused as a record
+// this build cannot read, so the engine holds it by id rather than send its absence as a deletion.
+#[tokio::test]
+async fn a_pulled_project_with_a_blank_name_is_refused_as_unreadable() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+
+    let refused = adapter(&store, Kind::ConnectionProject)
+        .apply(
+            ScopeName::Personal,
+            put(PROJECT, json!({"name": "  ", "color": "None", "sort_order": 0})),
+        )
+        .await;
+
+    assert!(matches!(refused, Err(AdapterError::Unreadable { .. })), "{refused:?}");
+    assert!(store.list_blocking().unwrap().projects.is_empty());
+}
+
+// A batch the store refuses goes again one change at a time, and each of those still refuses to write over a record
+// changed since the read the pull merged against, by an edit made between the batch and the retry too.
+#[tokio::test]
+async fn the_retries_after_a_refused_batch_still_refuse_a_record_changed_since_the_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    let projects = adapter(&store, Kind::ConnectionProject);
+    let acme = store
+        .create_project_blocking(ConnectionProject::new(ConnectionProjectName::new("Acme").unwrap()))
+        .unwrap();
+    projects.records(ScopeName::Personal).await.unwrap();
+    let pulled = LocalChange::Put {
+        record_id: tablepro_records::record_id::uuid_id(acme.id),
+        fields: json!({"name": "Acme Pulled", "color": "None", "sort_order": 0}),
+    };
+    let blank = LocalChange::Put {
+        record_id: PROJECT.to_owned(),
+        fields: json!({"name": " ", "color": "None", "sort_order": 1}),
+    };
+
+    let batch = projects.apply(ScopeName::Personal, vec![pulled.clone(), blank]).await;
+    store
+        .rename_project_blocking(acme.id, ConnectionProjectName::new("Acme Corp").unwrap())
+        .unwrap();
+    let retried = projects.apply(ScopeName::Personal, vec![pulled]).await;
+
+    assert!(matches!(batch, Err(AdapterError::Unreadable { .. })), "{batch:?}");
+    assert!(matches!(retried, Err(AdapterError::Store { .. })), "{retried:?}");
+    assert_eq!(
+        store.list_blocking().unwrap().project(acme.id).unwrap().name.as_str(),
+        "Acme Corp"
+    );
+}
+
+// Projects pulled one page at a time keep the orders the records carry, so a later page never lands out of place and
+// nothing goes back up as an edit.
+#[tokio::test]
+async fn projects_pulled_on_separate_pages_keep_the_orders_they_carry() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(dir.path());
+    let projects = adapter(&store, Kind::ConnectionProject);
+
+    for (id, name, order) in [(OTHER_PROJECT, "Globex", 1), (PROJECT, "Acme", 0)] {
+        projects
+            .apply(
+                ScopeName::Personal,
+                put(id, json!({"name": name, "color": "None", "sort_order": order})),
+            )
+            .await
+            .unwrap();
+    }
+
+    let list = store.list_blocking().unwrap();
+    let names: Vec<&str> = list
+        .projects_in_order()
+        .into_iter()
+        .map(|project| project.name.as_str())
+        .collect();
+    assert_eq!(names, ["Acme", "Globex"]);
+    let mut orders: Vec<(String, Value)> = projects
+        .records(ScopeName::Personal)
+        .await
+        .unwrap()
+        .records
+        .into_iter()
+        .map(|record| (record.record_id, record.fields["sort_order"].clone()))
+        .collect();
+    orders.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut expected = vec![(PROJECT.to_owned(), json!(0)), (OTHER_PROJECT.to_owned(), json!(1))];
+    expected.sort_by(|left, right| left.0.cmp(&right.0));
+    assert_eq!(orders, expected);
 }
