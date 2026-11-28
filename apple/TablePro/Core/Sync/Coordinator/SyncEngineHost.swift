@@ -270,6 +270,8 @@ final class SyncEngineHost {
                     settings: settingsHost,
                     deviceStore: deviceStore,
                     legacyMirror: mirror,
+                    // None yet: only the connections' secrets, which the core reaches itself, go up as envelopes.
+                    syncedSecrets: nil,
                     listener: listener
                 )
             }
