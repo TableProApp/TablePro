@@ -1,5 +1,5 @@
 // Bundles as the Mac's `ConnectionBundleExporter.teamShareableSettings` writes them, so a team copy a beta Mac published
-// reads the same here and goes back out byte for byte.
+// reads the same here and goes back out byte for byte, less the paths on the device that wrote it.
 
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -14,7 +14,7 @@ fn id() -> Uuid {
 }
 
 fn read(bundle: &Value) -> tablepro_storage::SavedConnection {
-    team_connection(id(), bundle, DriverNames::Mac, |_| false)
+    team_connection(id(), bundle, DriverNames::Mac)
 }
 
 fn round_trip(bundle: &Value) -> Value {
@@ -50,11 +50,25 @@ fn full() -> Value {
     })
 }
 
+// `full()` with no path on the device that wrote it: no key, agent socket, TLS file or SSH profile.
+fn full_without_device_paths() -> Value {
+    let mut bundle = full();
+    for member in ["privateKeyPath", "agentSocketPath"] {
+        bundle["sshConfig"].as_object_mut().unwrap().remove(member);
+    }
+    bundle["sshConfig"]["jumpHosts"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("privateKeyPath");
+    bundle["sslConfig"] = json!({"mode": "Verify CA"});
+    bundle
+}
+
 #[test]
 fn a_bundle_the_mac_writes_reads_and_goes_back_out_unchanged() {
-    for bundle in [plain(), full()] {
-        assert_eq!(round_trip(&bundle), bundle);
-    }
+    assert_eq!(round_trip(&plain()), plain());
+    assert_eq!(round_trip(&full()), full_without_device_paths());
+    assert_eq!(round_trip(&full_without_device_paths()), full_without_device_paths());
 }
 
 #[test]
@@ -76,7 +90,6 @@ fn a_full_bundle_reads_into_the_saved_connection_s_members() {
     assert_eq!(ssh.host, "bastion");
     assert_eq!(ssh.jump_hosts.len(), 1);
     assert_eq!(saved.tls.mode, tablepro_core::TlsMode::VerifyCa);
-    assert!(saved.tls.ca_file.as_ref().is_some_and(|path| path.is_absolute()));
     assert_eq!(saved.safe_mode, tablepro_core::SafeModeLevel::AlertFull);
     assert_eq!(saved.query_timeout_secs, Some(120));
     assert_eq!(
@@ -91,25 +104,75 @@ fn a_full_bundle_reads_into_the_saved_connection_s_members() {
     assert!(saved.tags.is_empty() && saved.group_id.is_none() && saved.project_id.is_none());
 }
 
-// A team copy drops what would run on the reader's machine, and a profile only a profile this device holds links.
+// A team copy drops what would run on the reader's machine.
 #[test]
-fn a_team_copy_drops_startup_and_tunnel_commands_and_links_only_a_held_profile() {
+fn a_team_copy_drops_startup_and_tunnel_commands() {
     let mut bundle = plain();
     bundle["startupCommands"] = json!("SET ROLE admin");
     bundle["tunnelCommand"] = json!({"method": "command", "command": "nc db 5432"});
     bundle["localOnly"] = json!(true);
+
+    let saved = read(&bundle);
+
+    assert_eq!(saved.details.startup_sql, None);
+    assert!(!saved.device.local_only);
+    assert_eq!(team_bundle(&saved, None, DriverNames::Mac), plain());
+}
+
+// A path on the device that wrote the copy names nothing on the reader's, and another account's path must never pick
+// this device's key, so none comes in. The sign-in method stays, so a key copy asks for a key of the reader's own.
+#[test]
+fn a_team_copy_reads_no_key_agent_tls_file_driver_file_or_profile() {
+    let mut bundle = full();
+    bundle["sshConfig"]["agentSocketPath"] = json!("~/.1password/agent.sock");
+    bundle["sslConfig"]["clientCertificatePath"] = json!("~/certs/me.pem");
+    bundle["sslConfig"]["clientKeyPath"] = json!("~/certs/me.key");
     bundle["sshProfileId"] = json!(PROFILE);
+    bundle["additionalFields"] =
+        json!({"bqLocation": "EU", "sslCaCertPath": "~/ca.pem", "sqliteExtensions": "~/x.dylib"});
 
-    let unheld = read(&bundle);
-    let held = team_connection(id(), &bundle, DriverNames::Mac, |profile| {
-        profile == Uuid::parse_str(PROFILE).unwrap()
-    });
+    let saved = read(&bundle);
 
-    assert_eq!(unheld.details.startup_sql, None);
-    assert!(!unheld.device.local_only);
-    assert_eq!(unheld.details.ssh_profile_id, None);
-    assert_eq!(held.details.ssh_profile_id, Uuid::parse_str(PROFILE).ok());
-    assert_eq!(team_bundle(&unheld, None, DriverNames::Mac), plain());
+    let ssh = saved.ssh.as_ref().expect("a tunnel");
+    assert_eq!(
+        ssh.auth,
+        tablepro_storage::SavedSshAuth::PrivateKey {
+            path: None,
+            has_passphrase: false
+        }
+    );
+    assert_eq!((&ssh.kept_key_path, &ssh.agent_socket), (&None, &None));
+    assert_eq!(ssh.jump_hosts[0].key_path, None);
+    assert_eq!((&saved.tls.ca_file, &saved.tls.client_identity), (&None, &None));
+    assert_eq!(saved.details.ssh_profile_id, None);
+    assert_eq!(
+        saved.details.additional_fields.keys().collect::<Vec<_>>(),
+        ["bqLocation", "connectTimeoutSeconds"]
+    );
+}
+
+// The same paths on this device stay here when it publishes.
+#[test]
+fn a_published_copy_carries_no_key_agent_tls_file_driver_file_or_profile() {
+    let mut saved = read(&full_without_device_paths());
+    let ssh = saved.ssh.as_mut().expect("a tunnel");
+    ssh.auth = tablepro_storage::SavedSshAuth::PrivateKey {
+        path: Some("/Users/ada/.ssh/id_ed25519".into()),
+        has_passphrase: true,
+    };
+    ssh.kept_key_path = Some("/Users/ada/.ssh/old".into());
+    ssh.agent_socket = Some("/Users/ada/.1password/agent.sock".into());
+    ssh.jump_hosts[0].key_path = Some("/Users/ada/.ssh/edge".into());
+    saved.tls.ca_file = Some("/Users/ada/ca.pem".into());
+    saved.details.ssh_profile_id = Uuid::parse_str(PROFILE).ok();
+    for (key, value) in [
+        ("sslCaCertPath", "/Users/ada/ca.pem"),
+        ("sqliteExtensions", "/Users/ada/x.dylib"),
+    ] {
+        saved.details.additional_fields.insert(key.to_owned(), value.to_owned());
+    }
+
+    assert_eq!(team_bundle(&saved, None, DriverNames::Mac), full_without_device_paths());
 }
 
 // `DatabaseConnection(importing:)`: a blank host is localhost, a mode no build names checks as Required, a legacy
@@ -156,7 +219,7 @@ fn a_driver_field_no_file_may_carry_stays_out_both_ways() {
 // Linux and Windows name the engine by the core's driver id; the bundle always carries the Mac's name.
 #[test]
 fn the_core_s_driver_ids_read_and_write_the_mac_s_type_names() {
-    let saved = team_connection(id(), &plain(), DriverNames::Core, |_| false);
+    let saved = team_connection(id(), &plain(), DriverNames::Core);
 
     assert_ne!(saved.driver_id, "PostgreSQL");
     assert_eq!(team_bundle(&saved, None, DriverNames::Core), plain());

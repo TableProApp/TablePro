@@ -284,17 +284,13 @@ fn refused_destination(saved: &tablepro_storage::SavedConnection) -> bool {
         .any(|(host, port, user)| tablepro_ssh::SshDestination::new(host, port, user).is_err())
 }
 
-// A team's connection as the app shows it: the bundle read the way every platform reads it, linking only an SSH profile
-// this device holds. None for one whose tunnel names a destination `ssh` would misread.
-fn item_info(item: TeamItem, names: DriverNames, profiles: &[SshProfile]) -> TeamLibraryItemInfo {
+// A team's connection as the app shows it: the bundle read the way every platform reads it. None for one whose tunnel
+// names a destination `ssh` would misread.
+fn item_info(item: TeamItem, names: DriverNames) -> TeamLibraryItemInfo {
     let connection = (item.item.kind == TeamLibraryKind::Connection)
         .then(|| Uuid::parse_str(&item.item.id).ok())
         .flatten()
-        .map(|id| {
-            team_connection(id, &item.item.fields, names, |profile| {
-                profiles.iter().any(|held| held.id == profile)
-            })
-        })
+        .map(|id| team_connection(id, &item.item.fields, names))
         .filter(|saved| !refused_destination(saved))
         .map(|saved| LibraryConnectionRecord::from(&saved));
     TeamLibraryItemInfo {
@@ -307,17 +303,13 @@ fn item_info(item: TeamItem, names: DriverNames, profiles: &[SshProfile]) -> Tea
     }
 }
 
-fn team_info(team: TeamLibraryTeam, names: DriverNames, profiles: &[SshProfile]) -> TeamLibraryTeamInfo {
+fn team_info(team: TeamLibraryTeam, names: DriverNames) -> TeamLibraryTeamInfo {
     TeamLibraryTeamInfo {
         team_id: team_id(team.team),
         name: team.name,
         role: team.role.map(role_tag),
         can_write: team.writable,
-        items: team
-            .items
-            .into_iter()
-            .map(|item| item_info(item, names, profiles))
-            .collect(),
+        items: team.items.into_iter().map(|item| item_info(item, names)).collect(),
     }
 }
 
@@ -456,7 +448,7 @@ impl SyncService {
         super::open::driver_names(self.config.platform)
     }
 
-    // The SSH profiles this Core's library holds, as it last read them: the only ones a team copy may link.
+    // The SSH profiles this Core's library holds, as it last read them, which a published tunnel follows.
     fn held_profiles(&self) -> Vec<SshProfile> {
         match self.connections.as_ref().map(|store| store.snapshot().state) {
             Some(ConnectionListState::Ready(list)) => list.ssh_profiles.to_vec(),
@@ -572,7 +564,7 @@ impl SyncService {
     ) -> Result<Vec<TeamLibraryTeamInfo>, CoreError> {
         let account = self.account.as_ref().map(|service| service.account.clone());
         let tasks = self.tasks.clone();
-        let (names, profiles) = (self.driver_names(), self.held_profiles());
+        let names = self.driver_names();
         let teams = self
             .on_team_library(expected_owner, move |control| async move {
                 let teams = control.team_library().await?;
@@ -582,10 +574,7 @@ impl SyncService {
                 Ok(teams)
             })
             .await?;
-        Ok(teams
-            .into_iter()
-            .map(|team| team_info(team, names, &profiles))
-            .collect())
+        Ok(teams.into_iter().map(|team| team_info(team, names)).collect())
     }
 
     // The connections `TeamLibraryPublishPlan.connections` names, as the library holds them; the core builds each one's
@@ -795,7 +784,6 @@ mod tests {
             &json!({"name": "Shop", "host": "db", "port": 5432, "database": "shop", "username": "app",
                 "type": "PostgreSQL"}),
             DriverNames::Mac,
-            |_| false,
         );
         let mut record = LibraryConnectionRecord::from(&saved);
         id.clone_into(&mut record.connection.id);
@@ -835,8 +823,8 @@ mod tests {
         };
         let id = Uuid::from_u128(1).hyphenated().to_string().to_uppercase();
 
-        let connection = item_info(item(TeamLibraryKind::Connection, &id), DriverNames::Mac, &[]);
-        let query = item_info(item(TeamLibraryKind::Query, "Q1"), DriverNames::Mac, &[]);
+        let connection = item_info(item(TeamLibraryKind::Connection, &id), DriverNames::Mac);
+        let query = item_info(item(TeamLibraryKind::Query, "Q1"), DriverNames::Mac);
 
         let record = connection.connection.expect("a connection");
         assert_eq!(record.connection.name, "Shop");
@@ -860,7 +848,7 @@ mod tests {
             updated_at_ms: None,
         };
 
-        assert!(item_info(item, DriverNames::Mac, &[]).connection.is_none());
+        assert!(item_info(item, DriverNames::Mac).connection.is_none());
     }
 
     fn signed_in(account: u128) -> StateIdentity {
@@ -959,7 +947,6 @@ mod tests {
                 }],
             },
             DriverNames::Mac,
-            &[],
         );
 
         assert_eq!(info.team_id, wire(5));

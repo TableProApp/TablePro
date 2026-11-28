@@ -5,17 +5,19 @@
 // copy never carries startup commands, a tunnel command or Local only, and reads none: a teammate's copy runs nothing.
 // A driver field goes out and comes in only when this build knows it as one a file may carry
 // (`field_trust::portable_fields`), as the Mac's exporter keeps them: a field a newer build added may be a secret or a
-// command.
+// command. Nor does a team copy carry a path on the device that wrote it, both ways: SSH keys and the agent socket, the
+// TLS files, a driver's local files and the SSH profile link name things on one device, and another account's path must
+// never pick this device's key. The SSH sign-in method stays, so a key copy asks the reader for a key of their own.
 
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 
-use tablepro_storage::field_trust::portable_fields;
+use tablepro_storage::field_trust::{FieldTrust, field_trust, portable_fields};
 use tablepro_storage::{DeviceOnly, SavedConnection, SshProfile};
 use uuid::Uuid;
 
 use super::connection::{self, DriverNames};
-use super::values::{text, uuid_at, uuid_value};
+use super::values::text;
 
 const CONNECT_TIMEOUT: &str = "connectTimeoutSeconds";
 const QUERY_TIMEOUT: &str = "queryTimeoutSeconds";
@@ -34,13 +36,11 @@ const MEMBERS: [(&str, &str); 10] = [
     ("redisDatabase", "redis_database"),
 ];
 
-const SSH_MEMBERS: [(&str, &str); 12] = [
+const SSH_MEMBERS: [(&str, &str); 10] = [
     ("host", "host"),
     ("port", "port"),
     ("username", "username"),
     ("authMethod", "auth_method"),
-    ("privateKeyPath", "private_key_path"),
-    ("agentSocketPath", "agent_socket_path"),
     ("totpMode", "totp_mode"),
     ("totpAlgorithm", "totp_algorithm"),
     ("totpDigits", "totp_digits"),
@@ -49,20 +49,20 @@ const SSH_MEMBERS: [(&str, &str); 12] = [
     ("remoteFileAccess", "remote_file_access"),
 ];
 
-const HOP_MEMBERS: [(&str, &str); 5] = [
+const HOP_MEMBERS: [(&str, &str); 4] = [
     ("host", "host"),
     ("port", "port"),
     ("username", "username"),
     ("authMethod", "auth_method"),
-    ("privateKeyPath", "private_key_path"),
 ];
 
-const SSL_MEMBERS: [(&str, &str); 4] = [
-    ("mode", "mode"),
-    ("caCertificatePath", "ca_certificate_path"),
-    ("clientCertificatePath", "client_certificate_path"),
-    ("clientKeyPath", "client_key_path"),
-];
+const SSL_MEMBERS: [(&str, &str); 1] = [("mode", "mode")];
+
+fn team_fields(fields: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+    let mut kept = portable_fields(fields, true);
+    kept.retain(|key, _| field_trust(key) != Some(FieldTrust::LocalFile));
+    kept
+}
 
 fn defaulted(key: &str, value: &Value) -> bool {
     match key {
@@ -122,9 +122,6 @@ pub fn team_bundle(saved: &SavedConnection, profile: Option<&SshProfile>, names:
     {
         out.insert("sslConfig".to_owned(), Value::Object(renamed(ssl, &SSL_MEMBERS, true)));
     }
-    if let Some(profile) = saved.details.ssh_profile_id {
-        out.insert("sshProfileId".to_owned(), uuid_value(profile));
-    }
     if let Some(level) = wire.get("safe_mode_level").filter(|level| *level != "silent") {
         out.insert("safeModeLevel".to_owned(), level.clone());
     }
@@ -137,7 +134,7 @@ pub fn team_bundle(saved: &SavedConnection, profile: Option<&SshProfile>, names:
     if let Some(seconds) = connect {
         out.insert(CONNECT_TIMEOUT.to_owned(), Value::from(seconds));
     }
-    let mut fields: Map<String, Value> = portable_fields(&saved.details.additional_fields, true)
+    let mut fields: Map<String, Value> = team_fields(&saved.details.additional_fields)
         .into_iter()
         .map(|(key, value)| (key, Value::from(value)))
         .collect();
@@ -170,15 +167,9 @@ fn ssl_mode(raw: Option<&str>) -> &'static str {
     }
 }
 
-// A team item's bundle as a connection with id `id`. `holds_profile` says whether this device holds an SSH profile, the
-// only one the copy may link. What the bundle has no place for (tags, group, project, favourite, credential profile,
-// and every device-only setting) reads as the default.
-pub fn team_connection(
-    id: Uuid,
-    bundle: &Value,
-    names: DriverNames,
-    holds_profile: impl Fn(Uuid) -> bool,
-) -> SavedConnection {
+// A team item's bundle as a connection with id `id`. What the bundle has no place for (tags, group, project, favourite,
+// credential profile, SSH profile and every device-only setting) reads as the default.
+pub fn team_connection(id: Uuid, bundle: &Value, names: DriverNames) -> SavedConnection {
     let mut wire = renamed(bundle, &MEMBERS, false);
     if let Some(ssh) = bundle.get("sshConfig") {
         let mut tunnel = renamed(ssh, &SSH_MEMBERS, false);
@@ -203,9 +194,6 @@ pub fn team_connection(
         tls.insert("mode".to_owned(), Value::from(ssl_mode(text(ssl, "mode"))));
         wire.insert("ssl_config".to_owned(), Value::Object(tls));
     }
-    if let Some(profile) = uuid_at(bundle, "sshProfileId").filter(|profile| holds_profile(*profile)) {
-        wire.insert("ssh_profile_id".to_owned(), uuid_value(profile));
-    }
     wire.insert(
         "safe_mode_level".to_owned(),
         bundle.get("safeModeLevel").cloned().unwrap_or(Value::Null),
@@ -224,7 +212,7 @@ pub fn team_connection(
         .iter()
         .filter(|(key, _)| *key == CONNECT_TIMEOUT || *key == QUERY_TIMEOUT)
         .map(|(key, value)| (key.clone(), value.clone()));
-    let mut fields: Map<String, Value> = portable_fields(&given, true)
+    let mut fields: Map<String, Value> = team_fields(&given)
         .into_iter()
         .chain(timeouts)
         .map(|(key, value)| (key, Value::from(value)))
