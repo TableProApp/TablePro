@@ -114,8 +114,8 @@ impl OAuth {
         code: String,
         authorization: Authorization,
     ) -> Result<Tokens, AccountError> {
-        let limited = Arc::new(OnceLock::new());
-        let http = |request| execute(self.http.clone(), request, limited.clone());
+        let noted = Arc::new(OnceLock::new());
+        let http = |request| execute(self.http.clone(), request, noted.clone());
         let answer = self
             .client
             .exchange_code(AuthorizationCode::new(code))
@@ -123,7 +123,7 @@ impl OAuth {
             .set_redirect_uri(Cow::Owned(authorization.redirect_uri))
             .request_async(&http)
             .await;
-        answer.map(tokens).map_err(|error| grant_error(error, limited.get()))
+        answer.map(tokens).map_err(|error| grant_error(error, noted.get()))
     }
 
     // A license key stored by a Mac from before accounts, traded for tokens already bound to this machine's device.
@@ -166,11 +166,11 @@ impl OAuth {
     }
 
     pub(crate) async fn refresh(&self, refresh: &SecretString) -> Result<Tokens, AccountError> {
-        let limited = Arc::new(OnceLock::new());
-        let http = |request| execute(self.http.clone(), request, limited.clone());
+        let noted = Arc::new(OnceLock::new());
+        let http = |request| execute(self.http.clone(), request, noted.clone());
         let token = RefreshToken::new(refresh.expose_secret().to_owned());
         let answer = self.client.exchange_refresh_token(&token).request_async(&http).await;
-        answer.map(tokens).map_err(|error| grant_error(error, limited.get()))
+        answer.map(tokens).map_err(|error| grant_error(error, noted.get()))
     }
 
     // RFC 7009 by hand: oauth2 refuses a revocation URL that is not https. A refusal keeps only a standard error code:
@@ -209,11 +209,12 @@ impl OAuth {
     }
 }
 
-// oauth2 keeps neither the status nor the headers of an error answer, so a 429 is noted here.
+// oauth2 keeps neither the status nor the headers of an error answer, so a 429 is noted here, and a 5xx, whose body
+// may be a proxy's page, keeps its status for the caller's backoff.
 async fn execute(
     client: reqwest::Client,
     request: HttpRequest,
-    limited: Arc<OnceLock<AccountError>>,
+    noted: Arc<OnceLock<AccountError>>,
 ) -> Result<HttpResponse, HttpClientError<reqwest::Error>> {
     let (parts, body) = request.into_parts();
     let mut response = client
@@ -223,8 +224,15 @@ async fn execute(
         .send()
         .await
         .map_err(Box::new)?;
-    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        drop(limited.set(rate_limited(response.headers()).into()));
+    let status = response.status();
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        drop(noted.set(rate_limited(response.headers()).into()));
+    } else if status.is_server_error() {
+        drop(noted.set(AccountError::Refused {
+            status: status.as_u16(),
+            code: format!("http_{}", status.as_u16()),
+            detail: String::new(),
+        }));
     }
     let mut answer = http::Response::builder().status(response.status());
     if let Some(headers) = answer.headers_mut() {
@@ -298,10 +306,10 @@ fn tokens(response: BasicTokenResponse) -> Tokens {
 // invalid_grant: the token's family was revoked, its device removed, or a token replayed.
 fn grant_error(
     error: RequestTokenError<HttpClientError<reqwest::Error>, oauth2::basic::BasicErrorResponse>,
-    limited: Option<&AccountError>,
+    noted: Option<&AccountError>,
 ) -> AccountError {
-    if let Some(limited) = limited {
-        return limited.clone();
+    if let Some(noted) = noted {
+        return noted.clone();
     }
     match error {
         RequestTokenError::ServerResponse(answer) if *answer.error() == BasicErrorResponseType::InvalidGrant => {
@@ -330,6 +338,11 @@ mod tests {
 
     // A revocation endpoint that refuses with `body`.
     fn refusing(body: &'static str) -> Endpoints {
+        answering(500, body)
+    }
+
+    // Every endpoint answers `status` with `body`.
+    fn answering(status: u16, body: &'static str) -> Endpoints {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
         let base = format!("http://{}", listener.local_addr().expect("its address"));
         std::thread::spawn(move || {
@@ -351,7 +364,7 @@ mod tests {
                 let mut stream = stream;
                 write!(
                     stream,
-                    "HTTP/1.1 500 Stub\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    "HTTP/1.1 {status} Stub\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
                     body.len()
                 )
                 .expect("the answer");
@@ -384,5 +397,24 @@ mod tests {
                 "{error:?}"
             );
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_refresh_a_proxy_answers_with_a_5xx_page_keeps_the_status() {
+        let oauth = OAuth::new(
+            AppClient::LINUX,
+            &answering(502, "<html>Bad Gateway</html>"),
+            reqwest::Client::new(),
+        )
+        .expect("a client");
+
+        let Err(refused) = oauth.refresh(&SecretString::from("refresh")).await else {
+            panic!("a 502 gave tokens");
+        };
+
+        assert!(
+            matches!(&refused, AccountError::Refused { status: 502, code, .. } if code == "http_502"),
+            "{refused:?}"
+        );
     }
 }

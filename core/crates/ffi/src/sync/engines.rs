@@ -349,6 +349,7 @@ impl ServiceEngine {
             mode,
             follows,
         }));
+        sync.read_last_synced().await;
         if let (Some(host), Some(store)) = (&hosts.team_library, team_library) {
             let session = binding
                 .as_ref()
@@ -435,9 +436,10 @@ pub(crate) const FILE_POLL: Duration = Duration::from_millis(100);
 const FILE_WAIT_TRIES: u32 = 50;
 const FILE_POLL_MAX: Duration = Duration::from_secs(5);
 
-// The TablePro Sync engine, or why it is not running. A start that failed for a reason that passes, as the network or
-// a locked device store, is tried again by the next call that needs the engine, for the same sign-in only; any other
-// failure holds until the app opens sync again. A start that found the state file busy goes on by itself once the file
+// The TablePro Sync engine, or why it is not running. It starts with the server out of reach, since the transport binds
+// to the sign-in the account holds; a start that failed for a reason that passes, as a locked device store, is tried
+// again by the next call that needs the engine, for the same sign-in only; any other failure holds until the app opens
+// sync again. A start that found the state file busy goes on by itself once the file
 // is free.
 pub(crate) struct ServiceSlot {
     held: Mutex<Result<Arc<ServiceEngine>, SyncError>>,

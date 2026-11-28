@@ -97,6 +97,7 @@ impl From<SyncStatus> for SyncStatusInfo {
             provider: status.provider.map(SyncProviderTag::from),
             phase: status.phase.into(),
             last_pass_ms: status.last_pass_ms,
+            last_synced_ms: status.last_synced_ms,
             problem: status.problem.map(str::to_owned),
             waiting_approvals: status.waiting_approvals,
             conflicts: status.conflicts,

@@ -56,6 +56,8 @@ nonisolated internal protocol AccountKeyFlows: AnyObject, Sendable {
     func approvalWordsDiffer(request: String) async throws
     func cancelApprovalSession(request: String) async throws
 
+    // A pass of the engine holding the keys, so the page shows what another device changed since this one's last pass.
+    func syncKeysNow() async throws
     func accountDevices() async throws -> [AccountDeviceInfo]
     func removeDeviceRow(device: String) async throws
     func beginDeviceRemoval(recoveryKey: String, lost: [String]) async throws -> RemovalReviewInfo

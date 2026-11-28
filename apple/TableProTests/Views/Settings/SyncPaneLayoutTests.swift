@@ -7,11 +7,17 @@ import Testing
 struct SyncPaneLayoutTests {
     private static let everyProvider = PersonalSyncChoices(providers: [.off, .icloud, .tableproSync], forced: nil, locked: false)
 
-    private static func engine(_ provider: SyncProviderTag?, _ phase: SyncPhaseTag = .idle, problem: String? = nil) -> SyncStatusInfo {
+    private static func engine(
+        _ provider: SyncProviderTag?,
+        _ phase: SyncPhaseTag = .idle,
+        problem: String? = nil,
+        lastSyncedMs: Int64? = nil
+    ) -> SyncStatusInfo {
         SyncStatusInfo(
             provider: provider,
             phase: phase,
             lastPassMs: nil,
+            lastSyncedMs: lastSyncedMs,
             problem: problem,
             waitingApprovals: 0,
             conflicts: 0,
@@ -332,6 +338,43 @@ struct SyncPaneLayoutTests {
         #expect(layout.offersSyncNow)
         #expect(layout.licenseGate == nil)
         #expect(!layout.showsICloudStatus)
+    }
+
+    // E2E F21: relaunched with the server out of reach, a Mac said "Sync Is Unavailable" and "Last synced: Never".
+    @Test("A launch with the server out of reach that never synced waits to retry and has never synced")
+    func launchOfflineNeverSynced() {
+        let engine = Self.engine(.tableproSync, .waiting(retryInMs: 2_000), problem: "sync.network")
+        let layout = Self.layout(provider: .tableproSync, engine: engine)
+        #expect(layout.serviceStatus == .waiting)
+        #expect(layout.showsLastSynced)
+        #expect(layout.lastSynced == nil)
+    }
+
+    @Test("A launch with the server out of reach after a sync waits to retry and shows the last sync the core kept")
+    func launchOfflineAfterASync() {
+        let engine = Self.engine(.tableproSync, .waiting(retryInMs: 2_000), problem: "sync.network", lastSyncedMs: 1_764_000_000_000)
+        let layout = Self.layout(provider: .tableproSync, engine: engine)
+        #expect(layout.serviceStatus == .waiting)
+        #expect(layout.lastSynced == Date(timeIntervalSince1970: 1_764_000_000))
+    }
+
+    @Test("Last synced follows the provider: the core's on TablePro Sync, the coordinator's on iCloud, none while off")
+    func lastSyncedFollowsTheProvider() {
+        var inputs = SyncPaneInputs(
+            provider: .tableproSync,
+            choices: Self.everyProvider,
+            iCloudAccess: .available,
+            serviceAccess: .available,
+            iCloudStatus: .idle,
+            engine: Self.engine(.tableproSync, lastSyncedMs: 1_764_000_000_000),
+            serverLicense: nil
+        )
+        inputs.iCloudLastSynced = Date(timeIntervalSince1970: 1_700_000_000)
+        #expect(SyncPaneLayout(inputs).lastSynced == Date(timeIntervalSince1970: 1_764_000_000))
+        inputs.provider = .iCloud
+        #expect(SyncPaneLayout(inputs).lastSynced == Date(timeIntervalSince1970: 1_700_000_000))
+        inputs.provider = .off
+        #expect(SyncPaneLayout(inputs).lastSynced == nil)
     }
 
     @Test("Past grace on a company server: uploads paused, downloads go on, the license gate offers the way back")

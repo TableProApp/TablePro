@@ -31,10 +31,9 @@ const ANSWER_BYTES: usize = 8 << 20;
 const DPOP: &str = "DPoP";
 const IDEMPOTENCY_KEY: &str = "Idempotency-Key";
 
-// A bearer and the sign-in it is of, read in one hold of the account's session (K2 hazard 13).
-#[derive(Debug, Clone)]
-pub struct SignedIn {
-    pub token: SecretString,
+// The sign-in a bearer is of.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignedInAs {
     // The `/v2` base, `https://api.tablepro.app/v2`.
     pub api: String,
     pub origin: String,
@@ -45,8 +44,18 @@ pub struct SignedIn {
     pub session_id: Option<String>,
 }
 
+// A bearer and the sign-in it is of, read in one hold of the account's session (K2 hazard 13).
+#[derive(Debug, Clone)]
+pub struct SignedIn {
+    pub token: SecretString,
+    pub of: SignedInAs,
+}
+
 #[async_trait]
 pub trait SignIn: Send + Sync {
+    // The sign-in as the account holds it, with no call: the transport binds to it, so an engine opens offline.
+    async fn signed_in_as(&self) -> Result<SignedInAs, TransportError>;
+
     async fn signed_in(&self) -> Result<SignedIn, TransportError>;
 
     // The server answered 401 to this token, so the next read refreshes it.
@@ -65,7 +74,7 @@ pub struct Binding {
 }
 
 impl Binding {
-    fn of(signed_in: &SignedIn) -> Result<Self, TransportError> {
+    fn of(signed_in: &SignedInAs) -> Result<Self, TransportError> {
         let account = signed_in.account_id.as_deref().and_then(wire::account);
         let device_row = signed_in.device_id.clone().map(DeviceRowId);
         let origin = Origin::parse(&signed_in.origin).map_err(|_| TransportError::Server {
@@ -93,7 +102,7 @@ impl Binding {
     }
 
     // The same sign-in as the one the transport opened for: server, account, device row and session.
-    pub fn holds(&self, signed_in: &SignedIn) -> bool {
+    pub fn holds(&self, signed_in: &SignedInAs) -> bool {
         Self::of(signed_in).is_ok_and(|now| now == *self)
     }
 }
@@ -127,7 +136,7 @@ struct Call<'a> {
 impl HttpTransport {
     // Reads the sign-in once and keeps it; an account with no device row yet is not one to sync.
     pub async fn open(sign_in: std::sync::Arc<dyn SignIn>, http: reqwest::Client) -> Result<Self, TransportError> {
-        let binding = Binding::of(&sign_in.signed_in().await?)?;
+        let binding = Binding::of(&sign_in.signed_in_as().await?)?;
         Ok(Self {
             sign_in,
             http,
@@ -146,7 +155,7 @@ impl HttpTransport {
 
     async fn token(&self) -> Result<SecretString, TransportError> {
         let now = self.sign_in.signed_in().await?;
-        if !self.binding.holds(&now) {
+        if !self.binding.holds(&now.of) {
             return Err(TransportError::SignedOut);
         }
         Ok(now.token)

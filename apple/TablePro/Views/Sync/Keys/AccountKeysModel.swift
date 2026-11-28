@@ -105,6 +105,21 @@ internal final class AccountKeysModel: ObservableObject {
         await task.value
     }
 
+    // As the page opens: what this Mac holds, then once a pass has run, what other devices changed since (E2E F21). A
+    // pass that fails, as offline, keeps the first read.
+    func refresh() async {
+        await reload()
+        do {
+            try await environment.flows().syncKeysNow()
+        } catch {
+            Self.logger.notice(
+                "The pass for the keys page did not run: \(LogRedaction.publicDescription(of: error), privacy: .public)"
+            )
+            return
+        }
+        await reload()
+    }
+
     // While the page is on screen. Cancelled with the page's task.
     func watchRequests() async {
         while !Task.isCancelled {

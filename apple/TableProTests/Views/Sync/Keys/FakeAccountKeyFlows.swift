@@ -39,6 +39,8 @@ final class FakeAccountKeyFlows: AccountKeyFlows, @unchecked Sendable {
     var expiresAt = Date(timeIntervalSince1970: 2_000_000_000)
     // Holds removeDeviceRow until opened.
     var removeRowGate: AsyncGate?
+    // What a key pass pulled, as another device's approval or removal.
+    var onSyncKeys: (() -> Void)?
 
     var calls: [Call] {
         locked { recorded }
@@ -183,6 +185,11 @@ final class FakeAccountKeyFlows: AccountKeyFlows, @unchecked Sendable {
 
     func cancelApprovalSession(request: String) async throws {
         try record("cancelApprovalSession", [request])
+    }
+
+    func syncKeysNow() async throws {
+        try record("syncKeysNow")
+        locked { onSyncKeys }?()
     }
 
     func accountDevices() async throws -> [AccountDeviceInfo] {

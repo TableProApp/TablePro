@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
@@ -24,34 +25,46 @@ public sealed partial class ShellTests
         app.Screenshot("240-keyboard-shortcuts");
 
         // Record a free chord onto New query tab.
-        RecordShortcut(app, settings, "shortcut-recorder-newTab", "\"newTab\": \"ctrl+shift+j\"",
+        RecordShortcut(app, settings, "newTab", "ctrl+shift+j",
             VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT, VirtualKeyShort.KEY_J);
         app.Screenshot("241-keyboard-recorded");
 
         // Delete removes the binding: the stored value becomes the cleared sentinel.
-        RecordShortcut(app, settings, "shortcut-recorder-newTab", "\"newTab\": \"\"", VirtualKeyShort.DELETE);
+        RecordShortcut(app, settings, "newTab", string.Empty, VirtualKeyShort.DELETE);
 
         // Ctrl+W belongs to Close tab, so recording it onto New query tab asks first.
         app.Click(app.Find("shortcut-recorder-newTab"));
         Thread.Sleep(200);
         Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_W);
-        app.Click(app.FindByName("Reassign"), () => SettingsHold(settings, "\"newTab\": \"ctrl+w\""));
+        app.Click(app.FindByName("Reassign"), () => OverrideIs(settings, "newTab", "ctrl+w"));
         app.Screenshot("242-keyboard-reassigned");
 
-        Assert.True(Retry.WhileFalse(() => SettingsHold(settings, "\"closeTab\": \"\""), AppSession.Wait,
+        Assert.True(Retry.WhileFalse(() => OverrideIs(settings, "closeTab", string.Empty), AppSession.Wait,
             throwOnTimeout: false).Success, File.ReadAllText(settings));
     }
 
-    private static bool SettingsHold(string path, string fragment) =>
-        File.Exists(path) && File.ReadAllText(path).Contains(fragment, StringComparison.Ordinal);
-
-    private static void RecordShortcut(AppSession app, string settings, string recorder, string fragment,
-        params VirtualKeyShort[] keys)
+    // The settings writer escapes + as +, so the stored value is compared, not the file's text.
+    private static bool OverrideIs(string path, string action, string keys)
     {
-        app.Click(app.Find(recorder));
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+
+        using var settings = JsonDocument.Parse(File.ReadAllText(path));
+        return settings.RootElement.TryGetProperty("shortcutOverrides", out var overrides)
+            && overrides.ValueKind == JsonValueKind.Object
+            && overrides.TryGetProperty(action, out var value)
+            && value.GetString() == keys;
+    }
+
+    private static void RecordShortcut(AppSession app, string settings, string action, string keys,
+        params VirtualKeyShort[] chord)
+    {
+        app.Click(app.Find("shortcut-recorder-" + action));
         Thread.Sleep(200);
-        Keyboard.TypeSimultaneously(keys);
-        Assert.True(Retry.WhileFalse(() => SettingsHold(settings, fragment), AppSession.Wait,
+        Keyboard.TypeSimultaneously(chord);
+        Assert.True(Retry.WhileFalse(() => OverrideIs(settings, action, keys), AppSession.Wait,
             throwOnTimeout: false).Success, File.ReadAllText(settings));
     }
 }

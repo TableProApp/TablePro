@@ -85,6 +85,50 @@ struct AccountKeysModelTests {
         #expect(fixture.flows.calls(named: "keyState").count == 2)
     }
 
+    // E2E F21: a device approved on another Mac stayed off this list until this Mac's next pass, reopening included.
+    @Test("Opening the page runs a key pass and lists a device another Mac approved since this one's last pass")
+    func openingRunsAKeyPass() async {
+        let fixture = AccountKeysFixture()
+        Self.approved(fixture)
+        let approvedElsewhere = FakeAccountKeyFlows.device("key-air", row: "row-air", name: "MacBook Air 2", addedAtUs: 9)
+        fixture.flows.onSyncKeys = { [flows = fixture.flows] in flows.devices.append(approvedElsewhere) }
+        let model = fixture.model()
+
+        await model.refresh()
+
+        #expect(fixture.flows.calls(named: "syncKeysNow").count == 1)
+        #expect(model.sortedDevices.map(\.keyDevice) == ["key-this", "key-mini", "key-air"])
+    }
+
+    @Test("Opening the page offline lists what this Mac holds and keeps it when the pass fails")
+    func openingOfflineKeepsTheList() async {
+        let fixture = AccountKeysFixture()
+        Self.approved(fixture)
+        fixture.flows.fail("syncKeysNow", with: FakeAccountKeyFlows.failure("sync.network"))
+        let model = fixture.model()
+
+        await model.refresh()
+
+        #expect(model.sortedDevices.map(\.keyDevice) == ["key-this", "key-mini"])
+        #expect(model.devices.failure == nil)
+        #expect(fixture.flows.calls(named: "accountDevices").count == 1)
+    }
+
+    @Test("A device another Mac approves while the page is open joins the list when the core says the keys changed")
+    func rosterChangeWhileOpen() async throws {
+        let fixture = AccountKeysFixture()
+        Self.approved(fixture)
+        let model = fixture.model()
+        await model.refresh()
+        fixture.flows.devices.append(FakeAccountKeyFlows.device("key-air", row: "row-air", name: "MacBook Air 2", addedAtUs: 9))
+
+        fixture.keyChanges.send()
+
+        try await waitUntil { model.sortedDevices.count == 3 }
+        #expect(model.sortedDevices.last?.keyDevice == "key-air")
+        #expect(fixture.flows.calls(named: "syncKeysNow").count == 1)
+    }
+
     @Test("The reset rows read the page's service, and again when the keys or the account change")
     func resetRowsFollowThePage() async throws {
         let fixture = AccountKeysFixture()
