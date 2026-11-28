@@ -516,7 +516,7 @@ fn stored_envelope(server: &FakeServer, n: u8) -> Option<Value> {
 }
 
 // A `policy` refusal stands only while the switch that refused it is off: turned on again, the same change goes up,
-// which a refusal of any other code would hold until the change differs (0069, Policies).
+// which a refusal of any other code would hold until the change differs (0076, Policies).
 #[tokio::test]
 async fn an_envelope_the_policy_refused_goes_up_once_password_sync_is_on_again() {
     use tablepro_sync::api::control::HeldRecordReason;
@@ -562,7 +562,7 @@ async fn an_envelope_the_policy_refused_goes_up_once_password_sync_is_on_again()
 }
 
 // A connection kept on the device and then deleted there takes its envelope's deletion with it: other devices keep both
-// (0054, Rules for both providers; 0069).
+// (0054, Rules for both providers; 0076).
 #[tokio::test]
 async fn the_envelope_of_a_connection_kept_on_the_device_is_not_deleted_on_the_server_with_it() {
     let server = FakeServer::new();
@@ -589,7 +589,7 @@ async fn the_envelope_of_a_connection_kept_on_the_device_is_not_deleted_on_the_s
 }
 
 // An envelope update pulled while the device's own copy cannot be read, as with a locked keychain, waits for the store
-// and lands once it reads again, with no new edit on the server (0069).
+// and lands once it reads again, with no new edit on the server (0076).
 #[tokio::test]
 async fn an_envelope_pulled_while_the_store_cannot_read_its_copy_lands_once_it_can() {
     let server = FakeServer::new();

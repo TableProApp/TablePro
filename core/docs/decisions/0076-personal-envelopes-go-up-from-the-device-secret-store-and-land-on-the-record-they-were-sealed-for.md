@@ -1,4 +1,4 @@
-# 0069: Personal envelopes go up from the device's secret store and land on the record they were sealed for
+# 0076: Personal envelopes go up from the device's secret store and land on the record they were sealed for
 
 - **Status**: Accepted; amends 0054 and 0066
 - **Date**: 2026-11-28

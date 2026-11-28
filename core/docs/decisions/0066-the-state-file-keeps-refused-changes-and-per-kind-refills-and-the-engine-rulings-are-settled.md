@@ -1,6 +1,6 @@
 # 0066: The state file keeps refused changes and per-kind refills, and the engine rulings are settled
 
-- **Status**: Accepted; amends 0054, 0056, 0060 and 0064; a `policy` refusal and the `awaiting_store` held reason amended by 0069
+- **Status**: Accepted; amends 0054, 0056, 0060 and 0064; schema 2's `moves` and `left_behind` and a zone made again amended by 0073; per-kind refills, stale answers and an alert's replace point amended by 0074; a `policy` refusal and the `awaiting_store` held reason amended by 0076
 - **Date**: 2026-11-26
 
 ## Context
