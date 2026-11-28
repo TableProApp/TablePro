@@ -39,7 +39,8 @@ struct SyncSettingsView: View {
             offersICloudDataDeletion: coordinator.lastSyncDate != nil
                 && ProviderMoves.offersICloudDataDeletion(settings.provider, under: policy.snapshot),
             scopes: moves.scopes,
-            waitingApprovals: approvals.waiting
+            waitingApprovals: approvals.waiting,
+            iCloudLastSynced: coordinator.lastSyncDate
         ))
     }
 
@@ -93,7 +94,7 @@ struct SyncSettingsView: View {
                 }
 
                 if layout.showsLastSynced {
-                    lastSyncedRow(offersSyncNow: layout.offersSyncNow)
+                    lastSyncedRow(layout)
                 }
 
                 if layout.offersICloudDataDeletion {
@@ -288,12 +289,12 @@ struct SyncSettingsView: View {
         return SyncApprovalPresentation.waitingLine(layout.waitingApprovals)
     }
 
-    private func lastSyncedRow(offersSyncNow: Bool) -> some View {
+    private func lastSyncedRow(_ layout: SyncPaneLayout) -> some View {
         LabeledContent {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                SyncLastSyncedText(date: lastSyncDate)
+                SyncLastSyncedText(date: layout.lastSynced)
 
-                if offersSyncNow {
+                if layout.offersSyncNow {
                     Button("Sync Now") {
                         Task { await syncNow() }
                     }
@@ -304,11 +305,6 @@ struct SyncSettingsView: View {
         } label: {
             Text("Last synced")
         }
-    }
-
-    private var lastSyncDate: Date? {
-        guard settings.provider == .tableproSync else { return coordinator.lastSyncDate }
-        return moves.engineStatus?.lastPassMs.map { Date(timeIntervalSince1970: Double($0) / 1_000) }
     }
 
     private var iCloudDataRow: some View {

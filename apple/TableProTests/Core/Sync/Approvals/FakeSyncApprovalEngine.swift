@@ -52,6 +52,7 @@ final class FakeSyncApprovalEngine: SyncApprovalEngine, @unchecked Sendable {
             provider: .tableproSync,
             phase: .idle,
             lastPassMs: nil,
+            lastSyncedMs: nil,
             problem: nil,
             waitingApprovals: count,
             conflicts: 0,

@@ -22,7 +22,7 @@ internal struct AccountKeysPage: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(SettingsPage.accountEncryption.pageIdentifier)
         .task {
-            await model.reload()
+            await model.refresh()
         }
         .task {
             await model.watchRequests()

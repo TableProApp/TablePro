@@ -16,6 +16,7 @@ struct SyncPaneInputs {
     var scopes: [ScopeStatusInfo] = []
     // Records whose pulled values wait for the person, on any provider, Team Library's included.
     var waitingApprovals = 0
+    var iCloudLastSynced: Date?
 }
 
 // A server switch that keeps something off TablePro Sync while this Mac is signed in to it (core ADR 0051, Policies).
@@ -70,6 +71,8 @@ struct SyncPaneLayout: Equatable {
     // Why TablePro Sync is unavailable, in the person's terms; the code goes to the log.
     let serviceProblem: String?
     let showsLastSynced: Bool
+    // On TablePro Sync, the last pass that got through as the core keeps it, so a launch while offline still shows it.
+    let lastSynced: Date?
     let offersSyncNow: Bool
     let showsCategories: Bool
     let offersICloudDataDeletion: Bool
@@ -110,6 +113,7 @@ struct SyncPaneLayout: Equatable {
             serviceStatus = nil
             serviceProblem = nil
             showsLastSynced = live
+            lastSynced = inputs.iCloudLastSynced
             offersSyncNow = live && presentation.offersSyncNow
         case .tableproSync:
             // The stored provider changes only once a move returned, so a Mac on TablePro Sync has moved.
@@ -125,6 +129,7 @@ struct SyncPaneLayout: Equatable {
             serviceStatus = status
             serviceProblem = status == .unavailable ? inputs.engine?.problem.map(ProviderMoves.message(forCode:)) : nil
             showsLastSynced = live
+            lastSynced = inputs.engine?.lastSyncedMs.map { Date(timeIntervalSince1970: Double($0) / 1_000) }
             offersSyncNow = live && status != .syncing
         case .off:
             let forcedService = inputs.choices.forced == .tableproSync
@@ -138,6 +143,7 @@ struct SyncPaneLayout: Equatable {
             serviceStatus = nil
             serviceProblem = nil
             showsLastSynced = false
+            lastSynced = nil
             offersSyncNow = false
         }
 
