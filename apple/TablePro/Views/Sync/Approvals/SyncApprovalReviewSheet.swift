@@ -27,7 +27,10 @@ internal struct SyncApprovalReviewSheet: View {
                     .font(.headline)
                     .accessibilityAddTraits(.isHeader)
                 Text(
-                    "Your other devices changed these. They can change where a connection signs in, what it runs when it connects, or what AI features send, so nothing here applies on this Mac until you approve it."
+                    """
+                    Your other devices changed these. They can change where a connection signs in, what it runs when it \
+                    connects, or what AI features send, so nothing here applies on this Mac until you approve it.
+                    """
                 )
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

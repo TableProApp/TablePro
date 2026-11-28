@@ -147,19 +147,19 @@ internal enum SyncApprovalPresentation {
     }
 
     static func subtitle(kind: String, isNew: Bool) -> String {
-        switch kind {
-        case "connection":
-            isNew ? String(localized: "New connection") : String(localized: "Changed connection")
-        case "library_connection":
-            isNew ? String(localized: "New Team Library connection") : String(localized: "Changed Team Library connection")
-        case "ssh_profile":
-            isNew ? String(localized: "New SSH profile") : String(localized: "Changed SSH profile")
-        case "credential_profile":
-            isNew ? String(localized: "New credential profile") : String(localized: "Changed credential profile")
-        case _ where isSettings(kind):
-            isNew ? String(localized: "New settings") : String(localized: "Changed settings")
-        default:
-            isNew ? String(localized: "New item") : String(localized: "Changed item")
+        switch (kind, isNew) {
+        case ("connection", true): String(localized: "New connection")
+        case ("connection", false): String(localized: "Changed connection")
+        case ("library_connection", true): String(localized: "New Team Library connection")
+        case ("library_connection", false): String(localized: "Changed Team Library connection")
+        case ("ssh_profile", true): String(localized: "New SSH profile")
+        case ("ssh_profile", false): String(localized: "Changed SSH profile")
+        case ("credential_profile", true): String(localized: "New credential profile")
+        case ("credential_profile", false): String(localized: "Changed credential profile")
+        case (_, true) where isSettings(kind): String(localized: "New settings")
+        case (_, false) where isSettings(kind): String(localized: "Changed settings")
+        case (_, true): String(localized: "New item")
+        case (_, false): String(localized: "Changed item")
         }
     }
 
@@ -324,7 +324,7 @@ internal enum SyncApprovalPresentation {
         case "maxToolRoundtripsEnabled": return String(localized: "Limit tool calls per reply")
         case "defaultConnectionPolicy": return String(localized: "Default AI policy")
         case "chatMode": return String(localized: "Chat mode")
-        case "shareAnalytics": return String(localized: "Share anonymous usage data")
+        case "shareAnalytics": return String(localized: "Share usage data")
         default: return visible(key)
         }
     }
@@ -499,7 +499,7 @@ internal enum SyncApprovalPresentation {
             guard JSONSerialization.isValidJSONObject(value),
                   let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .withoutEscapingSlashes])
             else { return String(localized: "Not set") }
-            return visible(String(decoding: data, as: UTF8.self))
+            return String(bytes: data, encoding: .utf8).map(visible) ?? String(localized: "Not set")
         }
     }
 
@@ -507,7 +507,8 @@ internal enum SyncApprovalPresentation {
         guard JSONSerialization.isValidJSONObject(value),
               let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .withoutEscapingSlashes])
         else { return .notSet }
-        return .code(TeamLibraryConflictText.visible(String(decoding: data, as: UTF8.self), keepingLineBreaks: false))
+        guard let json = String(bytes: data, encoding: .utf8) else { return .notSet }
+        return .code(TeamLibraryConflictText.visible(json, keepingLineBreaks: false))
     }
 
     private static func visible(_ text: String) -> String {
