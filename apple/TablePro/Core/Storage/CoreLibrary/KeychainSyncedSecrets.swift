@@ -6,9 +6,10 @@
 import Foundation
 import TableProFFI
 
-// The secrets TablePro Sync seals that `HostSecrets` does not reach: each SSH and credential profile's, and a
-// connection's TLS key passphrase and TOTP secret, in the items the Mac already reads (core ADR 0076). The Keychain
-// follows the provider, so on TablePro Sync a pulled secret is this Mac's own item and never an iCloud Keychain one.
+// The secrets TablePro Sync seals and lands, in the items the Mac already reads (core ADR 0076): each connection's,
+// SSH profile's and credential profile's. Every call is on this Mac's own item, whatever the provider follower has
+// recorded yet: a pull during a move from iCloud must not reach iCloud Keychain, and a removal an envelope brings
+// leaves the iCloud copy the devices still on iCloud share (core ADR 0044, iCloud Keychain).
 nonisolated internal final class KeychainSyncedSecrets: HostSyncedSecrets, @unchecked Sendable {
     private let keychain: any KeychainStoring
 
@@ -18,14 +19,14 @@ nonisolated internal final class KeychainSyncedSecrets: HostSyncedSecrets, @unch
 
     func kinds(parent: SyncedSecretParentTag) -> [String] {
         switch parent {
-        case .connection: [Self.sslKeyPassphrase, Self.totpSecret]
+        case .connection: [Self.password, Self.sshPassword, Self.sshKeyPassphrase, Self.sslKeyPassphrase, Self.totpSecret]
         case .sshProfile: [Self.sshPassword, Self.sshKeyPassphrase, Self.totpSecret]
         case .credentialProfile: [Self.password]
         }
     }
 
     func load(secret: SyncedSecretRef) throws -> String? {
-        switch keychain.readStringResult(forKey: try Self.key(secret)) {
+        switch keychain.readStringResult(forKey: try Self.key(secret), deviceOnly: true) {
         case .found(let value):
             return value
         case .notFound:
@@ -42,13 +43,15 @@ nonisolated internal final class KeychainSyncedSecrets: HostSyncedSecrets, @unch
     }
 
     func store(secret: SyncedSecretRef, value: String) throws {
-        guard keychain.writeString(value, forKey: try Self.key(secret)) else {
+        guard keychain.writeString(value, forKey: try Self.key(secret), deviceOnly: true) else {
             throw HostSecretError.Failed(detail: "the keychain refused the write")
         }
     }
 
     func delete(secret: SyncedSecretRef) throws {
-        keychain.delete(forKey: try Self.key(secret))
+        guard keychain.removeOwnItem(forKey: try Self.key(secret)) else {
+            throw HostSecretError.Failed(detail: "the keychain refused the removal")
+        }
     }
 
     private static let password = "password"
@@ -62,6 +65,12 @@ nonisolated internal final class KeychainSyncedSecrets: HostSyncedSecrets, @unch
             throw HostSecretError.Failed(detail: "not a record id")
         }
         switch (secret.parent, secret.kind) {
+        case (.connection, password):
+            return "com.TablePro.password.\(id.uuidString)"
+        case (.connection, sshPassword):
+            return "com.TablePro.sshpassword.\(id.uuidString)"
+        case (.connection, sshKeyPassphrase):
+            return "com.TablePro.keypassphrase.\(id.uuidString)"
         case (.connection, sslKeyPassphrase):
             return "com.TablePro.sslkeypassphrase.\(id.uuidString)"
         case (.connection, totpSecret):

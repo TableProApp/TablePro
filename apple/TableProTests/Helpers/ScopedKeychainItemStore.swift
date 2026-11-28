@@ -18,6 +18,7 @@ final class ScopedKeychainItemStore: KeychainItemStore, @unchecked Sendable {
     private var items: [ItemID: Item] = [:]
     private var writes = 0
     private var lockedAccounts: Set<String> = []
+    private var refusedDeletes: Set<String> = []
     private var listingLocked = false
 
     private func nextDate() -> Date {
@@ -50,6 +51,17 @@ final class ScopedKeychainItemStore: KeychainItemStore, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         lockedAccounts.remove(account)
+    }
+
+    // A delete of the account fails as a keychain that refuses it does, until `refuseDeletes(of:false)`.
+    func refuseDeletes(of account: String, _ refused: Bool = true) {
+        lock.lock()
+        defer { lock.unlock() }
+        if refused {
+            refusedDeletes.insert(account)
+        } else {
+            refusedDeletes.remove(account)
+        }
     }
 
     func lockListing(_ locked: Bool) {
@@ -112,6 +124,9 @@ final class ScopedKeychainItemStore: KeychainItemStore, @unchecked Sendable {
     func delete(_ query: [String: Any]) -> OSStatus {
         lock.lock()
         defer { lock.unlock() }
+        if let account = query[kSecAttrAccount as String] as? String, refusedDeletes.contains(account) {
+            return errSecInteractionNotAllowed
+        }
         let found = matches(query)
         guard !found.isEmpty else { return errSecItemNotFound }
         for id in found {
