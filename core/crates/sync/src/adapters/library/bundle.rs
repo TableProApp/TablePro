@@ -66,7 +66,7 @@ const SSH_BLANK: [&str; 2] = ["privateKeyPath", "agentSocketPath"];
 const HOP_BLANK: [&str; 1] = ["privateKeyPath"];
 const SSL_BLANK: [&str; 3] = ["caCertificatePath", "clientCertificatePath", "clientKeyPath"];
 
-fn blank(members: &[&str]) -> impl Iterator<Item = (String, Value)> + '_ {
+fn blank(members: &'static [&'static str]) -> impl Iterator<Item = (String, Value)> {
     members.iter().map(|member| ((*member).to_owned(), Value::from("")))
 }
 
