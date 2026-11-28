@@ -329,6 +329,14 @@ final class ConnectionEditorWindowController: NSWindowController, NSWindowDelega
     }
 
     // The quit skips windowShouldClose, so each editor is closed here to reap what a running test staged.
+    // A sign-in that ended takes its team's copies with it, and the secrets they show, unsaved edits included.
+    static func closeTeamCopyEditors() {
+        for (request, controller) in controllers {
+            guard case .editTeamCopy = request else { continue }
+            controller.close()
+        }
+    }
+
     static func closeAllForTermination() {
         for controller in Array(controllers.values) {
             controller.close()

@@ -29,9 +29,10 @@ extension WelcomeViewModel {
     func editTeamConnection(rowID: UUID) {
         let library = TeamLibrary.shared
         guard let original = library.content.connection(rowID: rowID), original.canWrite else { return }
+        let destination = library.destination(original.teamID)
         Task { @MainActor in
             let secrets = await library.secrets(for: original)
-            TeamCopyEditStage.shared.stage(TeamCopyTarget(original: original, secrets: secrets))
+            TeamCopyEditStage.shared.stage(TeamCopyTarget(original: original, secrets: secrets, destination: destination))
             WindowOpener.shared.openTeamConnectionForm(teamID: original.teamID, itemID: original.id)
         }
     }

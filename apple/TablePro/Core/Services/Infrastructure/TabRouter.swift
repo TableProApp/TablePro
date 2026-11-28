@@ -166,6 +166,11 @@ internal final class TabRouter {
             /// installed for the whole of a connect, so asking the driver restarted one in flight.
             if let host = existing.contentViewController as? MainSplitViewController {
                 if host.workspaces.contains(id) {
+                    // A team row the team moved since dials where it points now, never where the window last dialed.
+                    if let transientConnection, let workspace = host.workspaces.workspace(for: id),
+                       ConnectionWindowPhaseMachine.allowsManualConnect(phase: workspace.phase) {
+                        workspace.payloadConnection = transientConnection
+                    }
                     host.reconnectWorkspaceIfIdle(id, adoptsSSHProfileEdits: false)
                 } else {
                     // Dialed by a workspace of its own, so a failure lands inline in its pane, not as an alert.

@@ -29,6 +29,7 @@ final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @u
     private(set) var connectionPublishes: [(team: String, connections: [LibraryConnectionRecord])] = []
     private(set) var connectionEdits: [(team: String, connection: LibraryConnectionRecord, secrets: [TeamSecretArg]?)] = []
     private var heldSecrets: [String: [TeamSecretArg]] = [:]
+    private var secretsFailure: CoreError?
     private(set) var queryPublishes: [(team: String, folders: [TeamFolderArg], queries: [TeamQueryArg])] = []
     private(set) var discards: [String?] = []
     private(set) var deletes = 0
@@ -53,6 +54,10 @@ final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @u
     // What the team's envelopes open to for one connection id, as the core answers it.
     func hold(secrets: [TeamSecretArg], for connectionId: String) {
         state.withLock { heldSecrets[connectionId] = secrets }
+    }
+
+    func failSecretReads(with error: CoreError?) {
+        state.withLock { secretsFailure = error }
     }
 
     func answerPublishes(with answer: Result<TeamPublishInfo, CoreError>) {
@@ -151,7 +156,10 @@ final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @u
     ) async throws -> [TeamSecretArg] {
         try check(expectedOwner)
         try signedIn()
-        return state.withLock { heldSecrets[connectionId] ?? [] }
+        return try state.withLock {
+            if let secretsFailure { throw secretsFailure }
+            return heldSecrets[connectionId] ?? []
+        }
     }
 
     func publishTeamSavedQueries(

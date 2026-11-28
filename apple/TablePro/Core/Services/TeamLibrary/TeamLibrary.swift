@@ -104,7 +104,10 @@ internal final class TeamLibrary: ObservableObject {
         account: AccountServices,
         legacy: TeamLibraryLegacyImport,
         reportDiscarded: @escaping @MainActor ([String]) -> Void = TeamLibraryUnsentChanges.presentDiscarded,
-        forgetSecrets: @escaping @MainActor () -> Void = { ConnectionStorage.shared.removeSharedRowSecrets() }
+        forgetSecrets: @escaping @MainActor () -> Void = {
+            ConnectionStorage.shared.removeSharedRowSecrets()
+            ConnectionEditorWindowController.closeTeamCopyEditors()
+        }
     ) {
         self.source = source
         self.account = account
@@ -168,8 +171,9 @@ internal final class TeamLibrary: ObservableObject {
 
     // MARK: - Team secrets
 
-    // What the team's envelopes hold for the connection, opened for the destination it points to now. Empty when the
-    // team holds none this Mac can open; nil when the team library could not be read.
+    // What the team's envelopes hold for the connection, opened for where the team's copy points now. Empty when the
+    // team holds none this Mac can open. Nil when the team library could not be read, or when the team's copy no
+    // longer points where `connection` does, so a secret never goes to a destination it was not sealed for.
     func secrets(for connection: TeamLibraryConnection) async -> [ConnectionSecretItem: String]? {
         guard let session = shownSession, let owner else { return nil }
         do {
@@ -179,7 +183,11 @@ internal final class TeamLibrary: ObservableObject {
                 teamId: connection.teamID,
                 connectionId: connection.id
             )
-            guard session == shownSession else { return nil }
+            let teams = try await engine.teamLibrary(expectedOwner: owner)
+            guard session == shownSession,
+                  let held = TeamLibraryContent(teams: teams).connections.first(where: { $0.id == connection.id }),
+                  Self.signsInAlike(held.connection, connection.connection)
+            else { return nil }
             var secrets: [ConnectionSecretItem: String] = [:]
             for secret in opened {
                 guard let item = ConnectionSecretItem(teamEnvelopeKind: secret.kind) else { continue }
@@ -192,6 +200,10 @@ internal final class TeamLibrary: ObservableObject {
         }
     }
 
+    nonisolated static func signsInAlike(_ lhs: DatabaseConnection, _ rhs: DatabaseConnection) -> Bool {
+        lhs.destination == rhs.destination && lhs.username == rhs.username
+    }
+
     // MARK: - Publishing
 
     // An edit of the team's copy by an owner, admin or editor, under the team's id for it. Nil secrets keep the team's
@@ -199,7 +211,8 @@ internal final class TeamLibrary: ObservableObject {
     func publishConnectionEdit(
         _ edited: DatabaseConnection,
         of original: TeamLibraryConnection,
-        secrets: [ConnectionSecretItem: String]?
+        secrets: [ConnectionSecretItem: String]?,
+        to destination: TeamLibraryDestination
     ) async throws(TeamLibraryPublishError) -> TeamLibraryPublishResult {
         var record = LibraryRecordMapping.record(edited, keeping: nil)
         record.connection.id = original.id
@@ -209,7 +222,7 @@ internal final class TeamLibrary: ObservableObject {
                 return TeamSecretArg(kind: kind, value: value)
             }
         }
-        return try await publish(to: destination(original.teamID)) { engine, owner in
+        return try await publish(to: destination) { engine, owner in
             try await engine.publishTeamConnectionEdit(
                 expectedOwner: owner,
                 teamId: original.teamID,
@@ -273,11 +286,11 @@ internal final class TeamLibrary: ObservableObject {
             guard failure.isRetryable else { throw .failed(failure) }
             return .queued(failure)
         }
-        guard publish.edits > 0 else { return .unchanged }
+        // Before the count: a change of a password alone counts no library edit when the password stayed here.
         if let leftOut = TeamPasswordsLeftOut(code: publish.secretsLeftOut) {
             return .publishedWithoutPasswords(Int(publish.edits), leftOut)
         }
-        return .published(Int(publish.edits))
+        return publish.edits == 0 ? .unchanged : .published(Int(publish.edits))
     }
 
     private func publish(
