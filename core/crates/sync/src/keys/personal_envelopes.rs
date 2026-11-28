@@ -71,6 +71,18 @@ impl KeyService {
         }
     }
 
+    // A device that may not write a personal secret now has no version to write it under.
+    pub(crate) async fn personal_writing_version(&self) -> Result<Option<Version>, SyncError> {
+        let _serial = self.serialized().await;
+        self.finish_cut_off_sign_out().await?;
+        let mut txn = self.begin().await?;
+        match self.writing_version(txn.as_mut(), KeyPurpose::Personal).await {
+            Ok(version) => Ok(Some(version)),
+            Err(SyncError::Locked { .. } | SyncError::NotAllowed { .. }) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
     pub(crate) async fn seal_personal(
         &self,
         envelope: &EnvelopeId,

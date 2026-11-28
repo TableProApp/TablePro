@@ -51,4 +51,8 @@ internal class SidebarHostingCellView<Row: View>: NSTableCellView {
     internal func setHostedContentHidden(_ isHidden: Bool) {
         hosting?.isHidden = isHidden
     }
+
+    override internal func accessibilityPerformShowMenu() -> Bool {
+        showEnclosingRowContextMenu() || super.accessibilityPerformShowMenu()
+    }
 }
