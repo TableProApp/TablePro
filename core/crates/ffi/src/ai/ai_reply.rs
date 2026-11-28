@@ -8,12 +8,29 @@ use tokio_util::sync::CancellationToken;
 use super::AiStopTag;
 use crate::error::{BoxedErrorInfo, CoreError};
 
-// In order: text as it arrives, then one of Finished, Failed or Stopped.
+// In order: text and, in agent mode, tool rounds as they arrive, then one
+// of Finished, Failed or Stopped.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum AiReplyEvent {
     // `part` and not `text`, since C# cannot give a record a member of its own name.
     Text {
         part: String,
+    },
+    // The model asked to run a tool. `input` is the arguments as JSON.
+    ToolCall {
+        id: String,
+        name: String,
+        input: String,
+    },
+    // The tool's dispatch began, after any write approval.
+    ToolStarted {
+        id: String,
+    },
+    // The tool's result, as it goes back to the model.
+    ToolFinished {
+        id: String,
+        output: String,
+        is_error: bool,
     },
     Finished {
         stop: AiStopTag,
@@ -38,8 +55,8 @@ impl From<ReplyEnd> for AiReplyEvent {
 }
 
 impl AiReplyEvent {
-    // Phase 1a has no agent loop here, so a tool call maps to nothing and
-    // text chat, which offers no tools, never produces one.
+    // The plain text-chat path offers no tools, so a tool call never
+    // arrives; the agent loop handles its rounds itself (see agent.rs).
     pub(crate) fn from_reply(event: ReplyEvent) -> Option<Self> {
         match event {
             ReplyEvent::Text(part) => Some(Self::Text { part }),
@@ -58,7 +75,7 @@ impl AiReplyEvent {
     }
 
     fn ends(&self) -> bool {
-        !matches!(self, Self::Text { .. })
+        matches!(self, Self::Finished { .. } | Self::Failed { .. } | Self::Stopped)
     }
 }
 

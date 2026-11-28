@@ -15,7 +15,7 @@ public enum AiStop
     Refused,
 }
 
-// In order: text as it arrives, then one of Finished, Failed or Stopped.
+// In order: text and, in agent mode, tool rounds as they arrive, then one of Finished, Failed or Stopped.
 public abstract record AiReplyEvent
 {
     private AiReplyEvent()
@@ -23,6 +23,15 @@ public abstract record AiReplyEvent
     }
 
     public sealed record Text(string Part) : AiReplyEvent;
+
+    // The model asked to run a tool. Input is its arguments as JSON.
+    public sealed record ToolCall(string Id, string Name, string Input) : AiReplyEvent;
+
+    // Dispatch of the call began, after any write approval.
+    public sealed record ToolStarted(string Id) : AiReplyEvent;
+
+    // The call's result, as it goes back to the model.
+    public sealed record ToolFinished(string Id, string Output, bool IsError) : AiReplyEvent;
 
     public sealed record Finished(AiStop Stop, long? InputTokens, long? OutputTokens) : AiReplyEvent;
 
@@ -75,7 +84,9 @@ public sealed class AiReply : IDisposable
             {
                 var replyEvent = Mapping.ReplyEvent(native);
                 yield return replyEvent;
-                if (replyEvent is not AiReplyEvent.Text)
+
+                // Text and the agent's tool events carry on; only one of these ends the reply.
+                if (replyEvent is AiReplyEvent.Finished or AiReplyEvent.Failed or AiReplyEvent.Stopped)
                 {
                     yield break;
                 }
