@@ -25,6 +25,15 @@ private final class SignInQuestionSpy {
     }
 }
 
+private actor ReadCounter {
+    private var count = 0
+
+    func next() -> Int {
+        defer { count += 1 }
+        return count
+    }
+}
+
 @MainActor
 struct LocalCredentialConsentTests {
     private let suite: EphemeralDefaults
@@ -454,11 +463,9 @@ struct LocalCredentialConsentTests {
         linked.origin = .linkedFolder
 
         try await makeConsent().check(linked, trigger: .request)
+        try await makeConsent().check(teamRow(.password), trigger: .request)
 
-        #expect(spy.questions.first?.uses == [
-            "Private Key: ~/.ssh/id_ed25519, 127.0.0.1:1", "SSH Agent: edge.example:22",
-        ])
-        #expect(!makeConsent().requiresApproval(teamRow(.password)))
+        #expect(spy.questions.map(\.uses) == [["Private Key: ~/.ssh/id_ed25519, 127.0.0.1:1", "SSH Agent: edge.example:22"]])
     }
 
     @Test("A hop only ~/.ssh/config names signs in with the agent, so it asks too")
@@ -469,6 +476,40 @@ struct LocalCredentialConsentTests {
         try await makeConsent(sshConfig: config).check(teamRow(.password), trigger: .request)
 
         #expect(spy.questions.first?.uses == ["SSH Agent: gate:22"])
+    }
+
+    @Test("A HostName that moves behind the same alias asks again, naming the server it resolves to")
+    func movedHostNameAsksAgain() async throws {
+        spy.answer = .approved
+        var aliased = teamRow(.sshAgent)
+        var ssh = aliased.resolvedSSHConfig
+        ssh.host = "bastion"
+        ssh.port = nil
+        aliased.sshTunnelMode = .inline(ssh)
+
+        try await makeConsent(sshConfig: "Host bastion\n  HostName a.example\n").check(aliased, trigger: .request)
+        try await makeConsent(sshConfig: "Host bastion\n  HostName a.example\n").check(aliased, trigger: .request)
+        try await makeConsent(sshConfig: "Host bastion\n  HostName b.example\n").check(aliased, trigger: .request)
+
+        #expect(spy.questions.map(\.uses) == [["SSH Agent: a.example:22"], ["SSH Agent: b.example:22"]])
+    }
+
+    @Test("A chain that changes while the question is open is asked about again, so the approval is what was read")
+    func changeDuringTheQuestionAsksAgain() async throws {
+        spy.answer = .approved
+        let reads = ReadCounter()
+        let consent = LocalCredentialConsent(
+            approvals: store,
+            ask: { [spy] question in await spy.ask(question) },
+            sshDocument: {
+                let host = await reads.next() == 0 ? "a.example" : "b.example"
+                return SSHConfigParser.parseDocumentContent("Host 127.0.0.1\n  HostName \(host)\n")
+            }
+        )
+
+        try await consent.check(teamRow(.sshAgent), trigger: .request)
+
+        #expect(spy.questions.map(\.uses) == [["SSH Agent: a.example:1"], ["SSH Agent: b.example:1"]])
     }
 
     @Test("An agent hop's fallback key is approved with it, and a changed one asks again")
@@ -509,6 +550,9 @@ struct LocalCredentialConsentTests {
 
         #expect(spy.questions.map(\.uses) == [["Database File: /tmp/team-copy.sqlite"]])
         #expect(!makeConsent().requiresApproval(motherDuck))
+        var socket = DatabaseConnection(name: "PG", host: "/run/postgresql", port: 5_432, type: .postgresql)
+        socket.origin = .teamLibrary
+        #expect(socket.sharedRowLocalUses(sshUses: []) == [.file(path: "/run/postgresql")])
     }
 
     @Test("The same tunnel and file on a row of this Mac's own asks nothing")
@@ -516,7 +560,7 @@ struct LocalCredentialConsentTests {
         var own = teamRow(.privateKey)
         own.origin = .thisMac
 
-        #expect(own.sharedRowLocalUses(document: nil).isEmpty)
+        #expect(own.sharedRowLocalUses(sshUses: [.agent(socket: "", server: "127.0.0.1:1")]).isEmpty)
         #expect(!makeConsent().requiresApproval(own))
     }
 

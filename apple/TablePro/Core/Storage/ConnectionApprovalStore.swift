@@ -54,6 +54,13 @@ internal final class ConnectionApprovalStore {
         return items.isSubset(of: approved)
     }
 
+    // Whether an item that starts with `itemPrefix` was approved for this connection at its destination.
+    internal func hasApproved(_ connection: DatabaseConnection, itemPrefix: String) -> Bool {
+        migrateIfNeeded()
+        let approved = approvals()[connection.id.uuidString]?[dialedDestination(connection).digest] ?? []
+        return approved.contains { $0.hasPrefix(itemPrefix) }
+    }
+
     internal func approve(_ connection: DatabaseConnection, extra: Set<String> = []) {
         migrateIfNeeded()
         var all = approvals()

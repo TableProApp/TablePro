@@ -56,8 +56,8 @@ internal final class LocalCredentialConsent {
     private let approvals: ConnectionApprovalStore
     private let ask: Ask
     private let sshDocument: SSHDocument
-    // `~/.ssh/config` as the last asynchronous check read it, so a synchronous answer names the same hops.
-    private var lastDocument: SSHConfigDocument?
+    // The uses each shared row's last check resolved, so a synchronous answer names the same SSH chain.
+    private var resolvedUses: [UUID: [SharedRowLocalUse]] = [:]
 
     internal init(
         approvals: ConnectionApprovalStore = .localCredentials,
@@ -69,37 +69,59 @@ internal final class LocalCredentialConsent {
         self.sshDocument = sshDocument
     }
 
+    // Synchronous, so it names a shared row's SSH chain only as its last check resolved it; before any check, a stored
+    // approval of SSH use at this destination stands in, and the connect's own check decides.
     internal func requiresApproval(_ connection: DatabaseConnection) -> Bool {
-        !isApproved(connection, uses: connection.sharedRowLocalUses(document: lastDocument))
+        guard connection.isSharedRow else { return !isApproved(connection, uses: []) }
+        if let uses = resolvedUses[connection.id] {
+            return !isApproved(connection, uses: uses)
+        }
+        let known = connection.sharedRowLocalUses(sshUses: [])
+        guard connection.opensSharedSSHTunnel else { return !isApproved(connection, uses: known) }
+        return !isApproved(connection, uses: known) || !approvals.hasApproved(connection, itemPrefix: "ssh.")
     }
 
     internal func confirm(_ connection: DatabaseConnection) async -> Bool {
-        let uses = await sharedRowUses(of: connection)
-        guard !isApproved(connection, uses: uses) else { return true }
-        guard await ask(Self.question(for: connection, uses: uses)) == .approved else { return false }
-        approvals.approve(connection, extra: Self.items(uses))
-        return true
+        (try? await approve(connection, trigger: .request)) != nil
     }
 
     internal func check(_ connection: DatabaseConnection, trigger: ConnectTrigger) async throws {
-        let uses = await sharedRowUses(of: connection)
-        guard !isApproved(connection, uses: uses) else { return }
-        guard trigger == .request else { throw LocalCredentialConsentError.needsPerson }
-        switch await ask(Self.question(for: connection, uses: uses)) {
-        case .approved:
-            approvals.approve(connection, extra: Self.items(uses))
-        case .declined:
-            throw LocalCredentialConsentError.declined
-        case .unanswered:
-            throw LocalCredentialConsentError.unanswered
+        try await approve(connection, trigger: trigger)
+    }
+
+    // Asked again when the uses changed while the question was open, such as a profile edit, so what is approved is
+    // what the person read.
+    private func approve(_ connection: DatabaseConnection, trigger: ConnectTrigger) async throws {
+        var uses = await sharedRowUses(of: connection)
+        while !isApproved(connection, uses: uses) {
+            guard trigger == .request else { throw LocalCredentialConsentError.needsPerson }
+            switch await ask(Self.question(for: connection, uses: uses)) {
+            case .approved:
+                let current = await sharedRowUses(of: connection)
+                guard Set(current) == Set(uses) else {
+                    uses = current
+                    continue
+                }
+                approvals.approve(connection, extra: Self.items(uses))
+            case .declined:
+                throw LocalCredentialConsentError.declined
+            case .unanswered:
+                throw LocalCredentialConsentError.unanswered
+            }
         }
     }
 
     private func sharedRowUses(of connection: DatabaseConnection) async -> [SharedRowLocalUse] {
         guard connection.isSharedRow else { return [] }
-        let document = await sshDocument()
-        lastDocument = document
-        return connection.sharedRowLocalUses(document: document)
+        let config = SSHProfileStorage.shared.refreshingLinkedProfile(connection).resolvedSSHConfig
+        var ssh: [SharedRowLocalUse] = []
+        if connection.opensSharedSSHTunnel {
+            let document = await sshDocument()
+            ssh = await Task.detached { DatabaseConnection.sshUses(config, document: document) }.value
+        }
+        let uses = connection.sharedRowLocalUses(sshUses: ssh)
+        resolvedUses[connection.id] = uses
+        return uses
     }
 
     private func isApproved(_ connection: DatabaseConnection, uses: [SharedRowLocalUse]) -> Bool {
@@ -144,8 +166,8 @@ internal final class LocalCredentialConsent {
     // Each SSH use names the server it signs in to, so a hop the person never typed is in the question.
     internal static func describe(_ use: SharedRowLocalUse) -> String {
         switch use {
-        case .agent(let server):
-            labeled(SSHAuthMethod.sshAgent.displayName, server)
+        case .agent(let socket, let server):
+            labeled(SSHAuthMethod.sshAgent.displayName, socket.isEmpty ? server : "\(socket), \(server)")
         case .key(let path, let server):
             labeled(SSHAuthMethod.privateKey.displayName, path.isEmpty ? server : "\(path), \(server)")
         case .profile(let id):
@@ -167,14 +189,15 @@ internal final class LocalCredentialConsent {
 // is. The core lists the same for its own SSH transports (`Core.sharedRowLocalUses`); this list stays the Mac's
 // because its SSH client tries other methods and reads `~/.ssh/config` itself.
 internal enum SharedRowLocalUse: Hashable, Sendable {
-    case agent(server: String)
+    // An empty socket is the one `SSH_AUTH_SOCK` names.
+    case agent(socket: String, server: String)
     case key(path: String, server: String)
     case profile(UUID)
     case file(path: String)
 
     var approvalItem: String {
         switch self {
-        case .agent(let server): "ssh.agent@" + server
+        case .agent(let socket, let server): "ssh.agent=" + socket + "@" + server
         case .key(let path, let server): "ssh.key=" + path + "@" + server
         case .profile(let id): "ssh.profile=" + id.uuidString
         case .file(let path): "file=" + path
@@ -187,82 +210,103 @@ extension DatabaseConnection {
         origin == .teamLibrary || origin == .linkedFolder
     }
 
-    // `document` is `~/.ssh/config` as the tunnel reads it; nil lists only the hops the row names.
     @MainActor
-    func sharedRowLocalUses(document: SSHConfigDocument?) -> [SharedRowLocalUse] {
+    var opensSharedSSHTunnel: Bool {
+        isSharedRow && SSHProfileStorage.shared.refreshingLinkedProfile(self).resolvedSSHConfig.enabled
+    }
+
+    // `sshUses` are the tunnel's, which `sshUses(_:document:)` resolves off the main actor.
+    @MainActor
+    func sharedRowLocalUses(sshUses: [SharedRowLocalUse]) -> [SharedRowLocalUse] {
         guard isSharedRow else { return [] }
         let routed = SSHProfileStorage.shared.refreshingLinkedProfile(self)
         let config = routed.resolvedSSHConfig
-        var uses: [SharedRowLocalUse] = []
-        if config.enabled {
-            uses += Self.sshUses(config, document: document)
-            if case .profile(let id, _) = routed.sshTunnelMode {
-                uses.append(.profile(id))
-            }
+        var uses = config.enabled ? sshUses : []
+        if config.enabled, case .profile(let id, _) = routed.sshTunnelMode {
+            uses.append(.profile(id))
         }
         uses += routed.localFileUses(tunnel: config)
         var seen: Set<SharedRowLocalUse> = []
         return uses.filter { seen.insert($0).inserted }
     }
 
-    private static func server(_ host: String, _ port: Int?) -> String {
-        "\(host):\(port ?? 22)"
+    private static func server(_ host: String, _ port: Int) -> String {
+        "\(host):\(port)"
     }
 
     // The keys `LibSSH2TunnelFactory.effectiveKeyPaths` offers: the named ones, else ssh's defaults unless the config
     // allows only named identities.
-    private static func keyPaths(_ target: ResolvedSSHTarget?, named: String) -> [String] {
-        guard let target else { return [named] }
+    private static func keyPaths(_ target: ResolvedSSHTarget) -> [String] {
         if !target.identityFiles.isEmpty { return target.identityFiles }
         return target.identitiesOnly ? [] : [""]
     }
 
-    // As `LibSSH2TunnelFactory.buildAuthenticator` and `buildJumpAuthenticator` sign in.
-    private static func sshUses(_ config: SSHConfiguration, document: SSHConfigDocument?) -> [SharedRowLocalUse] {
-        let chain = document.flatMap { try? LibSSH2TunnelFactory.resolveChainConfiguration(config: config, document: $0) }
-        let primary = server(config.host, config.port)
+    // As `LibSSH2TunnelFactory.buildAuthenticator` and `buildJumpAuthenticator` sign in, to the servers `~/.ssh/config`
+    // resolves. It may run `Match exec` or look a name up, so it runs off the main actor. A chain that does not resolve
+    // fails at the connect, so it is asked about as the row names it.
+    nonisolated static func sshUses(_ config: SSHConfiguration, document: SSHConfigDocument) -> [SharedRowLocalUse] {
+        guard let chain = try? LibSSH2TunnelFactory.resolveChainConfiguration(config: config, document: document) else {
+            return namedSSHUses(config)
+        }
+        let primary = server(chain.primary.host, chain.primary.port)
         var uses: [SharedRowLocalUse] = []
         switch config.authMethod {
         case .privateKey:
-            uses += keyPaths(chain?.primary, named: config.privateKeyPath).map { .key(path: $0, server: primary) }
+            uses += keyPaths(chain.primary).map { .key(path: $0, server: primary) }
         case .sshAgent:
-            uses.append(.agent(server: primary))
+            uses.append(.agent(socket: chain.primary.agentSocketPath, server: primary))
         case .password, .keyboardInteractive, .none:
             break
         }
-        let hops: [(hop: SSHJumpHost, target: ResolvedSSHTarget?)]
-        if let chain {
-            hops = chain.jumps.map { (hop: $0.formHop ?? SSHJumpHost(), target: Optional($0.target)) }
-        } else {
-            hops = config.jumpHosts.map { (hop: $0, target: nil) }
-        }
-        for (hop, target) in hops {
-            let hopServer = target.map { server($0.originalHost, $0.port) } ?? server(hop.host, hop.port)
+        for jump in chain.jumps {
+            let hop = jump.formHop ?? SSHJumpHost()
+            let target = jump.target
+            let hopServer = server(target.host, target.port)
             switch hop.authMethod {
             case .privateKey:
-                uses += keyPaths(target, named: hop.privateKeyPath).map { .key(path: $0, server: hopServer) }
-            case .sshAgent where target?.agentDisabled == true:
-                let paths = hop.privateKeyPath.isEmpty ? keyPaths(target, named: "") : [hop.privateKeyPath]
+                uses += keyPaths(target).map { .key(path: $0, server: hopServer) }
+            case .sshAgent where target.agentDisabled:
+                let paths = hop.privateKeyPath.isEmpty ? keyPaths(target) : [hop.privateKeyPath]
                 uses += paths.map { .key(path: $0, server: hopServer) }
             case .sshAgent:
-                uses.append(.agent(server: hopServer))
-                // With no config read, an agent hop may still fall back to the default keys.
-                let fallback = hop.privateKeyPath.isEmpty ? (target == nil ? [""] : []) : [hop.privateKeyPath]
-                uses += fallback.map { .key(path: $0, server: hopServer) }
+                uses.append(.agent(socket: target.agentSocketPath, server: hopServer))
+                if !hop.privateKeyPath.isEmpty {
+                    uses.append(.key(path: hop.privateKeyPath, server: hopServer))
+                }
             }
         }
         return uses
     }
 
-    // A database file or socket this Mac would open. MotherDuck's `md:`, a URL, memory and a file the SSH server holds
-    // are not here.
+    private nonisolated static func namedSSHUses(_ config: SSHConfiguration) -> [SharedRowLocalUse] {
+        let primary = server(config.host, config.port ?? 22)
+        var uses: [SharedRowLocalUse] = []
+        switch config.authMethod {
+        case .privateKey: uses.append(.key(path: config.privateKeyPath, server: primary))
+        case .sshAgent: uses.append(.agent(socket: config.agentSocketPath, server: primary))
+        case .password, .keyboardInteractive, .none: break
+        }
+        for hop in config.jumpHosts {
+            let hopServer = server(hop.host, hop.port ?? 22)
+            switch hop.authMethod {
+            case .privateKey: uses.append(.key(path: hop.privateKeyPath, server: hopServer))
+            case .sshAgent: uses.append(.agent(socket: config.agentSocketPath, server: hopServer))
+            }
+        }
+        return uses
+    }
+
+    // A database file or socket this Mac would open. MotherDuck's `md:`, a server URL, memory and a file the SSH server
+    // holds are not here; a path from the root or the home folder always is.
     @MainActor
     private func localFileUses(tunnel: SSHConfiguration) -> [SharedRowLocalUse] {
         func local(_ value: String?) -> String? {
-            guard let path = value?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty,
-                  !path.hasPrefix("md:"), !path.contains("://"), path != ":memory:"
-            else { return nil }
-            return path
+            guard let path = value?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty else { return nil }
+            if path.hasPrefix("/") || path.hasPrefix("~") { return path }
+            let lowered = path.lowercased()
+            let remote = path == ":memory:"
+                || ["md:", "libsql://", "http://", "https://", "ws://", "wss://"].contains { lowered.hasPrefix($0) }
+            return remote ? nil : path
         }
         func inLocalMode(_ modeField: String) -> Bool {
             (additionalFields[modeField] ?? "local") == "local"
@@ -280,6 +324,10 @@ extension DatabaseConnection {
         }
         let attached = (try? AttachedDatabaseList.decode(additionalFields[AttachedDatabaseList.fieldId])) ?? []
         paths += attached.compactMap { local($0.path) }
+        // A host given as a path is the server's socket, or the folder that holds it; a tunnel never dials one here.
+        if !tunnel.enabled, host.hasPrefix("/") {
+            paths.append(host)
+        }
         if let socket = local(localSocketPath) {
             paths.append(socket)
         }
