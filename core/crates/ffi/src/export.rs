@@ -636,14 +636,22 @@ async fn settle(
 }
 
 // Removed by whoever lets go of it last unless put in place, so a sink still finishing cannot leave it behind.
-struct PartFile {
+pub(crate) struct PartFile {
     path: PathBuf,
     target: PathBuf,
     placed: AtomicBool,
 }
 
 impl PartFile {
-    fn beside(target: PathBuf) -> Result<Self, CoreError> {
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub(crate) fn target(&self) -> &Path {
+        &self.target
+    }
+
+    pub(crate) fn beside(target: PathBuf) -> Result<Self, CoreError> {
         let name = target
             .file_name()
             .ok_or_else(|| bad_path(&target))?
@@ -657,7 +665,7 @@ impl PartFile {
     }
 
     // A rename replaces the file that was there in one step.
-    fn place(&self) -> Result<(), CoreError> {
+    pub(crate) fn place(&self) -> Result<(), CoreError> {
         std::fs::rename(&self.path, &self.target).map_err(|error| io_error(&self.target, &error))?;
         self.placed.store(true, Ordering::Release);
         Ok(())
@@ -688,7 +696,7 @@ pub(crate) fn write_whole_file(path: &str, bytes: &[u8]) -> Result<(), CoreError
     part.place()
 }
 
-async fn blocking<T, F>(tasks: &Tasks, work: F) -> Result<T, CoreError>
+pub(crate) async fn blocking<T, F>(tasks: &Tasks, work: F) -> Result<T, CoreError>
 where
     T: Send + 'static,
     F: FnOnce() -> Result<T, CoreError> + Send + 'static,
@@ -699,7 +707,7 @@ where
         .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))?
 }
 
-fn destination(path: &str) -> Result<PathBuf, CoreError> {
+pub(crate) fn destination(path: &str) -> Result<PathBuf, CoreError> {
     let target = PathBuf::from(path);
     match target.is_absolute() && target.file_name().is_some() {
         true => Ok(target),
@@ -717,7 +725,7 @@ fn title(table: Option<&TableRef>, target: &Path) -> String {
     }
 }
 
-fn io_error(path: &Path, error: &std::io::Error) -> CoreError {
+pub(crate) fn io_error(path: &Path, error: &std::io::Error) -> CoreError {
     let mut failed = CoreError::failed("ffi.export_io", format!("{}: {error}", path.display()));
     if let CoreError::Failed { info } = &mut failed {
         info.path = Some(path.display().to_string());

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tablepro_session::runtime::Tasks;
 use tablepro_sync::SyncError;
-use tablepro_sync::api::control::SyncControl;
+use tablepro_sync::api::control::{SyncControl, SyncStatus};
 use tablepro_sync::api::{CloudKitFailure, KindName, ScopeName, TransportError};
 use tablepro_sync::engine::Journal;
 use tokio_util::task::AbortOnDropHandle;
@@ -113,11 +113,15 @@ pub struct SyncCategoriesArg {
 // nothing that blocks (core ADR 0002).
 #[uniffi::export(callback_interface)]
 pub trait SyncListener: Send + Sync {
-    // `status`, the approvals, the conflicts or the held records changed.
+    // `status`, the conflicts or the held records changed.
     fn status_changed(&self);
 
     // The key state, a session, a reset, a team's keys or the key notices changed.
     fn keys_changed(&self);
+
+    // The values waiting for the person changed: a pull brought or cleared some, or a decision took some, so the app
+    // reads `approvals` again.
+    fn approvals_changed(&self);
 }
 
 // One per app, over the stores of the Core it was opened on and the sign-in it was given. Dropping it stops the
@@ -160,6 +164,8 @@ pub enum SyncPhaseTag {
     PullOnly,
     ZoneRemoved,
     NewIdentity,
+    // Nothing else to do, with values waiting for the person: `approvals` lists them.
+    NeedsApproval,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -169,6 +175,7 @@ pub struct SyncStatusInfo {
     pub last_pass_ms: Option<i64>,
     // The last pass's error code.
     pub problem: Option<String>,
+    // Records with a value waiting for the person, the team scopes' included whatever the personal provider is.
     pub waiting_approvals: u32,
     pub conflicts: u32,
     pub held: u32,
@@ -239,15 +246,28 @@ pub struct NewIdentityPlanInfo {
     pub account: String,
 }
 
-// Values are JSON text. `digest` names the pulled value the person is shown, as lower-case hex, and goes back with the
-// decision: a value a pull changed since is not decided (core ADR 0066).
+// A record with values a pull brought that wait for the person (core ADR 0044, Fields a pull applies only with
+// approval). `digest` names every value listed, as lower-case hex, and goes back with a decision on the whole record.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
-pub struct PendingApprovalInfo {
+pub struct RecordApprovalInfo {
     pub record: SyncRecordRef,
-    pub field: String,
-    pub pulled: String,
+    // The record's name, else its settings category; None when it has neither.
+    pub name: Option<String>,
+    // The device holds no copy: the record lands once every value is approved, and a refusal keeps it off the device.
+    pub new_record: bool,
     pub digest: String,
+    pub fields: Vec<FieldApprovalInfo>,
+}
+
+// Values are JSON text. `field` is a JSON Pointer into the record. `current` is None when the device holds no value,
+// `pulled` when the pull removes it. `digest` names the pulled value, as lower-case hex, and goes back with a decision
+// on this value: one a pull changed since is not decided (core ADR 0066).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct FieldApprovalInfo {
+    pub field: String,
     pub current: Option<String>,
+    pub pulled: Option<String>,
+    pub digest: String,
 }
 
 // None is a deletion. `digest` names the conflict as listed, as lower-case hex, and goes back with the choice.
@@ -275,6 +295,20 @@ pub enum HeldReasonTag {
 pub struct HeldRecordInfo {
     pub record: SyncRecordRef,
     pub reason: HeldReasonTag,
+}
+
+// What the team scopes hold is the person's to see too, and a value waiting there asks for them as a personal one
+// does, whatever the personal provider is.
+pub(crate) fn with_teams(mut status: SyncStatusInfo, teams: Option<&SyncStatus>) -> SyncStatusInfo {
+    if let Some(teams) = teams {
+        status.waiting_approvals = status.waiting_approvals.saturating_add(teams.waiting_approvals);
+        status.conflicts = status.conflicts.saturating_add(teams.conflicts);
+        status.held = status.held.saturating_add(teams.held);
+    }
+    if status.waiting_approvals > 0 && matches!(status.phase, SyncPhaseTag::Idle | SyncPhaseTag::Off) {
+        status.phase = SyncPhaseTag::NeedsApproval;
+    }
+    status
 }
 
 // Which engine a call reaches on the runtime: the personal provider's for personal data and history, and TablePro
@@ -360,6 +394,42 @@ impl SyncService {
         }
     }
 
+    fn personal_status(&self) -> SyncStatusInfo {
+        if self.config.provider == SyncProviderTag::Off {
+            return SyncStatusInfo {
+                provider: Some(SyncProviderTag::Off),
+                phase: SyncPhaseTag::Off,
+                last_pass_ms: None,
+                problem: None,
+                waiting_approvals: 0,
+                conflicts: 0,
+                held: 0,
+                queued_changes: 0,
+            };
+        }
+        match self.control_now() {
+            Ok(control) => control.status().into(),
+            // No engine holds personal data, so none of it can be counted.
+            Err(error) => SyncStatusInfo {
+                provider: Some(self.config.provider),
+                // A start waiting for the state file the closing service still holds is a wait, not an outage.
+                phase: if self.config.provider == SyncProviderTag::TableproSync && self.service.waits_for_file() {
+                    SyncPhaseTag::Waiting {
+                        retry_in_ms: u64::try_from(super::engines::FILE_POLL.as_millis()).unwrap_or(u64::MAX),
+                    }
+                } else {
+                    SyncPhaseTag::Unavailable
+                },
+                last_pass_ms: None,
+                problem: Some(error.code().to_owned()),
+                waiting_approvals: 0,
+                conflicts: 0,
+                held: 0,
+                queued_changes: 0,
+            },
+        }
+    }
+
     // The personal provider's engine as it stands, for the calls that answer at once.
     fn control_now(&self) -> Result<Arc<dyn SyncControl>, SyncError> {
         match self.config.provider {
@@ -399,38 +469,14 @@ impl SyncService {
 #[uniffi::export]
 impl SyncService {
     pub fn status(&self) -> SyncStatusInfo {
-        if self.config.provider == SyncProviderTag::Off {
-            return SyncStatusInfo {
-                provider: Some(SyncProviderTag::Off),
-                phase: SyncPhaseTag::Off,
-                last_pass_ms: None,
-                problem: None,
-                waiting_approvals: 0,
-                conflicts: 0,
-                held: 0,
-                queued_changes: 0,
-            };
-        }
-        match self.control_now() {
-            Ok(control) => control.status().into(),
-            Err(error) => SyncStatusInfo {
-                provider: Some(self.config.provider),
-                // A start waiting for the state file the closing service still holds is a wait, not an outage.
-                phase: if self.config.provider == SyncProviderTag::TableproSync && self.service.waits_for_file() {
-                    SyncPhaseTag::Waiting {
-                        retry_in_ms: u64::try_from(super::engines::FILE_POLL.as_millis()).unwrap_or(u64::MAX),
-                    }
-                } else {
-                    SyncPhaseTag::Unavailable
-                },
-                last_pass_ms: None,
-                problem: Some(error.code().to_owned()),
-                waiting_approvals: 0,
-                conflicts: 0,
-                held: 0,
-                queued_changes: 0,
-            },
-        }
+        // TablePro Sync runs the team scopes alone when another provider, or none, holds personal data.
+        let teams = match self.config.provider {
+            SyncProviderTag::TableproSync => None,
+            SyncProviderTag::Icloud | SyncProviderTag::Off => {
+                self.service.now().ok().map(|engine| engine.sync.status())
+            }
+        };
+        with_teams(self.personal_status(), teams.as_ref())
     }
 
     // A pass of each engine that holds records here; the first failure is the answer, after every pass ran.
@@ -531,7 +577,8 @@ impl SyncService {
             .await
     }
 
-    pub async fn approvals(&self) -> Result<Vec<PendingApprovalInfo>, CoreError> {
+    // One entry per record, the personal provider's first, then the team scopes'.
+    pub async fn approvals(&self) -> Result<Vec<RecordApprovalInfo>, CoreError> {
         self.on_route(move |route| async move {
             let (engines, failed) = route.running().await;
             if let Some(error) = failed {
@@ -539,14 +586,15 @@ impl SyncService {
             }
             let mut approvals = Vec::new();
             for control in engines {
-                approvals.extend(control.approvals().await?.into_iter().map(PendingApprovalInfo::from));
+                approvals.extend(control.approvals().await?.into_iter().map(RecordApprovalInfo::from));
             }
             Ok(approvals)
         })
         .await
     }
 
-    // `digest` is the approval's, as `approvals` gave it; a pull that changed the value since answers `sync.changed`.
+    // One value. `digest` is the field's, as `approvals` gave it; a pull that changed the value since answers
+    // `sync.changed`. A refusal keeps the device's value, and the same pulled value is not asked again.
     pub async fn decide_approval(
         &self,
         record: SyncRecordRef,
@@ -558,6 +606,22 @@ impl SyncService {
         self.on_route(move |route| async move {
             let control = route.for_scope(key.scope).await?;
             control.decide_approval(key, field, seen, approve).await
+        })
+        .await
+    }
+
+    // Every value the record's entry listed. `digest` is the record's, as `approvals` gave it; a pull that changed any
+    // of them since answers `sync.changed` and decides nothing. Approving a new record lands it before this returns.
+    pub async fn decide_record_approval(
+        &self,
+        record: SyncRecordRef,
+        digest: String,
+        approve: bool,
+    ) -> Result<(), CoreError> {
+        let (key, seen) = (record_arg(&record)?, digest_arg(&digest)?);
+        self.on_route(move |route| async move {
+            let control = route.for_scope(key.scope).await?;
+            control.decide_record_approval(key, seen, approve).await
         })
         .await
     }

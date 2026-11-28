@@ -22,6 +22,9 @@ pub trait StateStore: Send + Sync {
     // What opening found; it does not change while the file is open.
     fn opened(&self) -> &Opened;
 
+    // The file has one connection, so a transaction waits for the one before it to end. A caller that holds one never
+    // begins another or makes a network call: a helper that reads or writes rows under its caller's transaction takes
+    // it as `&mut dyn StateTxn`, and a step that pushes or pulls ends its transaction first.
     async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError>;
 
     // Once a delete committed, nothing of what it removed stays in the file's WAL frames or free pages, as a verified

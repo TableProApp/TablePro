@@ -125,6 +125,8 @@ impl SyncListener for Quiet {
     fn status_changed(&self) {}
 
     fn keys_changed(&self) {}
+
+    fn approvals_changed(&self) {}
 }
 
 struct Mac {
@@ -320,11 +322,11 @@ impl Mac {
         self.pass().await;
     }
 
-    // What waits for the person on this Mac, each approved.
+    // What waits for the person on this Mac, each record approved whole.
     async fn approve_all(&self) {
         for approval in self.service.approvals().await.unwrap() {
             self.service
-                .decide_approval(approval.record, approval.field, approval.digest, true)
+                .decide_record_approval(approval.record, approval.digest, true)
                 .await
                 .unwrap();
         }

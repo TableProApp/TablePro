@@ -76,10 +76,12 @@ async fn a_connection_new_to_the_device_waits_whole_until_the_pass_s_approval_le
     let stored = rig.store(Kind::Connection).holds(A);
     let status = sync.status();
     let waiting = sync.approvals().await.unwrap();
-    for approval in &waiting {
-        sync.decide_approval(approval.key.clone(), approval.field.clone(), approval.digest, true)
-            .await
-            .unwrap();
+    for record in &waiting {
+        for approval in &record.fields {
+            sync.decide_approval(record.key.clone(), approval.field.clone(), approval.digest, true)
+                .await
+                .unwrap();
+        }
     }
     let pushed = sync.run_pass(PassReason::Poll).await.unwrap().push;
 

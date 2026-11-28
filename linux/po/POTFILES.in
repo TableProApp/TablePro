@@ -121,7 +121,7 @@ crates/app/src/services/mcp_clients.rs
 crates/app/src/services/mcp_service.rs
 crates/app/src/services/mcp_status.rs
 crates/app/src/services/mod.rs
-crates/app/src/services/pending_structure.rs
+crates/app/src/services/pending_structure_tests.rs
 crates/app/src/services/sample_database.rs
 crates/app/src/services/save_batch.rs
 crates/app/src/services/saved_connection_editor.rs
@@ -241,8 +241,6 @@ crates/app/src/ui/browse_tab/tests/rows.rs
 crates/app/src/ui/browse_tab/tests/save.rs
 crates/app/src/ui/browse_tab/tests/total.rs
 crates/app/src/ui/clipboard/clipboard_copy.rs
-crates/app/src/ui/clipboard/clipboard_format.rs
-crates/app/src/ui/clipboard/clipboard_payload.rs
 crates/app/src/ui/clipboard/clipboard_writer.rs
 crates/app/src/ui/clipboard/copy_renderer.rs
 crates/app/src/ui/clipboard/mod.rs

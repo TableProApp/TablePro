@@ -25,7 +25,10 @@ internal sealed record AssistantHooks(
     Func<string?> EditorText,
     Func<string?> EditorDatabase,
     Action<string> Insert,
-    Action OpenSettings);
+    Action OpenSettings,
+    // Agent mode opens connections through this and lists the project the app shows; null before the host is set.
+    Func<IMcpAppHost?> McpHost,
+    Func<Guid?> ActiveProject);
 
 // One conversation at a time about one session's tables, its replies streaming in. The workspace builds a new pane
 // for each session, so an answer under Ask each time lasts until the connection disconnects.
@@ -47,6 +50,9 @@ public sealed partial class AssistantPane : UserControl
     private TurnView? _streaming;
     private TurnView? _lastTurn;
     private bool _busy;
+
+    // Agent mode runs the MCP tools in rounds; the toggle turns it on and a new conversation keeps it.
+    private bool _agent;
 
     // Bumped by each new conversation, so work for an older one that lands late is dropped.
     private int _generation;
@@ -132,6 +138,14 @@ public sealed partial class AssistantPane : UserControl
 
     private void OnNewConversation(object sender, RoutedEventArgs e)
     {
+        NewConversation();
+        FocusComposer();
+    }
+
+    // Agent mode starts fresh so its tool cards do not mix with a plain chat; the toggle stays on until turned off.
+    private void OnAgentToggled(object sender, RoutedEventArgs e)
+    {
+        _agent = AgentToggle.IsChecked == true;
         NewConversation();
         FocusComposer();
     }
@@ -334,7 +348,12 @@ public sealed partial class AssistantPane : UserControl
 
         // A stop that came while this was asked starts no request.
         cancellationToken.ThrowIfCancellationRequested();
-        var reply = _workbench.Core.Assistant.Reply(_hooks.Session, settings, conversation.Request());
+        if (StartReply(settings, conversation) is not { } reply)
+        {
+            Failed(turn, generation, Strings.Get("AssistantAgentUnavailable"), retry: false);
+            return;
+        }
+
         _reply = reply;
         _replySettings = settings;
         _streaming = turn;
@@ -351,6 +370,15 @@ public sealed partial class AssistantPane : UserControl
                     }
 
                     break;
+                case AiReplyEvent.ToolCall call:
+                    turn.ToolCall(call.Id, call.Name, call.Input);
+                    break;
+                case AiReplyEvent.ToolStarted started:
+                    turn.ToolStarted(started.Id);
+                    break;
+                case AiReplyEvent.ToolFinished done:
+                    turn.ToolFinished(done.Id, done.Output, done.IsError);
+                    break;
                 case AiReplyEvent.Finished finished:
                     Finished(turn, generation, finished);
                     break;
@@ -361,6 +389,70 @@ public sealed partial class AssistantPane : UserControl
                     Stopped(turn, generation);
                     break;
             }
+        }
+    }
+
+    // A plain reply, or the agent loop when the toggle is on. Null when agent mode has no host to open connections.
+    private AiReply? StartReply(AiSettings settings, AssistantConversation conversation)
+    {
+        if (!_agent)
+        {
+            return _workbench.Core.Assistant.Reply(_hooks.Session, settings, conversation.Request());
+        }
+
+        if (_hooks.McpHost() is not { } host)
+        {
+            return null;
+        }
+
+        var approver = new AssistantApprover(DispatcherQueue, ApproveWriteAsync);
+        return _workbench.Core.Assistant.ReplyAgentic(
+            _hooks.Session,
+            settings,
+            conversation.Request(),
+            _hooks.ActiveProject(),
+            host,
+            approver);
+    }
+
+    // The agent asks before a write runs. Deny is the default; the question names the connection and the statement.
+    private async Task<bool> ApproveWriteAsync(AiWriteRequest request, CancellationToken withdrawn)
+    {
+        if (!IsLoaded)
+        {
+            await LoadedAsync(withdrawn).ConfigureAwait(true);
+        }
+
+        var body = new StackPanel { Spacing = 8 };
+        body.Children.Add(new TextBlock
+        {
+            Text = request.Destructive
+                ? Strings.Format("AssistantWriteDestructive", _hooks.ConnectionName)
+                : Strings.Format("AssistantWriteMessage", _hooks.ConnectionName),
+            TextWrapping = TextWrapping.Wrap,
+        });
+        body.Children.Add(CodeBlock(request.Sql, actions: false));
+        AutomationProperties.SetAutomationId(body, "AssistantWriteRequest");
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
+            Title = Strings.Get("AssistantWriteTitle"),
+            Content = body,
+            PrimaryButtonText = Strings.Get("AssistantWriteAllow"),
+            CloseButtonText = Strings.Get("AssistantWriteDeny"),
+            DefaultButton = ContentDialogButton.Close,
+        };
+        using var registration = withdrawn.Register(dialog.Hide);
+        try
+        {
+            var answer = await WindowDialogs.ShowAsync(dialog, this, withdrawn).ConfigureAwait(true);
+            return answer == ContentDialogResult.Primary;
+        }
+        catch (OperationCanceledException)
+        {
+            // The reply ended while the question was open.
+            return false;
         }
     }
 
@@ -560,6 +652,8 @@ public sealed partial class AssistantPane : UserControl
     private sealed class TurnView
     {
         private readonly AssistantPane _pane;
+        private readonly StackPanel _tools = new() { Spacing = 8 };
+        private readonly Dictionary<string, ToolCardView> _cards = [];
         private readonly StackPanel _reply = new() { Spacing = 8 };
         private readonly StackPanel _footer = new() { Spacing = 8 };
         private readonly StringBuilder _text = new();
@@ -576,9 +670,43 @@ public sealed partial class AssistantPane : UserControl
                 Root.Children.Add(pane.Caption(Strings.Format("AssistantSentStructure", Strings.List(described))));
             }
 
+            AutomationProperties.SetAutomationId(_tools, "AssistantToolCards");
+            Root.Children.Add(_tools);
             AutomationProperties.SetAutomationId(_reply, "AssistantReply");
             Root.Children.Add(_reply);
             Root.Children.Add(_footer);
+        }
+
+        // One agent tool call: its card shows the arguments, a running state, then its result.
+        public void ToolCall(string id, string name, string input)
+        {
+            if (_cards.ContainsKey(id))
+            {
+                return;
+            }
+
+            var card = new ToolCardView(_pane, name, input);
+            _cards[id] = card;
+            _tools.Children.Add(card.Root);
+            _pane.FollowEnd();
+        }
+
+        public void ToolStarted(string id)
+        {
+            if (_cards.TryGetValue(id, out var card))
+            {
+                card.Started();
+            }
+        }
+
+        public void ToolFinished(string id, string output, bool isError)
+        {
+            if (_cards.TryGetValue(id, out var card))
+            {
+                card.Finished(output, isError);
+            }
+
+            _pane.FollowEnd();
         }
 
         public StackPanel Root { get; }
@@ -600,6 +728,8 @@ public sealed partial class AssistantPane : UserControl
             _text.Clear();
             _painted = 0;
             _retry = null;
+            _cards.Clear();
+            _tools.Children.Clear();
             _reply.Children.Clear();
             _footer.Children.Clear();
         }
@@ -729,6 +859,69 @@ public sealed partial class AssistantPane : UserControl
             text.Blocks.Add(block);
             return text;
         }
+    }
+
+    // One tool call's card: the tool and its arguments, a running state, then the result or its error.
+    private sealed class ToolCardView
+    {
+        private readonly AssistantPane _pane;
+        private readonly StackPanel _status = new() { Spacing = 6 };
+
+        public ToolCardView(AssistantPane pane, string name, string input)
+        {
+            _pane = pane;
+            var panel = new StackPanel { Spacing = 6 };
+            panel.Children.Add(new TextBlock { Text = name, FontFamily = Monospace, Style = pane.Named("AssistantTitleStyle") });
+            if (input is { Length: > 0 } && input != "{}")
+            {
+                panel.Children.Add(Output(input));
+            }
+
+            panel.Children.Add(_status);
+            Running();
+            Root = new Border { Child = panel, Style = pane.Named("AssistantToolCardStyle") };
+            AutomationProperties.SetAutomationId(Root, "AssistantToolCard");
+        }
+
+        public Border Root { get; }
+
+        public void Started() => Running();
+
+        public void Finished(string output, bool isError)
+        {
+            _status.Children.Clear();
+            if (isError)
+            {
+                var text = new TextBlock { Text = output, Style = _pane.Named("AssistantErrorStyle") };
+                AutomationProperties.SetAutomationId(text, "AssistantToolError");
+                _status.Children.Add(text);
+                return;
+            }
+
+            _status.Children.Add(Output(output));
+        }
+
+        private void Running()
+        {
+            _status.Children.Clear();
+            var ring = new ProgressRing { IsActive = true, Width = 16, Height = 16 };
+            AutomationProperties.SetName(ring, Strings.Get("AssistantToolRunning"));
+            _status.Children.Add(ring);
+        }
+
+        // A tool's JSON, wrapped and scrollable so a long answer does not grow the pane without bound.
+        private static ScrollViewer Output(string text) => new()
+        {
+            MaxHeight = 160,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = new TextBlock
+            {
+                Text = text,
+                FontFamily = Monospace,
+                IsTextSelectionEnabled = true,
+                TextWrapping = TextWrapping.Wrap,
+            },
+        };
     }
 
     private void FollowEnd()

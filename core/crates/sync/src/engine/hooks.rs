@@ -12,6 +12,9 @@ pub trait EngineEvents: Send + Sync {
     fn status_changed(&self);
 
     fn keys_changed(&self);
+
+    // The values waiting for the person changed: a pull brought or cleared some, or the person decided.
+    fn approvals_changed(&self);
 }
 
 // The engine's side of the key flows: a lock, and the scopes whose secrets wait, which every pass reads.

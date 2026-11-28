@@ -1,4 +1,4 @@
-use crate::services::pending_structure::{PendingStructure, SaveBlocker};
+use tablepro_core::ddl::{PendingStructure, SaveBlocker};
 
 /// What Save does with the pending structure as it stands. The draft
 /// is checked before the changes, so a draft that cannot be written

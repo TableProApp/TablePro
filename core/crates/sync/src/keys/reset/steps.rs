@@ -205,7 +205,7 @@ impl KeyService {
         for record in &mut records {
             // An activation of this device's own that applied is adopted, never ended for its age.
             let ended = record.overdue(now) || self.av_taken(txn.as_mut(), record.av, &record.ik).await?;
-            if ended && record.pending() && !self.activation_present(record).await? {
+            if ended && record.pending() && !self.activation_present(txn.as_mut(), record).await? {
                 self.end_reset(txn.as_mut(), record, ResetState::Superseded).await?;
                 self.put_reset(txn.as_mut(), record).await?;
                 changed = true;

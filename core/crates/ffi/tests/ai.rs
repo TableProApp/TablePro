@@ -3,20 +3,27 @@
     clippy::unwrap_used,
     reason = "the setup helpers fail a test the way the test functions themselves do"
 )]
+#![expect(
+    clippy::disallowed_types,
+    reason = "the agent rounds are written with json!, whose key order means nothing to the server"
+)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use secrecy::{ExposeSecret, SecretString};
+use serde_json::json;
 use tablepro_ffi::{
-    AiChatArg, AiConversationArg, AiMessageArg, AiPolicyTag, AiProviderTag, AiReply, AiReplyEvent, AiReplyListener,
-    AiRoleTag, AiSettingsArg, AiStopTag, ConnectionRecord, ConnectionSecrets, Core, CoreError, DatabaseSession,
-    FileOpenRequest, HostConfig, HostSecretError, HostSecrets, ObjectScopeArg, ProfileKindTag, RunListener, RunOutcome,
-    RunSettings, SafeModeTag, SecretDeletionTag, SecretItemTag, SecretKindTag, TlsModeTag, TlsSettings,
+    AiApprover, AiChatArg, AiConversationArg, AiMessageArg, AiPolicyTag, AiProviderTag, AiReply, AiReplyEvent,
+    AiReplyListener, AiRoleTag, AiSettingsArg, AiStopTag, AiWriteRequest, ConnectionRecord, ConnectionSecrets, Core,
+    CoreError, DatabaseSession, ExternalAccessTag, FileOpenRequest, HostConfig, HostSecretError, HostSecrets,
+    McpAppHost, McpWriteRequest, ObjectScopeArg, ProfileKindTag, RunListener, RunOutcome, RunSettings, SafeModeTag,
+    SecretDeletionTag, SecretItemTag, SecretKindTag, TlsModeTag, TlsSettings,
 };
 
 #[derive(Clone, Default)]
@@ -684,4 +691,284 @@ async fn a_reply_stops_with_its_session_and_a_closed_one_sends_nothing() {
     assert_eq!(during, [AiReplyEvent::Stopped]);
     assert_eq!(after, [AiReplyEvent::Stopped]);
     assert_eq!(server.seen().len(), 1);
+}
+
+// Agent mode: the model runs the MCP tools in rounds. The mock server answers each round in turn.
+
+impl Server {
+    // One answer per request, in order, so a round-based conversation can reply differently each round.
+    fn start_sequence(answers: Vec<Answer>) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = format!("http://{}/v1", listener.local_addr().unwrap());
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let recorded = seen.clone();
+        let queue = Arc::new(Mutex::new(VecDeque::from(answers)));
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let answer = queue
+                    .lock()
+                    .unwrap()
+                    .pop_front()
+                    .unwrap_or_else(|| Answer::Status(500, "{}".to_owned()));
+                let recorded = recorded.clone();
+                std::thread::spawn(move || serve(stream, &answer, &recorded));
+            }
+        });
+        Self { address, seen }
+    }
+}
+
+fn stream_answer(body: String) -> Answer {
+    Answer::Ok {
+        content_type: "text/event-stream",
+        body,
+    }
+}
+
+// A Chat Completions round that calls one tool, `arguments` carried as the JSON string the API wants.
+fn tool_round(id: &str, name: &str, arguments: serde_json::Value) -> Answer {
+    let call = json!({
+        "choices": [{
+            "delta": {
+                "role": "assistant",
+                "tool_calls": [{
+                    "index": 0,
+                    "id": id,
+                    "type": "function",
+                    "function": { "name": name, "arguments": arguments.to_string() },
+                }],
+            },
+            "finish_reason": null,
+        }],
+    });
+    let stop = json!({ "choices": [{ "delta": {}, "finish_reason": "tool_calls" }] });
+    stream_answer(format!("data: {call}\n\ndata: {stop}\n\ndata: [DONE]\n\n"))
+}
+
+fn text_round(text: &str) -> Answer {
+    let chunk = json!({ "choices": [{ "delta": { "content": text }, "finish_reason": "stop" }] });
+    stream_answer(format!("data: {chunk}\n\ndata: [DONE]\n\n"))
+}
+
+struct NoWindows;
+
+impl McpAppHost for NoWindows {
+    fn open_connection(&self, _connection_id: String) -> bool {
+        false
+    }
+
+    fn is_connecting(&self, _connection_id: String) -> bool {
+        false
+    }
+
+    fn approve(&self, _request: McpWriteRequest) -> bool {
+        false
+    }
+
+    fn withdraw(&self, _request_id: u64) {}
+}
+
+#[derive(Default)]
+struct Approver {
+    approve: AtomicBool,
+    asked: Mutex<Vec<AiWriteRequest>>,
+}
+
+struct ApproverHandle(Arc<Approver>);
+
+impl AiApprover for ApproverHandle {
+    fn approve(&self, request: AiWriteRequest) -> bool {
+        self.0.asked.lock().unwrap().push(request);
+        self.0.approve.load(Ordering::SeqCst)
+    }
+
+    fn withdraw(&self, _request_id: u64) {}
+}
+
+// Every event until the one that ends the agent reply: Finished, Failed or Stopped.
+async fn read_agent_to_end(reply: &AiReply) -> Vec<AiReplyEvent> {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut events = Vec::new();
+    loop {
+        events.extend(reply.drain_events());
+        if events.last().is_some_and(|event| {
+            matches!(
+                event,
+                AiReplyEvent::Finished { .. } | AiReplyEvent::Failed { .. } | AiReplyEvent::Stopped
+            )
+        }) {
+            return events;
+        }
+        assert!(Instant::now() < deadline, "the agent never ended: {events:?}");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
+fn tool_finished<'a>(events: &'a [AiReplyEvent], id: &str) -> Option<(&'a str, bool)> {
+    events.iter().find_map(|event| match event {
+        AiReplyEvent::ToolFinished {
+            id: got,
+            output,
+            is_error,
+        } if got == id => Some((output.as_str(), *is_error)),
+        _ => None,
+    })
+}
+
+async fn save_connection(core: &Core, path: &Path, access: ExternalAccessTag) -> String {
+    core.library()
+        .unwrap()
+        .save(
+            ConnectionRecord {
+                external_access: Some(access),
+                ..record(path, None)
+            },
+            ConnectionSecrets::default(),
+        )
+        .await
+        .unwrap()
+        .id
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_agent_offers_the_tools_runs_a_read_then_answers() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("shop.sqlite");
+    let core = core(dir.path(), MemorySecrets::default());
+    shop(&core, &path).await.close().await.unwrap();
+    let id = save_connection(&core, &path, ExternalAccessTag::ReadOnly).await;
+    let session = connect(&core, id).await;
+    let server = Server::start_sequence(vec![
+        tool_round("call_1", "list_connections", json!({})),
+        text_round("You have one connection."),
+    ]);
+    let approver = Arc::new(Approver::default());
+
+    let reply = core
+        .ai_assistant()
+        .reply_agentic(
+            session.clone(),
+            compatible(&server.address),
+            question("what connections do I have?"),
+            None,
+            Box::new(NoWindows),
+            Box::new(ApproverHandle(approver.clone())),
+            Box::new(Quiet),
+        )
+        .unwrap();
+    let events = read_agent_to_end(&reply).await;
+
+    // The tool call, its start and its result reach the pane in order.
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, AiReplyEvent::ToolCall { name, .. } if name == "list_connections")),
+        "{events:?}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, AiReplyEvent::ToolStarted { .. })),
+        "{events:?}"
+    );
+    let (output, is_error) = tool_finished(&events, "call_1").unwrap();
+    assert!(!is_error, "{output}");
+    assert!(
+        output.contains("shop"),
+        "the read answered with the connection: {output}"
+    );
+    assert_eq!(text_of(&events), "You have one connection.");
+    assert!(
+        matches!(events.last(), Some(AiReplyEvent::Finished { .. })),
+        "{events:?}"
+    );
+    // The first request offered the tools.
+    let first = server.seen().first().unwrap().body.clone();
+    assert!(first.contains("\"tools\""), "{first}");
+    assert!(
+        first.contains("list_connections") && first.contains("execute_query"),
+        "{first}"
+    );
+    // A read needs no approval.
+    assert!(approver.asked.lock().unwrap().is_empty());
+    session.close().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_agent_asks_before_a_write_and_runs_it_once_approved() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("shop.sqlite");
+    let core = core(dir.path(), MemorySecrets::default());
+    shop(&core, &path).await.close().await.unwrap();
+    let id = save_connection(&core, &path, ExternalAccessTag::ReadWrite).await;
+    let session = connect(&core, id.clone()).await;
+    let delete = json!({ "connection_id": id, "query": "DELETE FROM customers WHERE id = 1" });
+    let server = Server::start_sequence(vec![
+        tool_round("call_1", "execute_query", delete),
+        text_round("Removed the customer."),
+    ]);
+    let approver = Arc::new(Approver::default());
+    approver.approve.store(true, Ordering::SeqCst);
+
+    let reply = core
+        .ai_assistant()
+        .reply_agentic(
+            session.clone(),
+            compatible(&server.address),
+            question("delete customer 1"),
+            None,
+            Box::new(NoWindows),
+            Box::new(ApproverHandle(approver.clone())),
+            Box::new(Quiet),
+        )
+        .unwrap();
+    let events = read_agent_to_end(&reply).await;
+
+    let asked = approver.asked.lock().unwrap().clone();
+    assert_eq!(asked.len(), 1, "the write was put to the approver once: {events:?}");
+    assert_eq!(asked[0].sql, "DELETE FROM customers WHERE id = 1");
+    assert!(!asked[0].destructive);
+    let (output, is_error) = tool_finished(&events, "call_1").unwrap();
+    assert!(!is_error, "{output}");
+    assert_eq!(text_of(&events), "Removed the customer.");
+    session.close().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_declined_write_goes_back_to_the_model_as_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("shop.sqlite");
+    let core = core(dir.path(), MemorySecrets::default());
+    shop(&core, &path).await.close().await.unwrap();
+    let id = save_connection(&core, &path, ExternalAccessTag::ReadWrite).await;
+    let session = connect(&core, id.clone()).await;
+    let delete = json!({ "connection_id": id, "query": "DELETE FROM customers WHERE id = 1" });
+    let server = Server::start_sequence(vec![
+        tool_round("call_1", "execute_query", delete),
+        text_round("I left the row in place."),
+    ]);
+    let approver = Arc::new(Approver::default());
+    // approve stays false.
+
+    let reply = core
+        .ai_assistant()
+        .reply_agentic(
+            session.clone(),
+            compatible(&server.address),
+            question("delete customer 1"),
+            None,
+            Box::new(NoWindows),
+            Box::new(ApproverHandle(approver.clone())),
+            Box::new(Quiet),
+        )
+        .unwrap();
+    let events = read_agent_to_end(&reply).await;
+
+    assert_eq!(approver.asked.lock().unwrap().len(), 1);
+    let (output, is_error) = tool_finished(&events, "call_1").unwrap();
+    assert!(is_error, "a declined write is an error result: {output}");
+    assert!(output.contains("user_cancelled"), "{output}");
+    // The model saw the error and still answered.
+    assert_eq!(text_of(&events), "I left the row in place.");
+    session.close().await.unwrap();
 }

@@ -360,6 +360,7 @@ impl ServiceEngine {
         if previous.is_some() {
             sync.hold_for_account_choice().await?;
         }
+        sync.read_counts().await;
         let scheduler = spawn(
             Arc::clone(&sync) as Arc<dyn Pass>,
             wake,
