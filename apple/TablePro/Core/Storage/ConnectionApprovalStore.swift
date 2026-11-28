@@ -139,7 +139,8 @@ internal final class ConnectionApprovalStore {
 }
 
 extension ConnectionApprovalStore.Kind {
-    // Variable names, or each field that signs in with something this Mac holds, with its value.
+    // Variable names, or each field that signs in with something this Mac holds, with its value, and the SSH credentials
+    // of this Mac a row from another origin would use.
     internal func items(in connection: DatabaseConnection) -> Set<String> {
         switch self {
         case .envVarReferences:
@@ -147,7 +148,7 @@ extension ConnectionApprovalStore.Kind {
         case .localCredentials:
             Set(ConnectionFieldCatalog.localCredentialUses(in: connection.additionalFields).map { use in
                 use.fieldId + "=" + use.value
-            })
+            }).union(connection.localSSHCredentialUses.map(\.approvalItem))
         }
     }
 

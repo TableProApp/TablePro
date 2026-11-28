@@ -6,6 +6,7 @@
 import Foundation
 import TableProConnectionLibrary
 import TableProPluginKit
+import TableProSSHConfig
 
 internal struct LocalCredentialQuestion: Equatable, Sendable {
     let connectionName: String
@@ -93,7 +94,7 @@ internal final class LocalCredentialConsent {
             connectionName: connection.name,
             uses: ConnectionFieldCatalog.localCredentialUses(in: connection.additionalFields).map { use in
                 describe(use, fields: fields)
-            },
+            } + connection.localSSHCredentialUses.map(describe),
             destination: SSHProfileStorage.shared.refreshingLinkedProfile(connection).destinationSummary,
             origin: connection.origin
         )
@@ -117,7 +118,60 @@ internal final class LocalCredentialConsent {
         }
     }
 
+    internal static func describe(_ use: LocalSSHCredentialUse) -> String {
+        switch use {
+        case .agent(let socket):
+            socket.isEmpty ? SSHAuthMethod.sshAgent.displayName : labeled(SSHAuthMethod.sshAgent.displayName, socket)
+        case .key(let path):
+            path.isEmpty ? SSHAuthMethod.privateKey.displayName : labeled(SSHAuthMethod.privateKey.displayName, path)
+        case .profile(let id):
+            labeled(String(localized: "SSH Profile"), SSHProfileStorage.shared.profile(for: id)?.name ?? id.uuidString)
+        }
+    }
+
     private static func labeled(_ label: String, _ value: String) -> String {
         String(format: String(localized: "%@: %@"), label, value)
+    }
+}
+
+// This Mac's SSH credentials a connection would sign in with: the agent, a key file (an empty path is the keys ssh finds
+// on its own) or a linked SSH profile. Only a row from another origin counts: a teammate or a shared folder picks the
+// server, so each use is approved for that destination, as a driver's local sign-in is.
+internal enum LocalSSHCredentialUse: Hashable, Sendable {
+    case agent(socket: String)
+    case key(path: String)
+    case profile(UUID)
+
+    var approvalItem: String {
+        switch self {
+        case .agent(let socket): "ssh.agent=" + socket
+        case .key(let path): "ssh.key=" + path
+        case .profile(let id): "ssh.profile=" + id.uuidString
+        }
+    }
+}
+
+extension DatabaseConnection {
+    var localSSHCredentialUses: [LocalSSHCredentialUse] {
+        guard origin == .teamLibrary || origin == .linkedFolder else { return [] }
+        let config = resolvedSSHConfig
+        guard config.enabled else { return [] }
+        var uses: [LocalSSHCredentialUse] = []
+        if case .profile(let id, _) = sshTunnelMode {
+            uses.append(.profile(id))
+        }
+        switch config.authMethod {
+        case .privateKey: uses.append(.key(path: config.privateKeyPath))
+        case .sshAgent: uses.append(.agent(socket: config.agentSocketPath))
+        case .password, .keyboardInteractive, .none: break
+        }
+        for jump in config.jumpHosts {
+            switch jump.authMethod {
+            case .privateKey: uses.append(.key(path: jump.privateKeyPath))
+            case .sshAgent: uses.append(.agent(socket: config.agentSocketPath))
+            }
+        }
+        var seen: Set<LocalSSHCredentialUse> = []
+        return uses.filter { seen.insert($0).inserted }
     }
 }
