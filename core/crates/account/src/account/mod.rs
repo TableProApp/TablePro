@@ -1684,12 +1684,17 @@ mod tests {
     }
 
     impl tracing::Subscriber for Logged {
-        fn register_callsite(&self, _: &'static tracing::Metadata<'static>) -> tracing::subscriber::Interest {
-            tracing::subscriber::Interest::sometimes()
+        fn register_callsite(&self, metadata: &'static tracing::Metadata<'static>) -> tracing::subscriber::Interest {
+            if self.enabled(metadata) {
+                tracing::subscriber::Interest::always()
+            } else {
+                tracing::subscriber::Interest::never()
+            }
         }
 
-        fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
-            true
+        // Only the core's own crates, so the other libraries' trace lines are not kept.
+        fn enabled(&self, metadata: &tracing::Metadata<'_>) -> bool {
+            metadata.target().starts_with("tablepro_")
         }
 
         fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
