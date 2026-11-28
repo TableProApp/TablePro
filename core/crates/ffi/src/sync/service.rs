@@ -340,10 +340,19 @@ impl Route {
         }
     }
 
+    // The engine a decision on a record of `scope` reaches, the one that listed it. A first upload puts personal data on
+    // TablePro Sync before the app opens sync again with it as the provider, so while the provider is still Off that
+    // engine takes personal decisions too, and refuses them when it carries only the team scopes.
     async fn for_scope(&self, scope: ScopeName) -> Result<Arc<dyn SyncControl>, SyncError> {
-        match scope {
-            ScopeName::Team(_) => self.service().await,
-            ScopeName::Personal | ScopeName::History => self.personal().await,
+        match (scope, self.provider) {
+            (ScopeName::Team(_), _) => self.service().await,
+            (ScopeName::Personal | ScopeName::History, SyncProviderTag::Off) => {
+                self.service().await.map_err(|error| match error {
+                    SyncError::Transport(TransportError::SignedOut) => OFF,
+                    other => other,
+                })
+            }
+            (ScopeName::Personal | ScopeName::History, _) => self.personal().await,
         }
     }
 
