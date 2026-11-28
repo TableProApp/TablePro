@@ -62,7 +62,7 @@ Three layers, knowledge pointing one way: an owner's adapter, then `DataGridMode
 - **Behavior comes from responder actions, never key codes.** `keyDown` sends Return, Enter, Tab, Backtab, Delete, Forward Delete, Left, Right, and Shift-Up or Shift-Down over a cell range through `interpretKeyEvents`. Everything else goes to `super`, which keeps AppKit's row movement and type-select.
 - **A modifier test masks `.capsLock` and `.function`**: compare within `[.command, .shift, .option, .control]` only. Forward Delete carries `.function`.
 - **Copy, Paste, Delete, Select All, Find, Copy Special, Set Value and zoom are actions the grid answers itself**, with `NSMenuItemValidation`, so they work in every window. The context menu's Paste takes the keyboard's path. A window's own handler runs only while the grid is not focused.
-- **The context menu is built from `clickedRow` and `clickedColumn`** in `menuNeedsUpdate(_:)`. It acts on the selection when the clicked cell is inside it, else on the clicked cell or row; the selection never moves.
+- **The context menu is built from `clickedRow` and `clickedColumn`** in `menuNeedsUpdate(_:)`. It acts on the selection when the clicked cell is inside it, else on the clicked cell or row; the selection never moves. A menu opened without a pointer (the keyboard's menu key, Show Menu on the table or on a stand-in) reaches it through the right-click event on the active cell or the stand-in's cell (`Views/Shared/TableContextMenu.swift`).
 - **A press in either pane resolves to one `GridCoord`** through the container and the column set. A drag autoscrolls the main pane and crosses panes.
 
 ## Accessibility

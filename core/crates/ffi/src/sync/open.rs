@@ -9,7 +9,8 @@ use tablepro_sync::SyncError;
 use tablepro_sync::adapters::library::{DriverNames, StoreStanding};
 use tablepro_sync::adapters::settings::ConnectionStanding;
 use tablepro_sync::adapters::store_journal::{Listening, StoreJournal};
-use tablepro_sync::api::{self as sync, StateFiles, TransportError};
+use tablepro_sync::api::control::SyncCategories;
+use tablepro_sync::api::{self as sync, DeviceSecrets, StateFiles, TransportError};
 use tablepro_sync::cloudkit::LegacyMarks;
 use tablepro_sync::engine::{JournalObserver, SystemClock};
 use tablepro_sync::service::ServiceMode;
@@ -17,12 +18,13 @@ use tablepro_sync::state::SqliteStateFiles;
 
 use super::cloudkit::{CloudKitBridge, CloudKitTransport};
 use super::engines::{
-    Hosts, IcloudEngine, Restart, ServiceEngine, ServiceLink, ServiceSlot, identity_of, service_link,
+    Hosts, IcloudEngine, Restart, ServiceEngine, ServiceLink, ServiceSlot, WaitingStart, identity_of, service_link,
 };
 use super::events::{Signals, forward};
 use super::host::{HostDeviceStore, HostDeviceStoreBridge, HostSettings, HostSettingsBridge};
 use super::legacy::{HostLegacyMirror, LegacyMirrorBridge};
 use super::moves::{PolicyFenced, allowed, hold_to_policy, resume_open_move};
+use super::secrets::{CoreSecrets, HostSyncedSecrets};
 use super::service::{SyncConfig, SyncListener, SyncPlatformTag, SyncService};
 use super::service_records::categories_arg;
 use super::team_library::TeamLibraryHost;
@@ -54,6 +56,8 @@ pub(crate) struct OpenParts {
     pub(crate) session: Option<String>,
     pub(crate) listener: Arc<dyn SyncListener>,
     pub(crate) team_library: Option<TeamLibraryHost>,
+    // The device's secrets as TablePro Sync seals them; None on a Core opened without storage.
+    pub(crate) secrets: Option<Arc<dyn DeviceSecrets>>,
 }
 
 #[uniffi::export]
@@ -63,7 +67,9 @@ impl Core {
     // iCloud runs (core ADR 0054, Providers). TablePro Sync stays bound to the sign-in the account holds at open, so
     // after a sign-in, a sign-out or a switch the app opens it again. The Apple apps pass their CloudKit transport and device store, and the
     // Mac its legacy mirror while the previous stable runs the Swift engine. Windows passes none: the core reaches
-    // Credential Manager itself. Async, since opening a state file reads its anchor from the device store.
+    // Credential Manager itself. `synced_secrets` keeps the secrets of synced records that `HostSecrets` does not
+    // reach, as the Mac's profiles' secrets; with none, only the connections' secrets this Core keeps sync. Async,
+    // since opening a state file reads its anchor from the device store.
     #[expect(
         clippy::too_many_arguments,
         reason = "a UniFFI record cannot carry callback interfaces, so each host service is its own argument"
@@ -76,6 +82,7 @@ impl Core {
         settings: Option<Arc<dyn HostSettings>>,
         device_store: Option<Box<dyn HostDeviceStore>>,
         legacy_mirror: Option<Box<dyn HostLegacyMirror>>,
+        synced_secrets: Option<Box<dyn HostSyncedSecrets>>,
         listener: Box<dyn SyncListener>,
     ) -> Result<Arc<SyncService>, CoreError> {
         let tasks = self.tasks.clone();
@@ -101,6 +108,16 @@ impl Core {
             .clone()
             .zip(account.clone())
             .map(|(paths, account)| TeamLibraryHost { paths, account });
+        let synced_secrets: Option<Arc<dyn HostSyncedSecrets>> = synced_secrets.map(Arc::from);
+        let secrets = self.store.clone().map(|store| {
+            Arc::new(CoreSecrets::new(
+                self.vault(),
+                store,
+                self.writes(),
+                synced_secrets,
+                tasks.clone(),
+            )) as Arc<dyn DeviceSecrets>
+        });
         let mut parts = OpenParts {
             config,
             account,
@@ -122,6 +139,7 @@ impl Core {
             session: None,
             listener: Arc::from(listener),
             team_library,
+            secrets,
         };
         let opener = tasks.clone();
         on_runtime(&opener, async move {
@@ -164,7 +182,7 @@ impl Core {
 
 // The Apple apps keep a connection's engine as the Mac's `DatabaseType` names it, Linux and Windows as the core's
 // driver id.
-fn driver_names(platform: SyncPlatformTag) -> DriverNames {
+pub(crate) fn driver_names(platform: SyncPlatformTag) -> DriverNames {
     match platform {
         SyncPlatformTag::Macos | SyncPlatformTag::Ios => DriverNames::Mac,
         SyncPlatformTag::Linux | SyncPlatformTag::Windows => DriverNames::Core,
@@ -243,6 +261,7 @@ impl OpenParts {
             standing,
             store_journal,
             team_library: self.team_library.take(),
+            secrets: self.secrets.take(),
         })
     }
 }
@@ -283,6 +302,32 @@ fn marks_alone(
         _ => marks.no_owners(),
     }
     (Some(marks), hear)
+}
+
+// The service engine's first start, with what it ran over for the slot to start it again under the same sign-in.
+async fn first_start(
+    link: Result<ServiceLink, SyncError>,
+    hosts: &Result<Hosts, SyncError>,
+    categories: Result<SyncCategories, SyncError>,
+    mode: ServiceMode,
+    last: Option<tablepro_sync::api::state::StateIdentity>,
+) -> (Result<ServiceEngine, SyncError>, Option<WaitingStart>) {
+    match (link, hosts, categories) {
+        (Ok(link), Ok(hosts), Ok(categories)) => {
+            let waiting = WaitingStart {
+                hosts: hosts.clone(),
+                link: link.clone(),
+                mode,
+                last: last.clone(),
+            };
+            (
+                ServiceEngine::start(hosts, link, categories, mode, last).await,
+                Some(waiting),
+            )
+        }
+        (Err(error), ..) | (_, _, Err(error)) => (Err(error), None),
+        (_, Err(error), _) => (Err(error.clone()), None),
+    }
 }
 
 impl SyncService {
@@ -346,12 +391,8 @@ impl SyncService {
             }),
             _ => None,
         };
-        let first = match (parts.link, &hosts, categories) {
-            (Ok(link), Ok(hosts), Ok(categories)) => ServiceEngine::start(hosts, link, categories, mode, last).await,
-            (Err(error), ..) | (_, _, Err(error)) => Err(error),
-            (_, Err(error), _) => Err(error.clone()),
-        };
-        let slot = ServiceSlot::new(first, restart, kept);
+        let (first, waiting) = first_start(parts.link, &hosts, categories, mode, last).await;
+        let slot = ServiceSlot::new(first, restart, waiting, kept);
         if matches!(mode, ServiceMode::TeamsOnly) {
             slot.forbid_personal();
         }
@@ -376,6 +417,13 @@ impl SyncService {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(watching);
         service.acknowledge_moves().await;
         drop(service.tasks.spawn_task(resume_open_move(&Arc::downgrade(&service))));
+        if service.service.waits_for_file() {
+            drop(
+                service
+                    .tasks
+                    .spawn_task(ServiceSlot::start_when_free(Arc::downgrade(&service.service))),
+            );
+        }
         service
     }
 }

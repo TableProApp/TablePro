@@ -9,7 +9,19 @@ impl ConnectionsDocument {
     pub(super) fn tidy_library(&mut self) {
         let mut projects = HashSet::with_capacity(self.projects.len());
         self.projects.retain(|project| projects.insert(project.id));
-        // Projects alone are numbered from 0 on every write, ties in file order (core ADR 0067).
+        // A project keeps the order its write gave it, ties in file order. Numbering them again here would change a
+        // pull's orders before its last page lands, and the next push would send those changes as edits.
+        // A project id no project holds stays as stored and reads as no project: a pull can bring a member before its
+        // project.
+        let mut seen = HashSet::with_capacity(self.groups.len());
+        self.groups.retain(|group| seen.insert(group.id));
+        let saved = self.connection_ids();
+        let mut listed = HashSet::with_capacity(self.favorites.len());
+        self.favorites.retain(|id| saved.contains(id) && listed.insert(*id));
+    }
+
+    // From 0, ties in file order, for a write the person makes that leaves a gap or a tie (core ADR 0067).
+    pub(super) fn number_projects(&mut self) {
         let mut ranked: Vec<(u32, usize)> = self
             .projects
             .iter()
@@ -20,13 +32,6 @@ impl ConnectionsDocument {
         for (rank, (_, index)) in ranked.into_iter().enumerate() {
             self.projects[index].order = u32::try_from(rank).unwrap_or(u32::MAX);
         }
-        // A project id no project holds stays as stored and reads as no project: a pull can bring a member before its
-        // project.
-        let mut seen = HashSet::with_capacity(self.groups.len());
-        self.groups.retain(|group| seen.insert(group.id));
-        let saved = self.connection_ids();
-        let mut listed = HashSet::with_capacity(self.favorites.len());
-        self.favorites.retain(|id| saved.contains(id) && listed.insert(*id));
     }
 
     /// `kept` is the group and place the entry had, which it keeps when

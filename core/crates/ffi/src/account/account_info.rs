@@ -399,6 +399,7 @@ mod tests {
             last_seen_at: DateTime::from_timestamp(1_800_000_000, 0).unwrap(),
             licensed_at: None,
             offline_until: None,
+            key_device: None,
         }
     }
 
