@@ -95,7 +95,7 @@ public sealed class SyncHostTests
     [Fact]
     public async Task AnUploadWaitsForTheAccountsKeysAndLeavesThePcOff()
     {
-        _app.Prepare = engine => engine.Keys = new KeyState.NeedsApproval(null);
+        _app.Prepare = engine => engine.KeysState = new KeyState.NeedsApproval(null);
         using var host = new SyncHost(_app);
         host.Start();
 
@@ -332,7 +332,7 @@ public sealed class SyncHostTests
             }
         };
 
-        engine.Keys = new KeyState.Locked(SyncLockCause.DeviceRemoved);
+        engine.KeysState = new KeyState.Locked(SyncLockCause.DeviceRemoved);
         engine.Raise(SyncChanges.Keys);
         await changed.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 

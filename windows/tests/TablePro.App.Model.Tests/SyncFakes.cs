@@ -22,7 +22,8 @@ internal sealed class FakeSyncEngine : ISyncEngine
 
     public string? ServiceAccount { get; set; }
 
-    public KeyState Keys { get; set; } = new KeyState.Approved(1, "D");
+    // What GetKeyStateAsync answers; Keys is the key flows ISyncEngine hands out.
+    public KeyState KeysState { get; set; } = new KeyState.Approved(1, "D");
 
     public SyncUploadPlan Plan { get; set; } = new(12, 2, 3);
 
@@ -96,7 +97,7 @@ internal sealed class FakeSyncEngine : ISyncEngine
     public Task<KeyState> GetKeyStateAsync()
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
-        return Task.FromResult(Keys);
+        return Task.FromResult(KeysState);
     }
 
     public Task<NewIdentityPlan> PlanNewIdentityAsync() => Choice is { } plan

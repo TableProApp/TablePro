@@ -54,7 +54,8 @@ public sealed partial class LocalizationTests
             .Concat(["name", "query", "keyword", "folder_client_id", "parent_client_id", "connection_client_id", "sort_order"]
                 .Select(field => "TeamField_" + field));
 
-        Assert.Empty(names.Where(name => !s_strings.Value.ContainsKey(name)));
+        var missing = names.Where(name => !s_strings.Value.ContainsKey(name)).ToList();
+        Assert.Empty(missing);
     }
 
     [Fact]
