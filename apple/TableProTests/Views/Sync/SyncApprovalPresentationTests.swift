@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProFFI
+import TableProPluginKit
 import Testing
 
 @MainActor
@@ -77,21 +78,16 @@ struct SyncApprovalPresentationTests {
             name: "Snowflake",
             isNew: false,
             fields: [
-                ("/additional_fields/privateKeyPassphrase", nil, "\"hunter2\""),
-                ("/additional_fields/warehouse", "\"small\"", "\"large\"")
+                ("/additional_fields/privateKeyPassphrase", nil, #"{"id":"privateKeyPassphrase","value":"hunter2"}"#),
+                ("/additional_fields/warehouse", #"{"id":"warehouse","value":"small"}"#, #"{"id":"warehouse","value":"large"}"#)
             ]
         )
-        let lookup = SyncApprovalLookup(
-            profileName: { _, _ in nil },
-            aiProviderName: { _ in nil },
-            driverField: { _, _, id in
-                id == "privateKeyPassphrase"
-                    ? .init(label: "Key Passphrase", isSecure: true)
-                    : .init(label: "Warehouse", isSecure: false)
-            }
-        )
-
-        let item = SyncApprovalPresentation.item(record, lookup: lookup)
+        var traits = ConnectionTypeTraits(type: DatabaseType(rawValue: "Snowflake"))
+        traits.fields = [
+            ConnectionField(id: "privateKeyPassphrase", label: "Key Passphrase", fieldType: .secure),
+            ConnectionField(id: "warehouse", label: "Warehouse")
+        ]
+        let item = SyncApprovalPresentation.item(record, lookup: Self.lookup(traits, local: .init(type: "Snowflake")))
 
         let secret = try #require(Self.row(item, "/additional_fields/privateKeyPassphrase"))
         #expect(secret.label == "Key Passphrase")
@@ -99,6 +95,307 @@ struct SyncApprovalPresentationTests {
         #expect(secret.to == .hidden)
         #expect(!SyncApprovalPresentation.spoken(secret).contains("hunter2"))
         #expect(Self.row(item, "/additional_fields/warehouse")?.to == .text("large"))
+    }
+
+    // MARK: - Driver fields and the rows a driver shows
+
+    private static func lookup(_ traits: ConnectionTypeTraits, local: SyncApprovalConnectionState? = nil) -> SyncApprovalLookup {
+        SyncApprovalLookup(
+            profileName: { _, _ in nil },
+            aiProviderName: { _ in nil },
+            traits: { type in type == traits.type.rawValue ? traits : nil },
+            connection: { _ in local }
+        )
+    }
+
+    // Postgres as its plugin declares it: the Authentication picker with Kerberos, GSS Encryption under Kerberos only,
+    // and the ~/.pgpass switch.
+    private static var postgres: ConnectionTypeTraits {
+        var traits = ConnectionTypeTraits(type: DatabaseType(rawValue: "PostgreSQL"))
+        traits.connectionMode = .network
+        traits.defaultPort = 5_432
+        traits.fields = KerberosAuthFields.standardWithAWS() + [
+            KerberosAuthFields.gssEncryptionField(),
+            ConnectionField(
+                id: "usePgpass",
+                label: "Use ~/.pgpass",
+                defaultValue: "false",
+                fieldType: .toggle,
+                section: .authentication,
+                hidesPassword: true
+            )
+        ]
+        return traits
+    }
+
+    // SQLite: a file, with no sign-in, SSH tunnel or TLS.
+    private static var sqlite: ConnectionTypeTraits {
+        var traits = ConnectionTypeTraits(type: DatabaseType(rawValue: "SQLite"))
+        traits.connectionMode = .fileBased
+        traits.localFilePathField = .database
+        traits.supportsSSH = false
+        traits.supportsSSL = false
+        return traits
+    }
+
+    private static func entry(_ id: String, _ value: String) -> String {
+        #"{"id":"\#(id)","value":"\#(value)"}"#
+    }
+
+    @Test("A new Postgres connection reads its driver fields as the form does, with one row per label")
+    func newPostgres() {
+        let record = SyncApprovalFixture.approval(
+            SyncApprovalFixture.record(SyncApprovalFixture.newID),
+            name: "e2e-pg",
+            isNew: true,
+            fields: [
+                ("/type", nil, "\"PostgreSQL\""),
+                ("/host", nil, "\"db.example.com\""),
+                ("/port", nil, "5432"),
+                ("/database", nil, "\"orders\""),
+                ("/username", nil, "\"app\""),
+                ("/auth_mode", nil, "\"password\""),
+                ("/ssh_config/enabled", nil, "false"),
+                ("/ssh_config/auth_method", nil, "\"Password\""),
+                ("/ssl_config/mode", nil, "\"Preferred\""),
+                ("/additional_fields/awsAuth", nil, Self.entry("awsAuth", "off")),
+                ("/additional_fields/usePgpass", nil, Self.entry("usePgpass", "false")),
+                ("/additional_fields/gssEncryptionMode", nil, Self.entry("gssEncryptionMode", "prefer"))
+            ]
+        )
+
+        let item = SyncApprovalPresentation.item(record, lookup: Self.lookup(Self.postgres))
+
+        #expect(item.rows.map(\.id) == [
+            "/type", "/host", "/port", "/database", "/username", "/additional_fields/awsAuth", "/ssl_config/mode"
+        ])
+        #expect(Self.row(item, "/additional_fields/awsAuth")?.label == String(localized: "Authentication"))
+        #expect(Self.row(item, "/additional_fields/awsAuth")?.to == .text(String(localized: "Password")))
+        #expect(Set(item.rows.map(\.label)).count == item.rows.count)
+        for row in item.rows {
+            #expect(!SyncApprovalPresentation.spoken(row).contains("{"), "\(row.id)")
+        }
+    }
+
+    @Test("Kerberos picked shows GSS Encryption by its option's label, unset at its default, and ~/.pgpass on reads On")
+    func postgresKerberos() {
+        let record = SyncApprovalFixture.approval(
+            SyncApprovalFixture.record(SyncApprovalFixture.changedID),
+            name: "e2e-pg",
+            isNew: false,
+            fields: [
+                ("/additional_fields/awsAuth", Self.entry("awsAuth", "off"), Self.entry("awsAuth", "kerberos")),
+                ("/additional_fields/gssEncryptionMode", nil, Self.entry("gssEncryptionMode", "require")),
+                ("/additional_fields/usePgpass", Self.entry("usePgpass", "false"), Self.entry("usePgpass", "true"))
+            ]
+        )
+        let local = SyncApprovalConnectionState(type: "PostgreSQL", sshEnabled: false, sslMode: "Disabled")
+
+        let item = SyncApprovalPresentation.item(record, lookup: Self.lookup(Self.postgres, local: local))
+
+        #expect(Self.row(item, "/additional_fields/awsAuth")?.from == .text(String(localized: "Password")))
+        #expect(Self.row(item, "/additional_fields/awsAuth")?.to == .text(String(localized: "Kerberos (GSSAPI)")))
+        #expect(Self.row(item, "/additional_fields/gssEncryptionMode")?.label == String(localized: "GSS Encryption"))
+        #expect(Self.row(item, "/additional_fields/gssEncryptionMode")?.from == .text(String(localized: "Preferred")))
+        #expect(Self.row(item, "/additional_fields/gssEncryptionMode")?.to == .text(String(localized: "Required")))
+        #expect(Self.row(item, "/additional_fields/usePgpass")?.from == .text(String(localized: "Off")))
+        #expect(Self.row(item, "/additional_fields/usePgpass")?.to == .text(String(localized: "On")))
+    }
+
+    @Test("A new SQLite connection shows its file, never a host, port, sign-in, SSH or TLS row")
+    func newSQLite() {
+        let record = SyncApprovalFixture.approval(
+            SyncApprovalFixture.record(SyncApprovalFixture.newID),
+            name: "e2e-sqlite",
+            isNew: true,
+            fields: [
+                ("/type", nil, "\"SQLite\""),
+                ("/host", nil, "\"localhost\""),
+                ("/port", nil, "0"),
+                ("/database", nil, "\"~/Data/app.sqlite\""),
+                ("/auth_mode", nil, "\"password\""),
+                ("/ssh_config/enabled", nil, "false"),
+                ("/ssh_config/auth_method", nil, "\"Password\""),
+                ("/ssl_config/mode", nil, "\"Disabled\""),
+                ("/safe_mode_level", nil, "\"silent\"")
+            ]
+        )
+
+        let item = SyncApprovalPresentation.item(record, lookup: Self.lookup(Self.sqlite))
+
+        #expect(item.rows.map(\.id) == ["/type", "/database", "/safe_mode_level"])
+        #expect(Self.row(item, "/database")?.label == String(localized: "File Path"))
+        #expect(Self.row(item, "/database")?.to == .text("~/Data/app.sqlite"))
+    }
+
+    @Test("SSH rows follow the tunnel and its sign-in: none while it stays off, only the method's own once on")
+    func sshRowsFollowTheTunnel() {
+        let changes: [(String, String?, String?)] = [
+            ("/ssh_config/host", "\"bastion-a.example.com\"", "\"bastion-b.example.com\""),
+            ("/ssh_config/private_key_path", "\"~/.ssh/a\"", "\"~/.ssh/b\""),
+            ("/ssh_config/agent_socket_path", nil, "\"/tmp/agent.sock\"")
+        ]
+        let on = SyncApprovalConnectionState(type: "PostgreSQL", sshEnabled: true, sshAuthMethod: "Private Key")
+        let record = SyncApprovalFixture.approval(
+            SyncApprovalFixture.record(SyncApprovalFixture.changedID), name: "Billing", isNew: false, fields: changes
+        )
+        let tunnelOn = SyncApprovalPresentation.item(record, lookup: Self.lookup(Self.postgres, local: on))
+        #expect(tunnelOn.rows.map(\.id) == ["/ssh_config/host", "/ssh_config/private_key_path"])
+
+        let turnedOff = SyncApprovalFixture.approval(
+            SyncApprovalFixture.record(SyncApprovalFixture.changedID),
+            name: "Billing",
+            isNew: false,
+            fields: changes + [("/ssh_config/enabled", "true", "false")]
+        )
+        let tunnelOff = SyncApprovalPresentation.item(turnedOff, lookup: Self.lookup(Self.postgres, local: on))
+        #expect(tunnelOff.rows.map(\.id) == ["/ssh_config/enabled"])
+        #expect(tunnelOff.rows.first?.to == .text(String(localized: "Off")))
+    }
+
+    @Test("A setting this Mac cannot read keeps the fields it controls in sight")
+    func unknownControllerValueShows() {
+        var traits = ConnectionTypeTraits(type: DatabaseType(rawValue: "libSQL"))
+        traits.fields = [
+            ConnectionField(
+                id: "libsqlMode",
+                label: "Mode",
+                defaultValue: "local",
+                fieldType: .dropdown(options: [.init(value: "local", label: "Local"), .init(value: "remote", label: "Remote")]),
+                section: .connection
+            ),
+            ConnectionField(
+                id: "databaseUrl",
+                label: "Database URL",
+                section: .connection,
+                visibleWhen: FieldVisibilityRule(fieldId: "libsqlMode", values: ["remote"])
+            )
+        ]
+        let record = SyncApprovalFixture.approval(
+            SyncApprovalFixture.record(SyncApprovalFixture.changedID),
+            name: "Edge",
+            isNew: false,
+            fields: [
+                ("/additional_fields/libsqlMode", Self.entry("libsqlMode", "local"), Self.entry("libsqlMode", "future")),
+                ("/additional_fields/databaseUrl", nil, Self.entry("databaseUrl", "libsql://evil.example.com"))
+            ]
+        )
+
+        let item = SyncApprovalPresentation.item(record, lookup: Self.lookup(traits, local: .init(type: "libSQL")))
+
+        #expect(Self.row(item, "/additional_fields/databaseUrl")?.to == .text("libsql://evil.example.com"))
+        #expect(Self.row(item, "/additional_fields/libsqlMode")?.to == .text("future"))
+    }
+
+    @Test("A credential profile or password source change shows for every driver, file and API ones included")
+    func credentialsShowForEveryDriver() {
+        var api = ConnectionTypeTraits(type: DatabaseType(rawValue: "CloudAPI"))
+        api.connectionMode = .apiOnly
+        let fields: [(String, String?, String?)] = [
+            ("/credential_profile_id", nil, SyncApprovalFixture.json("AAAAAAAA-0000-4000-8000-000000000000")),
+            ("/credential_reference/kind", nil, "\"env\"")
+        ]
+        let record = SyncApprovalFixture.approval(
+            SyncApprovalFixture.record(SyncApprovalFixture.changedID), name: "API", isNew: false, fields: fields
+        )
+        let file = SyncApprovalFixture.approval(
+            SyncApprovalFixture.record(SyncApprovalFixture.changedID), name: "File", isNew: false, fields: fields
+        )
+
+        let apiItem = SyncApprovalPresentation.item(record, lookup: Self.lookup(api, local: .init(type: "CloudAPI")))
+        let fileItem = SyncApprovalPresentation.item(file, lookup: Self.lookup(Self.sqlite, local: .init(type: "SQLite")))
+
+        #expect(apiItem.rows.map(\.id) == ["/credential_profile_id", "/credential_reference/kind"])
+        #expect(fileItem.rows.map(\.id) == ["/credential_profile_id", "/credential_reference/kind"])
+    }
+
+    @Test("Under the SSH agent the identity file shows, and each spelling of a method reads the same")
+    func sshAgentIdentityShows() {
+        let changes: [(String, String?, String?)] = [
+            ("/ssh_config/private_key_path", "\"~/.ssh/a\"", "\"~/.ssh/b\""),
+            ("/ssh_config/agent_socket_path", nil, "\"/tmp/agent.sock\"")
+        ]
+        let record = SyncApprovalFixture.approval(
+            SyncApprovalFixture.record(SyncApprovalFixture.changedID), name: "Billing", isNew: false, fields: changes
+        )
+        for spelling in ["SSH Agent", "sshAgent"] {
+            let local = SyncApprovalConnectionState(type: "PostgreSQL", sshEnabled: true, sshAuthMethod: spelling)
+            let item = SyncApprovalPresentation.item(record, lookup: Self.lookup(Self.postgres, local: local))
+            #expect(item.rows.map(\.id) == ["/ssh_config/private_key_path", "/ssh_config/agent_socket_path"], "\(spelling)")
+        }
+        let legacyKey = SyncApprovalConnectionState(type: "PostgreSQL", sshEnabled: true, sshAuthMethod: "privateKey")
+        let keyItem = SyncApprovalPresentation.item(record, lookup: Self.lookup(Self.postgres, local: legacyKey))
+        #expect(keyItem.rows.map(\.id) == ["/ssh_config/private_key_path"])
+    }
+
+    @Test("A linked SSH profile this Mac does not hold leaves the connection's own server and sign-in in sight")
+    func unresolvedProfileKeepsInlineSSH() {
+        let profileID = "5F1E2D3C-4B5A-4978-8695-A4B3C2D1E0F9"
+        let record = SyncApprovalFixture.approval(
+            SyncApprovalFixture.record(SyncApprovalFixture.newID),
+            name: "Billing",
+            isNew: true,
+            fields: [
+                ("/type", nil, "\"PostgreSQL\""),
+                ("/ssh_config/enabled", nil, "true"),
+                ("/ssh_profile_id", nil, SyncApprovalFixture.json(profileID)),
+                ("/ssh_config/host", nil, "\"bastion.example.com\""),
+                ("/ssh_config/username", nil, "\"deploy\"")
+            ]
+        )
+        var lookup = Self.lookup(Self.postgres)
+
+        let unresolved = SyncApprovalPresentation.item(record, lookup: lookup)
+        #expect(Self.row(unresolved, "/ssh_config/host") != nil)
+        #expect(Self.row(unresolved, "/ssh_config/username") != nil)
+
+        lookup.profileName = { kind, id in kind == "ssh_profile" && id == profileID ? "Bastion" : nil }
+        let resolved = SyncApprovalPresentation.item(record, lookup: lookup)
+        #expect(Self.row(resolved, "/ssh_config/host") == nil)
+        #expect(Self.row(resolved, "/ssh_profile_id")?.to == .text("Bastion"))
+    }
+
+    @Test("Two rows that would read alike each name their member, so no label repeats")
+    func repeatedLabelsNameTheirMember() {
+        var traits = Self.postgres
+        traits.fields.append(ConnectionField(id: "hostAlias", label: String(localized: "Host"), section: .connection))
+        let record = SyncApprovalFixture.approval(
+            SyncApprovalFixture.record(SyncApprovalFixture.changedID),
+            name: "Billing",
+            isNew: false,
+            fields: [
+                ("/host", "\"a.example.com\"", "\"b.example.com\""),
+                ("/additional_fields/hostAlias", Self.entry("hostAlias", "a"), Self.entry("hostAlias", "b"))
+            ]
+        )
+
+        let item = SyncApprovalPresentation.item(record, lookup: Self.lookup(traits, local: .init(type: "PostgreSQL")))
+
+        #expect(item.rows.map(\.label) == [
+            String(format: String(localized: "%1$@ (%2$@)"), String(localized: "Host"), "host"),
+            String(format: String(localized: "%1$@ (%2$@)"), String(localized: "Host"), "hostAlias")
+        ])
+    }
+
+    @Test("A driver this Mac does not know shows every value, each driver field by its value, never its JSON")
+    func unknownDriverShowsEverything() {
+        let record = SyncApprovalFixture.approval(
+            SyncApprovalFixture.record(SyncApprovalFixture.newID),
+            name: "Newer Engine",
+            isNew: true,
+            fields: [
+                ("/type", nil, "\"FutureDB\""),
+                ("/host", nil, "\"future.example.com\""),
+                ("/auth_mode", nil, "\"password\""),
+                ("/additional_fields/region", nil, Self.entry("region", "eu-west-1"))
+            ]
+        )
+
+        let item = SyncApprovalPresentation.item(record, lookup: Self.lookup(Self.postgres))
+
+        #expect(item.rows.map(\.id) == ["/type", "/host", "/auth_mode", "/additional_fields/region"])
+        #expect(Self.row(item, "/additional_fields/region")?.label == "region")
+        #expect(Self.row(item, "/additional_fields/region")?.to == .text("eu-west-1"))
     }
 
     @Test("A profile id reads as the profile's name, from this Mac or from a profile waiting beside it")
@@ -123,7 +420,8 @@ struct SyncApprovalPresentationTests {
         let lookup = SyncApprovalLookup(
             profileName: { kind, id in kind == "ssh_profile" && id == profileID ? "Bastion US" : nil },
             aiProviderName: { _ in nil },
-            driverField: { _, _, _ in nil }
+            traits: { _ in nil },
+            connection: { _ in nil }
         )
 
         let items = SyncApprovalPresentation.items([connection, profile], lookup: lookup)
