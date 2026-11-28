@@ -608,6 +608,150 @@ public static class TeamSignOut
     }
 }
 
+// Sign out around the key erase, as the macOS app's AccountSettingsModel.signOut runs it. The account's service is
+// leased first and every later step runs on it, so a service a resumed upload reopens meanwhile neither takes the key
+// erase nor meets this one's state file. Edits not uploaded are asked about before the erase, also when they cannot be
+// listed, and the delete after the sign-out runs only once the person was asked or nothing waits.
+public sealed class TeamSignOutFlow : IDisposable
+{
+    private readonly Func<Task<SyncLease?>> _lease;
+    private readonly Func<Task<IKeyFlows>> _hostFlows;
+    private readonly Func<bool> _isCurrent;
+    private readonly bool _asksWhenUnlisted;
+    private readonly Func<TeamSignOutQuestion, Task<TeamSignOutAnswer>> _ask;
+    private readonly Func<CoreError, Task<KeysSignOutAnswer>> _askAfterKeysFailure;
+    private SyncLease? _held;
+    private TeamLibraryOwner? _owner;
+    private bool _settled;
+
+    // AsksWhenUnlisted: the account has or had Team Library, so edits it cannot list may be waiting.
+    public TeamSignOutFlow(
+        Func<Task<SyncLease?>> lease,
+        Func<Task<IKeyFlows>> hostFlows,
+        Func<bool> isCurrent,
+        bool asksWhenUnlisted,
+        Func<TeamSignOutQuestion, Task<TeamSignOutAnswer>> ask,
+        Func<CoreError, Task<KeysSignOutAnswer>> askAfterKeysFailure)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(hostFlows);
+        ArgumentNullException.ThrowIfNull(isCurrent);
+        ArgumentNullException.ThrowIfNull(ask);
+        ArgumentNullException.ThrowIfNull(askAfterKeysFailure);
+        _lease = lease;
+        _hostFlows = hostFlows;
+        _isCurrent = isCurrent;
+        _asksWhenUnlisted = asksWhenUnlisted;
+        _ask = ask;
+        _askAfterKeysFailure = askAfterKeysFailure;
+    }
+
+    // True when the sign-out goes on: the edits are settled and this computer's keys are erased.
+    public async Task<bool> BeforeSignOutAsync()
+    {
+        _held = await _lease().ConfigureAwait(true);
+        _owner = _held?.Team.Owner;
+        while (_asksWhenUnlisted && _owner is null)
+        {
+            var answer = await _ask(new TeamSignOutQuestion(null, null)).ConfigureAwait(true);
+            if (answer == TeamSignOutAnswer.Cancel || !_isCurrent())
+            {
+                return false;
+            }
+
+            if (answer == TeamSignOutAnswer.Discard)
+            {
+                _settled = true;
+                break;
+            }
+
+            await StartAgainAsync().ConfigureAwait(true);
+        }
+
+        if (_held is { } held && _owner is { } owner && !_settled)
+        {
+            if (!await TeamSignOut.SettleUnsentAsync(held.Team, owner, _ask).ConfigureAwait(true))
+            {
+                return false;
+            }
+
+            _settled = true;
+        }
+
+        if (!_isCurrent() || !await KeysSignOut.RunAsync(KeyFlowsAsync, _isCurrent, _askAfterKeysFailure)
+                .ConfigureAwait(true))
+        {
+            return false;
+        }
+
+        // The key erase may have started the service the first read could not reach.
+        if (_owner is null)
+        {
+            _held ??= await _lease().ConfigureAwait(true);
+            _owner = _held?.Team.Owner;
+        }
+
+        return _isCurrent();
+    }
+
+    // After the sign-out: null when the account's Team Library data is gone or stays on purpose, since edits nobody was
+    // asked about still wait; else why the delete failed, which keeps Team Library off for the account.
+    public async Task<CoreError?> AfterSignOutAsync()
+    {
+        if (_held is not { } held || _owner is not { } owner)
+        {
+            return null;
+        }
+
+        if (!_settled)
+        {
+            try
+            {
+                if ((await held.Team.GetUnsentTeamEditsAsync(owner).ConfigureAwait(true)).Count > 0)
+                {
+                    return null;
+                }
+            }
+            catch (Exception exception) when (KeyErrors.Of(exception) is not null)
+            {
+                return null;
+            }
+        }
+
+        return await TeamSignOut.DeleteDataAsync(held.Team, owner).ConfigureAwait(true);
+    }
+
+    public void Dispose()
+    {
+        _held?.Dispose();
+        _held = null;
+    }
+
+    // Upload when the edits cannot be listed: the service opens again, or a pass starts its engine again first.
+    private async Task StartAgainAsync()
+    {
+        if (_held is null)
+        {
+            _held = await _lease().ConfigureAwait(true);
+        }
+        else
+        {
+            try
+            {
+                await _held.Team.SyncNowAsync().ConfigureAwait(true);
+            }
+            catch (Exception exception) when (KeyErrors.Of(exception) is not null)
+            {
+                // The owner read below says whether it started.
+            }
+        }
+
+        _owner = _held?.Team.Owner;
+    }
+
+    private Task<IKeyFlows> KeyFlowsAsync() => _held is { } held ? Task.FromResult(held.Keys) : _hostFlows();
+}
+
 public enum TeamConflictCase
 {
     // This computer deleted the item and the team changed it.

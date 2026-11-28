@@ -271,7 +271,15 @@ internal sealed class FakeKeyFlows : IKeyFlows
 
     public void DiscardKeyDraft(string draft) => Note($"discard {draft}");
 
-    public Task<KeysSignOutOutcome> SignOutKeysAsync() => Answer("sign out keys", KeysSignOutOutcome.Revoked);
+    // Runs once the erase is taken, as a service the erase started would.
+    public Action? AfterSignOutKeys { get; set; }
+
+    public Task<KeysSignOutOutcome> SignOutKeysAsync()
+    {
+        var answer = Answer("sign out keys", KeysSignOutOutcome.Revoked);
+        AfterSignOutKeys?.Invoke();
+        return answer;
+    }
 
     public Task<RotationDraft> BeginReplaceRecoveryKeyAsync(string recoveryKey) =>
         Answer($"begin replace {recoveryKey}", new RotationDraft(Draft, Reviewed));
@@ -397,6 +405,9 @@ internal sealed class FakeTeamCalls : ITeamCalls
     // The engine's owner; a Team Library call naming another is refused as the core refuses it.
     public TeamLibraryOwner? Owner { get; set; } = new("https://api.tablepro.app", "acct-1");
 
+    // The owner a pass gives an engine whose start had failed, as the core starts it again first.
+    public TeamLibraryOwner? OwnerAfterSyncNow { get; set; }
+
     public IReadOnlyList<string> Calls
     {
         get
@@ -457,6 +468,7 @@ internal sealed class FakeTeamCalls : ITeamCalls
     public Task SyncNowAsync()
     {
         var answer = Answer("sync now", true);
+        Owner ??= OwnerAfterSyncNow;
         if (answer.IsCompletedSuccessfully && UploadSends)
         {
             Unsent.Clear();
