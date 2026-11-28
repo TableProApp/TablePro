@@ -86,6 +86,7 @@ async fn open(tasks: &Tasks, parts: impl FnOnce(OpenParts) -> OpenParts) -> Open
         session: None,
         listener: Arc::new(Listener::default()),
         team_library: None,
+        secrets: None,
     });
     let opener = tasks.clone();
     let service = tasks

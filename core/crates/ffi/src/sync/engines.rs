@@ -10,6 +10,7 @@ use tablepro_records::Kind;
 use tablepro_storage::{ConnectionStore, QueryHistory, SavedQueryDatabase};
 use tablepro_sync::SyncError;
 use tablepro_sync::adapters::categories::DeviceCategories;
+use tablepro_sync::adapters::envelopes::EnvelopeAdapter;
 use tablepro_sync::adapters::history::HistoryAdapter;
 use tablepro_sync::adapters::library::{self, DriverNames, Provider};
 use tablepro_sync::adapters::saved_queries::SavedQueryAdapter;
@@ -20,8 +21,8 @@ use tablepro_sync::api::control::{PassReason, SyncCategories, SyncControl};
 use tablepro_sync::api::key_flows::KeyFlows;
 use tablepro_sync::api::state::StateIdentity;
 use tablepro_sync::api::{
-    CloudKitTransport, DeviceRowId, DeviceStoreError, HostDeviceStore, HostSettings, LegacyMirror, RecordAdapter,
-    ServiceTransport, StateError, StateFiles, TransportError,
+    CloudKitTransport, DeviceRowId, DeviceSecrets, DeviceStoreError, HostDeviceStore, HostSettings, LegacyMirror,
+    RecordAdapter, ServiceTransport, StateError, StateFiles, StateStore, TransportError,
 };
 use tablepro_sync::cloudkit::LegacyMarks;
 use tablepro_sync::cloudkit::fetch::Categories;
@@ -95,6 +96,9 @@ pub(crate) struct Hosts {
     pub(crate) store_journal: Arc<StoreJournal>,
     // Team Library's store and sign-in, which only the service engine syncs.
     pub(crate) team_library: Option<TeamLibraryHost>,
+    // The device's secrets, which go up sealed into envelopes on TablePro Sync only; iCloud carries them in iCloud
+    // Keychain (0054, Providers).
+    pub(crate) secrets: Option<Arc<dyn DeviceSecrets>>,
 }
 
 impl Hosts {
@@ -125,6 +129,20 @@ impl Hosts {
             adapters.push(Arc::new(HistoryAdapter::new(history.clone(), Arc::clone(standing))));
         }
         adapters
+    }
+
+    // The personal envelopes over the device's secrets, sealed and opened by this sign-in's keys and compared with the
+    // copies its state file agreed on.
+    fn envelopes(&self, keys: &Arc<KeyService>, state: &Arc<dyn StateStore>) -> Option<Arc<dyn RecordAdapter>> {
+        let (store, secrets) = (self.library.as_ref()?, self.secrets.as_ref()?);
+        Some(Arc::new(EnvelopeAdapter::new(
+            store,
+            self.names,
+            self.publisher,
+            Arc::clone(secrets),
+            Arc::clone(keys) as Arc<dyn KeyFlows>,
+            Arc::clone(state),
+        )))
     }
 
     // The stores' writes tell `listener` until the handle drops with what holds it.
@@ -315,6 +333,7 @@ impl ServiceEngine {
             clock: Arc::new(tablepro_sync::keys::SystemClock),
         }));
         let mut adapters = hosts.adapters(Provider::TableproSync);
+        adapters.extend(hosts.envelopes(&keys, &state));
         adapters.extend(team_library.iter().flat_map(TeamLibraryAdapter::all));
         let sync = Arc::new(ServiceSync::new(ServiceParts {
             transport: link.transport,
