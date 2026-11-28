@@ -9,13 +9,25 @@ public sealed class SyncSettingsTests : IDisposable
     public void Dispose() => Directory.Delete(_directory, recursive: true);
 
     [Fact]
-    public void ANewPcIsOffAndSyncsEveryCategoryButPasswords()
+    public void ANewPcIsOffAndSyncsEveryCategoryPasswordsIncluded()
     {
         var sync = new AppSettings().Sync;
 
         Assert.Equal(SyncProvider.Off, sync.Provider);
         Assert.Empty(sync.Categories().OffKinds);
-        Assert.False(sync.Categories().Passwords);
+        Assert.True(sync.Categories().Passwords);
+    }
+
+    [Fact]
+    public void PasswordsStartOnButAStoredChoiceIsKept()
+    {
+        var unset = Path.Combine(_directory, "unset.json");
+        var off = Path.Combine(_directory, "off.json");
+        File.WriteAllText(unset, """{ "sync": { "provider": "tableProSync" } }""");
+        File.WriteAllText(off, """{ "sync": { "provider": "tableProSync", "passwords": false } }""");
+
+        Assert.True(new SettingsStore(unset).Load().Sync.Passwords);
+        Assert.False(new SettingsStore(off).Load().Sync.Passwords);
     }
 
     [Fact]
