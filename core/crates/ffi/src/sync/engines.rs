@@ -16,7 +16,7 @@ use tablepro_sync::adapters::library::{self, DriverNames, Provider};
 use tablepro_sync::adapters::saved_queries::SavedQueryAdapter;
 use tablepro_sync::adapters::settings::{ConnectionStanding, SettingsAdapter};
 use tablepro_sync::adapters::store_journal::{Listening, StoreJournal};
-use tablepro_sync::adapters::team_library::TeamLibraryAdapter;
+use tablepro_sync::adapters::team_library::{TeamEnvelopeAdapter, TeamLibraryAdapter};
 use tablepro_sync::api::control::{PassReason, SyncCategories, SyncControl};
 use tablepro_sync::api::key_flows::KeyFlows;
 use tablepro_sync::api::state::StateIdentity;
@@ -335,6 +335,12 @@ impl ServiceEngine {
         let mut adapters = hosts.adapters(Provider::TableproSync);
         adapters.extend(hosts.envelopes(&keys, &state));
         adapters.extend(team_library.iter().flat_map(TeamLibraryAdapter::all));
+        // After the connections, so a connection's write goes up before its secrets'.
+        adapters.extend(
+            team_library
+                .iter()
+                .map(|store| Arc::new(TeamEnvelopeAdapter::new(store)) as Arc<dyn RecordAdapter>),
+        );
         let sync = Arc::new(ServiceSync::new(ServiceParts {
             transport: link.transport,
             state,

@@ -5,10 +5,14 @@ use std::sync::Arc;
 use secrecy::SecretString;
 
 use tablepro_keys::encoding::AccountId;
+use tablepro_storage::{StoragePaths, TeamLibraryOwner, TeamLibraryStore};
+use tablepro_sync::adapters::team_library::{TeamEnvelopeAdapter, TeamLibraryAdapter};
+use tablepro_sync::api::adapter::RecordAdapter;
 use tablepro_sync::api::control::PassReason;
 use tablepro_sync::api::ids::{DeviceRowId, ScopeName};
 use tablepro_sync::api::key_flows::{AccountFlows, KeyFlows, KeyHooks, KeyState};
 use tablepro_sync::api::state::{Row, RowKey, ScopeRow, StateFiles, StateIdentity, StateStore};
+use tablepro_sync::api::team_library::{SignInGuard, TeamLibraryPolicy};
 use tablepro_sync::api::transport::ServiceTransport;
 use tablepro_sync::engine::{Adapters, EngineHooks, Journal, StopSignal, SystemClock, Wake};
 use tablepro_sync::keys::{Clock, KeyService, KeyServiceParts};
@@ -32,10 +36,49 @@ pub struct Device {
     pub state: Arc<dyn StateStore>,
     pub server: Arc<FakeServer>,
     pub row: DeviceRowId,
+    // The Team Library store, when the device runs Team Library.
+    pub store: Option<TeamLibraryStore>,
+}
+
+// A sign-in that never ends.
+struct Held;
+
+impl SignInGuard for Held {
+    fn holds(&self) -> bool {
+        true
+    }
 }
 
 impl Device {
     pub async fn new(server: &Arc<FakeServer>, account: AccountId, row: &str) -> Self {
+        Self::build(server, account, row, None).await
+    }
+
+    // A device with Team Library attached over its store under `dir`, as the apps open it.
+    pub async fn with_team_library(
+        server: &Arc<FakeServer>,
+        account: AccountId,
+        row: &str,
+        dir: &std::path::Path,
+    ) -> Self {
+        let paths = StoragePaths::under(&dir.join(row), "tablepro", "app.tablepro.TablePro");
+        let store = TeamLibraryStore::new(
+            &paths,
+            TeamLibraryOwner {
+                origin: origin().as_str().to_owned(),
+                account_id: account.to_wire(),
+            },
+        );
+        let device = Self::build(server, account, row, Some(store.clone())).await;
+        device
+            .sync
+            .attach_team_library(store, Arc::new(Held), TeamLibraryPolicy::none())
+            .await
+            .unwrap();
+        device
+    }
+
+    async fn build(server: &Arc<FakeServer>, account: AccountId, row: &str, store: Option<TeamLibraryStore>) -> Self {
         let row = DeviceRowId(row.to_owned());
         let state = MemoryStateFiles::new()
             .open(StateIdentity::Service {
@@ -59,10 +102,15 @@ impl Device {
             hooks: Arc::clone(&hooks) as Arc<dyn KeyHooks>,
             clock: Arc::new(ServerClock(Arc::clone(server))),
         }));
+        let mut adapters = Vec::new();
+        if let Some(store) = &store {
+            adapters.extend(TeamLibraryAdapter::all(store));
+            adapters.push(Arc::new(TeamEnvelopeAdapter::new(store)) as Arc<dyn RecordAdapter>);
+        }
         let sync = ServiceSync::new(ServiceParts {
             transport,
             state: Arc::clone(&state),
-            adapters: Adapters::default(),
+            adapters: Adapters::new(adapters),
             keys: Arc::clone(&keys) as Arc<dyn KeyFlows>,
             hooks: Arc::clone(&hooks),
             clock: Arc::new(SystemClock),
@@ -82,6 +130,7 @@ impl Device {
             state,
             server: Arc::clone(server),
             row,
+            store,
         }
     }
 

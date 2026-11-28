@@ -135,6 +135,8 @@ pub struct SyncService {
     pub(crate) service: Arc<ServiceSlot>,
     // This Core's connections, which name what a removed party could read.
     pub(crate) connections: Option<tablepro_storage::ConnectionStore>,
+    // The device's secrets, which a publish to a team seals from.
+    pub(crate) secrets: Option<Arc<dyn tablepro_sync::api::secrets::DeviceSecrets>>,
     // The downgrade mirror's marks while no iCloud engine carries them.
     pub(crate) legacy_marks: Option<Arc<tablepro_sync::cloudkit::LegacyMarks>>,
     pub(crate) _marks_hear_stores: Option<tablepro_sync::adapters::store_journal::Listening>,

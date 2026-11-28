@@ -260,7 +260,11 @@ fn a_connection_goes_up_without_a_secret_at_any_depth_and_once_held_plans_nothin
         "password": "hunter2",
         "sshConfig": {"host": "bastion", "keyPassphrase": "x", "jumpHosts": [{"host": "j", "privateKey": "k"}]},
     });
-    let connection = TeamConnection { id: uuid(7), settings };
+    let connection = TeamConnection {
+        id: uuid(7),
+        settings,
+        secrets: TeamSecrets::Keep,
+    };
     let empty = local(Vec::new(), Vec::new());
     let first = connections(&TeamView::new(&[], &[], &empty), std::slice::from_ref(&connection));
     let Planned::Put { fields, .. } = &first[0] else {
