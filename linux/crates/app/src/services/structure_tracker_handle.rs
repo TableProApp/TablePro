@@ -1,9 +1,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use super::pending_structure::PendingStructure;
 use super::structure_tracker::StructureChangeTracker;
 use crate::workspace::{PendingState, SaveOutcome, SaveRejection};
+use tablepro_core::ddl::PendingStructure;
 
 /// A Structure tab's pending save. Every method borrows only for its own
 /// body and returns owned data.

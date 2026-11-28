@@ -15,13 +15,13 @@ use super::super::tab_spec::TabSpec;
 use super::super::{Workspace, WorkspaceInput, WorkspaceTab};
 use super::{open_editor, shell_of, two_sessions};
 use crate::runtime::DeliverInput;
-use crate::services::pending_structure::PendingStructure;
 use crate::test_support::{drain_main_context, finish_on_main, wait_until};
 use crate::ui::SessionWindowInput;
 use crate::ui::editor::SqlEditor;
 use crate::ui::session_window::tests::{TestWindow, WAIT, editors};
 use crate::ui::structure_tab::StructureMode;
 use crate::workspace::{TabRecord, WorkspaceFileName, WorkspaceLoad, WorkspaceRecord};
+use tablepro_core::ddl::PendingStructure;
 
 fn modified(page: &adw::TabPage) -> bool {
     page.icon().and_downcast::<gio::ThemedIcon>().is_some_and(|icon| {

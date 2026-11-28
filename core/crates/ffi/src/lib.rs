@@ -11,12 +11,15 @@ pub mod command_line;
 mod completion;
 mod connection_url;
 mod core_handle;
+mod core_log;
 #[cfg(windows)]
 mod credential_manager;
 #[cfg(any(windows, test))]
 mod credential_parts;
 mod definition;
+mod designer;
 mod drivers;
+mod dump;
 mod editor;
 mod error;
 mod export;
@@ -46,7 +49,9 @@ mod runtime;
 mod safe_mode_gate;
 mod saved_queries;
 mod saved_query_database;
+mod script;
 mod session;
+mod sql_import;
 mod statement_at;
 mod structure;
 mod sync;
@@ -84,8 +89,14 @@ pub use completion::{
 };
 pub use connection_url::{ParsedConnectionUrl, parse_connection_url};
 pub use core_handle::{Core, FileOpenRequest};
+pub use core_log::{CoreLogField, CoreLogLevel, CoreLogLine, CoreLogSink, set_core_log_sink};
 pub use definition::ObjectSource;
+pub use designer::{
+    DestructiveChangeTag, DraftColumnInput, ForeignKeyInput, IndexInput, IndexKeyInput, ReferentialActionTag,
+    SaveBlockerTag, TableDesigner, TableDesignerPlan, TableDraftInput, TableOptionsInput, TableSaveOutcome,
+};
 pub use drivers::{DataModelTag, DriverInfo, EndpointInfo, EngineCategoryTag, ServerNameOverrideTag};
+pub use dump::{DumpProgress, DumpReportRecord, DumpScopeArg};
 pub use editor::{QueryEditor, RunSettings};
 pub use error::{BoxedErrorInfo, CoreError, ErrorInfo, HostKeyFailure, ServerMessage, TlsFailureTag};
 pub use export::{ExportFormatTag, ExportProgress};
@@ -155,25 +166,32 @@ pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TransactionStateTag, 
 pub use safe_mode_gate::RunGate;
 pub use saved_queries::{SavedQueriesInfo, SavedQueryDraft, SavedQueryFolderInfo, SavedQueryInfo, SavedQueryStore};
 pub use saved_query_database::{SavedQueryDatabaseStore, StoreFilesInfo};
+pub use script::{
+    BatchErrorPolicyTag, ScriptBatch, ScriptEntryInfo, ScriptRun, ScriptRunEvent, ScriptRunSummary, VerdictTag,
+};
 pub use session::{
     ColumnSort, DatabaseLayoutTag, DatabaseSession, FailureCauseTag, PageResume, RowEstimate, SessionHealthTag,
     TableInfoRecord, TablePageRead,
+};
+pub use sql_import::{
+    SqlImportEndTag, SqlImportErrorPolicyTag, SqlImportFailureRecord, SqlImportFaultTag, SqlImportOptionsArg,
+    SqlImportProgress, SqlImportReportRecord, TransactionOutcomeTag,
 };
 pub use statement_at::StatementSpan;
 pub use structure::{StructureColumn, StructureForeignKey, StructureIndex, TableStructure};
 pub use sync::{
     AccountDeviceInfo, ApprovalRequestInfo, ApprovalSessionInfo, CloudKitAccount, CloudKitChanges, CloudKitDeletion,
     CloudKitFailure, CloudKitFetched, CloudKitField, CloudKitOutcome, CloudKitRecord, CloudKitTransport, CloudKitValue,
-    ConflictChoiceTag, CredentialToRotateInfo, DeviceItemClassTag, DeviceItemTag, FingerprintInfo, GenesisOutcomeTag,
-    HeldReasonTag, HeldRecordInfo, HeldRestartInfo, HostDeviceStore, HostLegacyMirror, HostSettings, HostSyncedSecrets,
-    KeyChangeInfo, KeyNoticeInfo, KeyNoticeKindTag, KeyStateInfo, KeyVersionStateTag, LegacyMetadataArg,
-    LegacyRecordArg, LegacyStandingArg, LegacyStandingTag, LegacyTombstoneArg, LockCauseTag, MemberKeyStatusTag,
-    MemberKeysInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag, NewIdentityPlanInfo, PassReasonTag,
-    PendingApprovalInfo, PendingResetInfo, RecoveryKeyDraftInfo, RemovalReviewInfo, ResetKindTag, ResetStateTag,
-    ReviewedDeviceInfo, ReviewedMemberInfo, RotationDraftInfo, ScopeStatusInfo, SessionEndTag, SessionPhaseTag,
-    SessionRoleTag, SettingsCategoryArg, SignOutOutcomeTag, StopCauseTag, StoppedDeviceInfo, SyncCategoriesArg,
-    SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag, SyncRecordRef, SyncService,
-    SyncStatusInfo, SyncedSecretParentTag, SyncedSecretRef, TeamConflictInfo, TeamKeysInfo, TeamRoleTag,
+    ConflictChoiceTag, CredentialToRotateInfo, DeviceItemClassTag, DeviceItemTag, FieldApprovalInfo, FingerprintInfo,
+    GenesisOutcomeTag, HeldReasonTag, HeldRecordInfo, HeldRestartInfo, HostDeviceStore, HostLegacyMirror, HostSettings,
+    HostSyncedSecrets, KeyChangeInfo, KeyNoticeInfo, KeyNoticeKindTag, KeyStateInfo, KeyVersionStateTag,
+    LegacyMetadataArg, LegacyRecordArg, LegacyStandingArg, LegacyStandingTag, LegacyTombstoneArg, LockCauseTag,
+    MemberKeyStatusTag, MemberKeysInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag, NewIdentityPlanInfo,
+    PassReasonTag, PendingResetInfo, RecordApprovalInfo, RecoveryKeyDraftInfo, RemovalReviewInfo, ResetKindTag,
+    ResetStateTag, ReviewedDeviceInfo, ReviewedMemberInfo, RotationDraftInfo, ScopeStatusInfo, SessionEndTag,
+    SessionPhaseTag, SessionRoleTag, SettingsCategoryArg, SignOutOutcomeTag, StopCauseTag, StoppedDeviceInfo,
+    SyncCategoriesArg, SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag, SyncRecordRef,
+    SyncService, SyncStatusInfo, SyncedSecretParentTag, SyncedSecretRef, TeamConflictInfo, TeamKeysInfo, TeamRoleTag,
     device_item_class,
 };
 pub use sync::{

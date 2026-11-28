@@ -1,4 +1,5 @@
 use tablepro_core::Truncation;
+use tablepro_core::script_run::ResultSetSummary;
 
 use crate::i18n::{gettext_f, ngettext_f};
 use crate::ui::format::format_thousands;
@@ -33,6 +34,16 @@ impl ResultSummary {
 
     pub(crate) fn is_truncated(&self) -> bool {
         self.truncation != Truncation::Complete || self.run_limit.is_some() || self.size_limit.is_some()
+    }
+
+    pub(crate) fn from_core(summary: ResultSetSummary) -> Self {
+        Self {
+            retained: summary.retained,
+            total_rows: summary.total_rows,
+            truncation: summary.truncation,
+            run_limit: summary.run_limit,
+            size_limit: summary.size_limit,
+        }
     }
 
     /// What the banner over a cut-short result says. `None` for a

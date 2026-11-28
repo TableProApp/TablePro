@@ -957,7 +957,7 @@ fn an_edit_previews_the_plan_and_saves_through_the_tracker() {
     assert_eq!(
         tracker.begin_save(),
         Err(crate::workspace::SaveRejection::Blocked(
-            crate::services::pending_structure::SaveBlocker::UnparsedDefault("id".to_owned())
+            tablepro_core::ddl::SaveBlocker::UnparsedDefault("id".to_owned())
         ))
     );
     drop(tab);

@@ -13,8 +13,9 @@ struct DataGridMenuAnchorTests {
     func anchorIsTheActiveCell() throws {
         let grid = HostedDataGrid(rows: GridFixtureRows.people)
         defer { grid.close() }
+        let start = GridCoord(row: 1, displayColumn: 1)
         let active = GridCoord(row: 3, displayColumn: 2)
-        grid.model.setSelection(GridSelectionReducer.range(from: GridCoord(row: 1, displayColumn: 1), to: active))
+        grid.model.setSelection(GridSelection(rectangles: [GridRect.between(start, active)], activeCell: active, anchor: start))
         let column = try #require(grid.tableIndex(ofDisplayPosition: 2))
 
         let anchor = try #require(grid.main.contextMenuAnchor)

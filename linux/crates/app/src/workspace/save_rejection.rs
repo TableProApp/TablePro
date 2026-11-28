@@ -3,7 +3,7 @@ use tablepro_core::dml::BuildSqlError;
 use tablepro_session::OperationError;
 
 use super::DirtyTab;
-use crate::services::pending_structure::SaveBlocker;
+use tablepro_core::ddl::SaveBlocker;
 
 /// Why a save did not start. Nothing was sent.
 #[derive(Debug, Clone, PartialEq, Eq)]

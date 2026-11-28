@@ -27,7 +27,8 @@ pub(crate) mod license_ask;
 pub mod mcp_clients;
 pub mod mcp_service;
 pub mod mcp_status;
-pub mod pending_structure;
+#[cfg(test)]
+mod pending_structure_tests;
 pub(crate) mod sample_database;
 pub mod save_batch;
 pub mod saved_connection_editor;

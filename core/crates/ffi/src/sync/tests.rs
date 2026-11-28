@@ -30,6 +30,7 @@ use crate::runtime;
 struct Listener {
     status: AtomicUsize,
     keys: AtomicUsize,
+    approvals: AtomicUsize,
     returned: AtomicUsize,
     held: Mutex<Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>>,
 }
@@ -47,6 +48,10 @@ impl SyncListener for Listener {
 
     fn keys_changed(&self) {
         self.keys.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn approvals_changed(&self) {
+        self.approvals.fetch_add(1, Ordering::SeqCst);
     }
 }
 
@@ -1168,4 +1173,121 @@ async fn another_account_on_tablepro_sync_waits_for_move_my_data_or_start_empty(
     // Until the person chooses, the app keeps the sign-in the new one follows, so every open asks again.
     assert_eq!(kept_while_waiting, Some(kept.clone()));
     assert_ne!(kept_after, Some(kept));
+}
+
+fn status(provider: SyncProviderTag, phase: SyncPhaseTag, waiting: u32) -> super::service::SyncStatusInfo {
+    super::service::SyncStatusInfo {
+        provider: Some(provider),
+        phase,
+        last_pass_ms: None,
+        problem: None,
+        waiting_approvals: waiting,
+        conflicts: 0,
+        held: 0,
+        queued_changes: 0,
+    }
+}
+
+fn teams(waiting: u32, conflicts: u32, held: u32) -> tablepro_sync::api::control::SyncStatus {
+    tablepro_sync::api::control::SyncStatus {
+        waiting_approvals: waiting,
+        conflicts,
+        held,
+        ..tablepro_sync::api::control::SyncStatus::UNAVAILABLE
+    }
+}
+
+// E2E F14: the status said Up to Date while values waited. What waits in a team counts on a device whose personal data
+// is on iCloud or nowhere, and any value waiting shows in place of a resting phase.
+#[test]
+fn values_waiting_anywhere_show_as_needing_approval_in_place_of_a_resting_phase() {
+    use super::service::with_teams;
+
+    let off = with_teams(
+        status(SyncProviderTag::Off, SyncPhaseTag::Off, 0),
+        Some(&teams(1, 2, 3)),
+    );
+    let icloud = with_teams(
+        status(SyncProviderTag::Icloud, SyncPhaseTag::Idle, 1),
+        Some(&teams(2, 0, 0)),
+    );
+    let nothing = with_teams(
+        status(SyncProviderTag::Off, SyncPhaseTag::Off, 0),
+        Some(&teams(0, 0, 0)),
+    );
+    let syncing = with_teams(status(SyncProviderTag::TableproSync, SyncPhaseTag::Syncing, 4), None);
+
+    assert_eq!(
+        (off.phase, off.waiting_approvals, off.conflicts, off.held),
+        (SyncPhaseTag::NeedsApproval, 1, 2, 3)
+    );
+    assert_eq!(
+        (icloud.phase, icloud.waiting_approvals),
+        (SyncPhaseTag::NeedsApproval, 3)
+    );
+    assert_eq!(nothing.phase, SyncPhaseTag::Off);
+    assert_eq!(syncing.phase, SyncPhaseTag::Syncing);
+}
+
+#[test]
+fn a_waiting_record_crosses_with_its_values_as_json_text_and_a_removal_as_none() {
+    use serde_json::json;
+    use tablepro_records::Kind;
+    use tablepro_sync::api::RecordKey;
+    use tablepro_sync::api::control::{PendingApproval, RecordApproval};
+
+    let record = RecordApproval {
+        key: RecordKey::new(ScopeName::Personal, Kind::Connection, "C1"),
+        name: Some("Prod".to_owned()),
+        new_record: false,
+        digest: [0xab; 32],
+        fields: vec![
+            PendingApproval {
+                field: "/host".to_owned(),
+                pulled: json!("db2.example.com"),
+                digest: [1; 32],
+                current: Some(json!("db.example.com")),
+            },
+            PendingApproval {
+                field: "/startup_commands".to_owned(),
+                pulled: serde_json::Value::Null,
+                digest: [2; 32],
+                current: Some(json!("SET a = 1")),
+            },
+        ],
+    };
+
+    let info = super::service::RecordApprovalInfo::from(record);
+
+    assert_eq!(info.record.kind, "connection");
+    assert_eq!(info.digest, "ab".repeat(32));
+    assert_eq!(info.fields[0].pulled.as_deref(), Some("\"db2.example.com\""));
+    assert_eq!(info.fields[0].current.as_deref(), Some("\"db.example.com\""));
+    assert_eq!(info.fields[1].pulled, None);
+    assert_eq!(info.fields[1].digest, "02".repeat(32));
+}
+
+#[tokio::test]
+async fn the_app_hears_a_change_to_the_values_waiting_on_its_own_call() {
+    use tablepro_sync::engine::EngineEvents;
+
+    let tasks = runtime::tasks().unwrap();
+    let listener = Arc::new(Listener::default());
+    let signals = Arc::new(super::events::Signals::default());
+    let _forwarding = super::events::forward(
+        Arc::clone(&signals),
+        Arc::clone(&listener) as Arc<dyn SyncListener>,
+        &tasks,
+    );
+
+    signals.approvals_changed();
+    for _ in 0..200 {
+        if listener.approvals.load(Ordering::SeqCst) > 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    assert_eq!(listener.approvals.load(Ordering::SeqCst), 1);
+    assert_eq!(listener.status.load(Ordering::SeqCst), 0);
 }

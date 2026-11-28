@@ -6,6 +6,7 @@
     reason = "the harness fails a test the way the tests do, and record fields compare as JSON values"
 )]
 
+mod approvals;
 mod epochs;
 mod fixtures;
 mod harness;

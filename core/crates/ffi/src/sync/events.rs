@@ -15,6 +15,7 @@ use super::service::SyncListener;
 pub(crate) struct Signals {
     status: AtomicBool,
     keys: AtomicBool,
+    approvals: AtomicBool,
     raised: Notify,
 }
 
@@ -26,6 +27,11 @@ impl EngineEvents for Signals {
 
     fn keys_changed(&self) {
         self.keys.store(true, Ordering::SeqCst);
+        self.raised.notify_one();
+    }
+
+    fn approvals_changed(&self) {
+        self.approvals.store(true, Ordering::SeqCst);
         self.raised.notify_one();
     }
 }
@@ -40,6 +46,9 @@ pub(crate) fn forward(signals: Arc<Signals>, listener: Arc<dyn SyncListener>, ta
             }
             if signals.keys.swap(false, Ordering::SeqCst) {
                 listener.keys_changed();
+            }
+            if signals.approvals.swap(false, Ordering::SeqCst) {
+                listener.approvals_changed();
             }
         }
     })
