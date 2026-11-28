@@ -45,27 +45,8 @@ public sealed record SavedEdits
         var overlay = edits.Overlay();
         List<(int Row, SavedRowEdit Edit)> rows = [];
 
-        // New rows: every cell of each draft, in the table's order.
-        for (var index = 0; index < overlay.Drafts.Count; index++)
-        {
-            rows.Add((edits.DataRows + index, new SavedRowEdit
-            {
-                Cells = Named(columns, overlay.Drafts[index].Select((cell, column) => (column, Edit(cell)))),
-                Uncertain = uncertain,
-            }));
-        }
-
-        // Deleted rows, each named by its primary key.
-        foreach (var deleted in overlay.DeletedRows)
-        {
-            if (KeyOf(columns, key, checked((int)deleted), stored) is { } named)
-            {
-                rows.Add((checked((int)deleted), new SavedRowEdit { Key = named, Deleted = true, Uncertain = uncertain }));
-            }
-        }
-
-        // Modified rows: their changed cells by column.
-        foreach (var group in overlay.Cells.GroupBy(cell => cell.Row))
+        // Modified rows, then deletes, then new rows, each in row order so the file reads the same every time.
+        foreach (var group in overlay.Cells.GroupBy(cell => cell.Row).OrderBy(group => group.Key))
         {
             if (KeyOf(columns, key, checked((int)group.Key), stored) is { } named)
             {
@@ -76,6 +57,23 @@ public sealed record SavedEdits
                     Uncertain = uncertain,
                 }));
             }
+        }
+
+        foreach (var deleted in overlay.DeletedRows.OrderBy(row => row))
+        {
+            if (KeyOf(columns, key, checked((int)deleted), stored) is { } named)
+            {
+                rows.Add((checked((int)deleted), new SavedRowEdit { Key = named, Deleted = true, Uncertain = uncertain }));
+            }
+        }
+
+        for (var index = 0; index < overlay.Drafts.Count; index++)
+        {
+            rows.Add((edits.DataRows + index, new SavedRowEdit
+            {
+                Cells = Named(columns, overlay.Drafts[index].Select((cell, column) => (column, Edit(cell)))),
+                Uncertain = uncertain,
+            }));
         }
 
         if (open is not null && Drafted(columns, key, stored, edits, rows, open, uncertain) is { } drafted)

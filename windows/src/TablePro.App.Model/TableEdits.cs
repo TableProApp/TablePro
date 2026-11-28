@@ -131,8 +131,13 @@ public sealed class TableEdits
 
     public SavePreview Preview() => _editor.Preview();
 
-    public Task<RowSaveOutcome> SaveAsync(bool confirmed, CancellationToken cancellationToken) =>
-        _editor.SaveAsync(_source, confirmed, cancellationToken);
+    public async Task<RowSaveOutcome> SaveAsync(bool confirmed, CancellationToken cancellationToken)
+    {
+        var outcome = await _editor.SaveAsync(_source, confirmed, cancellationToken).ConfigureAwait(true);
+        // The editor settled the tracker: a commit dropped the saved rows, an unknown outcome refuses the next save.
+        Record(_editor.Pending);
+        return outcome;
+    }
 
     private void Record(EditSummary summary)
     {

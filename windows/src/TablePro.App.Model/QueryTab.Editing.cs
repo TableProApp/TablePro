@@ -515,6 +515,7 @@ public sealed partial class QueryTab
 
         if (preview.IsEmpty)
         {
+            editing.Edits.Discard();
             return true;
         }
 

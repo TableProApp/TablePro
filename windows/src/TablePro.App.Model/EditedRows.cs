@@ -148,9 +148,17 @@ internal sealed class EditedRows(ITableEditor editor, TableEdits edits, ResultSe
         }
     }
 
-    // The core validates the text and drops an edit back to the stored value; a refusal says why with an edit.* code.
-    public EditRefusal? Apply(int row, int column, CellEdit edit) =>
-        edits.SetCell(row, column, edit) is { } failure ? new EditRefusal.Invalid(failure) : null;
+    // A data row whose stored value has no editable text is read only; otherwise the core validates the text and
+    // drops an edit back to the stored value, and a refusal says why with an edit.* code.
+    public EditRefusal? Apply(int row, int column, CellEdit edit)
+    {
+        if (!edits.IsAdded(row) && ReadStored(row, column, out _) is { } unreadable)
+        {
+            return unreadable;
+        }
+
+        return edits.SetCell(row, column, edit) is { } failure ? new EditRefusal.Invalid(failure) : null;
+    }
 
     // The stored value as text, null for NULL; a value with no text that writes it back is refused.
     public EditRefusal? ReadStored(int row, int column, out string? stored)

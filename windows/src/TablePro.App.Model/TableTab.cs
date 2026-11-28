@@ -1312,6 +1312,7 @@ public sealed class TableTab : IWorkspaceTab
 
         if (preview.IsEmpty)
         {
+            edits.Discard();
             return true;
         }
 
