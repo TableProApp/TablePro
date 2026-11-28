@@ -10,7 +10,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::services::pending_structure::PendingStructure;
+    use tablepro_core::ddl::PendingStructure;
 
     fn new_table() -> Option<PendingStructure> {
         let mut draft = TableDraft::new(TableRef::unqualified("t"));

@@ -16,7 +16,9 @@ mod credential_manager;
 #[cfg(any(windows, test))]
 mod credential_parts;
 mod definition;
+mod designer;
 mod drivers;
+mod dump;
 mod editor;
 mod error;
 mod export;
@@ -47,6 +49,7 @@ mod safe_mode_gate;
 mod saved_queries;
 mod saved_query_database;
 mod session;
+mod sql_import;
 mod statement_at;
 mod structure;
 mod sync;
@@ -85,7 +88,12 @@ pub use completion::{
 pub use connection_url::{ParsedConnectionUrl, parse_connection_url};
 pub use core_handle::{Core, FileOpenRequest};
 pub use definition::ObjectSource;
+pub use designer::{
+    DestructiveChangeTag, DraftColumnInput, ForeignKeyInput, IndexInput, IndexKeyInput, ReferentialActionTag,
+    SaveBlockerTag, TableDesigner, TableDesignerPlan, TableDraftInput, TableOptionsInput, TableSaveOutcome,
+};
 pub use drivers::{DataModelTag, DriverInfo, EndpointInfo, EngineCategoryTag, ServerNameOverrideTag};
+pub use dump::{DumpProgress, DumpReportRecord, DumpScopeArg};
 pub use editor::{QueryEditor, RunSettings};
 pub use error::{BoxedErrorInfo, CoreError, ErrorInfo, HostKeyFailure, ServerMessage, TlsFailureTag};
 pub use export::{ExportFormatTag, ExportProgress};
@@ -158,6 +166,10 @@ pub use saved_query_database::{SavedQueryDatabaseStore, StoreFilesInfo};
 pub use session::{
     ColumnSort, DatabaseLayoutTag, DatabaseSession, FailureCauseTag, PageResume, RowEstimate, SessionHealthTag,
     TableInfoRecord, TablePageRead,
+};
+pub use sql_import::{
+    SqlImportEndTag, SqlImportErrorPolicyTag, SqlImportFailureRecord, SqlImportFaultTag, SqlImportOptionsArg,
+    SqlImportProgress, SqlImportReportRecord, TransactionOutcomeTag,
 };
 pub use statement_at::StatementSpan;
 pub use structure::{StructureColumn, StructureForeignKey, StructureIndex, TableStructure};
