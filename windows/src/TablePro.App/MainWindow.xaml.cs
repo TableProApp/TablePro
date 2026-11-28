@@ -2095,9 +2095,28 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     // Exit ends the app from any window; the primary saves every window as it closes.
     private async void OnExit(object sender, RoutedEventArgs e) => await _primary.RequestCloseAsync();
 
-    private void OnUndo(object sender, RoutedEventArgs e) => RunEditorCommand(EditorCommand.Undo);
+    // Undo and redo reach the grid's row edits when it, not the editor, had focus last; otherwise the SQL editor.
+    private void OnUndo(object sender, RoutedEventArgs e)
+    {
+        if (Workspace?.ActiveTab is { GridIsTarget: true, CanUndoEdit: true } tab)
+        {
+            tab.UndoEdit();
+            return;
+        }
 
-    private void OnRedo(object sender, RoutedEventArgs e) => RunEditorCommand(EditorCommand.Redo);
+        RunEditorCommand(EditorCommand.Undo);
+    }
+
+    private void OnRedo(object sender, RoutedEventArgs e)
+    {
+        if (Workspace?.ActiveTab is { GridIsTarget: true, CanRedoEdit: true } tab)
+        {
+            tab.RedoEdit();
+            return;
+        }
+
+        RunEditorCommand(EditorCommand.Redo);
+    }
 
     private void OnCut(object sender, RoutedEventArgs e) => Workspace?.ActiveTab?.Editor?.Cut();
 

@@ -222,6 +222,14 @@ public sealed partial class QueryTabView
 
     public bool GridIsTarget => _target == EditTarget.Grid && Results.ShowsGrid;
 
+    public bool CanUndoEdit => _model.CanUndoRows;
+
+    public bool CanRedoEdit => _model.CanRedoRows;
+
+    public void UndoEdit() => _model.UndoRows();
+
+    public void RedoEdit() => _model.RedoRows();
+
     public TextBox? MessagesTarget => _target == EditTarget.Messages ? Results.ShownText : null;
 
     internal ResultsPane ResultsView => Results;
