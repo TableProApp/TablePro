@@ -195,9 +195,9 @@ pub use sync::{
     device_item_class,
 };
 pub use sync::{
-    TeamDeclinedArg, TeamFolderArg, TeamImportedEditArg, TeamLibraryImportArg, TeamLibraryItemInfo, TeamLibraryItemRef,
-    TeamLibraryKindTag, TeamLibraryOwnerArg, TeamLibraryTeamInfo, TeamPublishInfo, TeamQueryArg, TeamScopeStatusInfo,
-    UnsentTeamEditInfo, UnsentTeamEditTag,
+    LocalUseInfo, TeamDeclinedArg, TeamFolderArg, TeamImportedEditArg, TeamLibraryImportArg, TeamLibraryItemInfo,
+    TeamLibraryItemRef, TeamLibraryKindTag, TeamLibraryOwnerArg, TeamLibraryTeamInfo, TeamPublishInfo, TeamQueryArg,
+    TeamScopeStatusInfo, UnsentTeamEditInfo, UnsentTeamEditTag,
 };
 pub use syntax::SqlGrammarTag;
 pub use table_folders::{TableFolderItemRecord, TableFolderRecord, TableFolderStore, TableRefRecord};

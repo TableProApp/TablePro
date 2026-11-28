@@ -2097,6 +2097,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -2999,6 +3001,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_core_delete_other_team_library_data(ulong @ptr,RustBuffer @keep
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_core_shared_row_local_uses(ulong @ptr,RustBuffer @record,RustBuffer @fileBased,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -9213,6 +9226,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_core_shared_row_local_uses(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_tabledesigner_plan(
     );
 
@@ -13795,6 +13819,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_core_delete_other_team_library_data();
             if (checksum != 29917) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_delete_other_team_library_data` checksum `29917`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_core_shared_row_local_uses();
+            if (checksum != 54371) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_shared_row_local_uses` checksum `54371`, library returned `{checksum}`");
             }
         }
         {
@@ -19446,6 +19476,8 @@ internal interface ICore {
     Task<SyncService> OpenSync(SyncConfig @config, AccountService? @account, CloudKitTransport? @cloudkit, HostSettings? @settings, HostDeviceStore? @deviceStore, HostLegacyMirror? @legacyMirror, HostSyncedSecrets? @syncedSecrets, SyncListener @listener);
     /// <exception cref="CoreException"></exception>
     Task DeleteOtherTeamLibraryData(TeamLibraryOwnerArg? @keep);
+    /// <exception cref="CoreException"></exception>
+    LocalUseInfo[] SharedRowLocalUses(LibraryConnectionRecord @record, bool? @fileBased);
 }
 internal class Core : ICore, IDisposable {
     protected ulong pointer;
@@ -19863,6 +19895,15 @@ internal class Core : ICore, IDisposable {
         FfiConverterTypeCoreError.INSTANCE
     );
     }
+    
+    /// <exception cref="CoreException"></exception>
+    public LocalUseInfo[] SharedRowLocalUses(LibraryConnectionRecord @record, bool? @fileBased) {
+        return CallWithPointer(thisPtr => FfiConverterSequenceTypeLocalUseInfo.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_core_shared_row_local_uses(thisPtr, FfiConverterTypeLibraryConnectionRecord.INSTANCE.Lower(@record), FfiConverterOptionalBoolean.INSTANCE.Lower(@fileBased), ref _status)
+)));
+    }
+    
     
 
     
@@ -43552,6 +43593,135 @@ class FfiConverterTypeLocalPasswordSourceRecord : FfiConverterRustBuffer<LocalPa
 
 
 
+internal record LocalUseInfo {
+    
+    public record SshAgent (
+        string Host,
+        ushort Port
+    ) : LocalUseInfo {}
+    
+    public record SshKeyFile (
+        string Host,
+        ushort Port,
+        string Path
+    ) : LocalUseInfo {}
+    
+    public record SshDefaultKeys (
+        string Host,
+        ushort Port
+    ) : LocalUseInfo {}
+    
+    public record SshProfile (
+        string Id
+    ) : LocalUseInfo {}
+    
+    public record File (
+        string Path
+    ) : LocalUseInfo {}
+    
+
+    
+}
+
+class FfiConverterTypeLocalUseInfo : FfiConverterRustBuffer<LocalUseInfo>{
+    public static FfiConverterRustBuffer<LocalUseInfo> INSTANCE = new FfiConverterTypeLocalUseInfo();
+
+    public override LocalUseInfo Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new LocalUseInfo.SshAgent(
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterUInt16.INSTANCE.Read(stream)
+                );
+            case 2:
+                return new LocalUseInfo.SshKeyFile(
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterUInt16.INSTANCE.Read(stream),
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 3:
+                return new LocalUseInfo.SshDefaultKeys(
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterUInt16.INSTANCE.Read(stream)
+                );
+            case 4:
+                return new LocalUseInfo.SshProfile(
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 5:
+                return new LocalUseInfo.File(
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeLocalUseInfo.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(LocalUseInfo value) {
+        switch (value) {
+            case LocalUseInfo.SshAgent variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Host)
+                    + FfiConverterUInt16.INSTANCE.AllocationSize(variant_value.Port);
+            case LocalUseInfo.SshKeyFile variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Host)
+                    + FfiConverterUInt16.INSTANCE.AllocationSize(variant_value.Port)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Path);
+            case LocalUseInfo.SshDefaultKeys variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Host)
+                    + FfiConverterUInt16.INSTANCE.AllocationSize(variant_value.Port);
+            case LocalUseInfo.SshProfile variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Id);
+            case LocalUseInfo.File variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Path);
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeLocalUseInfo.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(LocalUseInfo value, BigEndianStream stream) {
+        switch (value) {
+            case LocalUseInfo.SshAgent variant_value:
+                stream.WriteInt(1);
+                FfiConverterString.INSTANCE.Write(variant_value.Host, stream);
+                FfiConverterUInt16.INSTANCE.Write(variant_value.Port, stream);
+                break;
+            case LocalUseInfo.SshKeyFile variant_value:
+                stream.WriteInt(2);
+                FfiConverterString.INSTANCE.Write(variant_value.Host, stream);
+                FfiConverterUInt16.INSTANCE.Write(variant_value.Port, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.Path, stream);
+                break;
+            case LocalUseInfo.SshDefaultKeys variant_value:
+                stream.WriteInt(3);
+                FfiConverterString.INSTANCE.Write(variant_value.Host, stream);
+                FfiConverterUInt16.INSTANCE.Write(variant_value.Port, stream);
+                break;
+            case LocalUseInfo.SshProfile variant_value:
+                stream.WriteInt(4);
+                FfiConverterString.INSTANCE.Write(variant_value.Id, stream);
+                break;
+            case LocalUseInfo.File variant_value:
+                stream.WriteInt(5);
+                FfiConverterString.INSTANCE.Write(variant_value.Path, stream);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeLocalUseInfo.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
 internal enum LockCauseTag: int {
     DeviceRemoved,
     LeftOutOfRotation,
@@ -60122,6 +60292,52 @@ class FfiConverterSequenceTypeIndexKeyInput: FfiConverterRustBuffer<IndexKeyInpu
 
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterTypeIndexKeyInput.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeLocalUseInfo: FfiConverterRustBuffer<LocalUseInfo[]> {
+    public static FfiConverterSequenceTypeLocalUseInfo INSTANCE = new FfiConverterSequenceTypeLocalUseInfo();
+
+    public override LocalUseInfo[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new LocalUseInfo[length];
+        var readFn = FfiConverterTypeLocalUseInfo.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(LocalUseInfo[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeLocalUseInfo.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(LocalUseInfo[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeLocalUseInfo.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
     }
 }

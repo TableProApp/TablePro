@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use secrecy::{ExposeSecret, SecretString};
 use serde_json::Value;
+use tablepro_core::DriverRegistry;
 use tablepro_keys::encoding::{AccountId, Origin};
 use tablepro_records::Kind;
 use tablepro_records::envelope::{SecretKind, destination};
@@ -15,7 +16,7 @@ use tablepro_storage::{
     TeamLibraryStore,
 };
 use tablepro_sync::SyncError;
-use tablepro_sync::adapters::library::{DriverNames, team_bundle, team_connection};
+use tablepro_sync::adapters::library::{DriverNames, LocalUse, shared_row_local_uses, team_bundle, team_connection};
 use tablepro_sync::adapters::store_journal::StoreJournal;
 use tablepro_sync::api::ids::{ScopeName, typeid_uuid};
 use tablepro_sync::api::scopes::Role;
@@ -304,17 +305,13 @@ fn refused_destination(saved: &tablepro_storage::SavedConnection) -> bool {
         .any(|(host, port, user)| tablepro_ssh::SshDestination::new(host, port, user).is_err())
 }
 
-// A team's connection as the app shows it: the bundle read the way every platform reads it, linking only an SSH profile
-// this device holds. None for one whose tunnel names a destination `ssh` would misread.
-fn item_info(item: TeamItem, names: DriverNames, profiles: &[SshProfile]) -> TeamLibraryItemInfo {
+// A team's connection as the app shows it: the bundle read the way every platform reads it. None for one whose tunnel
+// names a destination `ssh` would misread.
+fn item_info(item: TeamItem, names: DriverNames) -> TeamLibraryItemInfo {
     let connection = (item.item.kind == TeamLibraryKind::Connection)
         .then(|| Uuid::parse_str(&item.item.id).ok())
         .flatten()
-        .map(|id| {
-            team_connection(id, &item.item.fields, names, |profile| {
-                profiles.iter().any(|held| held.id == profile)
-            })
-        })
+        .map(|id| team_connection(id, &item.item.fields, names))
         .filter(|saved| !refused_destination(saved))
         .map(|saved| LibraryConnectionRecord::from(&saved));
     TeamLibraryItemInfo {
@@ -327,18 +324,14 @@ fn item_info(item: TeamItem, names: DriverNames, profiles: &[SshProfile]) -> Tea
     }
 }
 
-fn team_info(team: TeamLibraryTeam, names: DriverNames, profiles: &[SshProfile]) -> TeamLibraryTeamInfo {
+fn team_info(team: TeamLibraryTeam, names: DriverNames) -> TeamLibraryTeamInfo {
     TeamLibraryTeamInfo {
         team_id: team_id(team.team),
         name: team.name,
         role: team.role.map(role_tag),
         can_write: team.writable,
         syncs_passwords: team.syncs_passwords,
-        items: team
-            .items
-            .into_iter()
-            .map(|item| item_info(item, names, profiles))
-            .collect(),
+        items: team.items.into_iter().map(|item| item_info(item, names)).collect(),
     }
 }
 
@@ -375,6 +368,66 @@ fn status_info(status: TeamScopeStatus) -> TeamScopeStatusInfo {
         write_forbidden: status.write_forbidden,
         problem: status.problem,
     }
+}
+
+// A use of this device that a row from another origin would make (`shared_row_local_uses`), which the app asks about
+// once per destination before the first connect.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum LocalUseInfo {
+    SshAgent { host: String, port: u16 },
+    SshKeyFile { host: String, port: u16, path: String },
+    SshDefaultKeys { host: String, port: u16 },
+    SshProfile { id: String },
+    // A database file or a server's socket on this device.
+    File { path: String },
+}
+
+impl From<LocalUse> for LocalUseInfo {
+    fn from(used: LocalUse) -> Self {
+        match used {
+            LocalUse::SshAgent { host, port } => Self::SshAgent { host, port },
+            LocalUse::SshKeyFile { host, port, path } => Self::SshKeyFile {
+                host,
+                port,
+                path: path.to_string_lossy().into_owned(),
+            },
+            LocalUse::SshDefaultKeys { host, port } => Self::SshDefaultKeys { host, port },
+            LocalUse::SshProfile { id } => Self::SshProfile { id: id.to_string() },
+            LocalUse::File { path } => Self::File { path },
+        }
+    }
+}
+
+#[uniffi::export]
+impl Core {
+    // What `record`, a Team Library or shared folder row, would use of this device when it connects. `file_based` is
+    // whether its engine opens the database as a file here, for an app whose engines this core does not hold; None asks
+    // this core's drivers.
+    pub fn shared_row_local_uses(
+        &self,
+        record: LibraryConnectionRecord,
+        file_based: Option<bool>,
+    ) -> Result<Vec<LocalUseInfo>, CoreError> {
+        local_uses(record, file_based, &self.registry())
+    }
+}
+
+fn local_uses(
+    record: LibraryConnectionRecord,
+    file_based: Option<bool>,
+    registry: &DriverRegistry,
+) -> Result<Vec<LocalUseInfo>, CoreError> {
+    let id = entity(&record.connection.id, "connection id")?;
+    let saved = stored_connection(id, record, None)?;
+    let file_based = file_based.unwrap_or_else(|| {
+        registry
+            .get(&saved.driver_id)
+            .is_some_and(|driver| driver.capabilities().is_file_based())
+    });
+    Ok(shared_row_local_uses(&saved, file_based)
+        .into_iter()
+        .map(LocalUseInfo::from)
+        .collect())
 }
 
 // The bundle the team gets, built the one way every platform builds it; the publish strips every secret key. Its
@@ -436,7 +489,7 @@ async fn saved_secrets(
         .ssh_profile_id
         .filter(|linked| profiles.iter().any(|held| held.id == *linked));
     let mut found = Vec::new();
-    for kind in TEAM_SECRETS {
+    for kind in PUBLISHED_SECRETS {
         let (parent, parent_id) = match (&kind, saved.details.credential_profile_id, ssh_profile) {
             (SecretKind::Password, Some(profile), _) => (Kind::CredentialProfile, profile),
             (SecretKind::SshPassword | SecretKind::SshKeyPassphrase | SecretKind::SshTotpSecret, _, Some(profile)) => {
@@ -463,7 +516,11 @@ async fn saved_secrets(
     Ok(TeamSecrets::Set(found))
 }
 
-// The secret kinds a team connection's envelopes hold that a store here keeps; a driver's own fields have none yet.
+// The secrets a publish reads here. A key passphrase stays: it opens a key file on this device, which a team copy does
+// not name.
+const PUBLISHED_SECRETS: [SecretKind; 3] = [SecretKind::Password, SecretKind::SshPassword, SecretKind::SshTotpSecret];
+
+// The secret kinds a team edit may name, as 0056 lists them for a team connection; a driver's own fields have none yet.
 const TEAM_SECRETS: [SecretKind; 5] = [
     SecretKind::Password,
     SecretKind::SslKeyPassphrase,
@@ -569,7 +626,7 @@ impl SyncService {
         super::open::driver_names(self.config.platform)
     }
 
-    // The SSH profiles this Core's library holds, as it last read them: the only ones a team copy may link.
+    // The SSH profiles this Core's library holds, as it last read them, which a published tunnel follows.
     fn held_profiles(&self) -> Vec<SshProfile> {
         match self.connections.as_ref().map(|store| store.snapshot().state) {
             Some(ConnectionListState::Ready(list)) => list.ssh_profiles.to_vec(),
@@ -699,7 +756,7 @@ impl SyncService {
     ) -> Result<Vec<TeamLibraryTeamInfo>, CoreError> {
         let account = self.account.as_ref().map(|service| service.account.clone());
         let tasks = self.tasks.clone();
-        let (names, profiles) = (self.driver_names(), self.held_profiles());
+        let names = self.driver_names();
         let teams = self
             .on_team_library(expected_owner, move |control| async move {
                 let teams = control.team_library().await?;
@@ -709,10 +766,7 @@ impl SyncService {
                 Ok(teams)
             })
             .await?;
-        Ok(teams
-            .into_iter()
-            .map(|team| team_info(team, names, &profiles))
-            .collect())
+        Ok(teams.into_iter().map(|team| team_info(team, names)).collect())
     }
 
     // The connections `TeamLibraryPublishPlan.connections` names, as the library holds them; the core builds each one's
@@ -1083,7 +1137,6 @@ mod tests {
             &json!({"name": "Shop", "host": "db", "port": 5432, "database": "shop", "username": "app",
                 "type": "PostgreSQL"}),
             DriverNames::Mac,
-            |_| false,
         );
         let mut record = LibraryConnectionRecord::from(&saved);
         id.clone_into(&mut record.connection.id);
@@ -1108,6 +1161,50 @@ mod tests {
         assert_eq!(refused.unwrap_err().code(), "sync.team_library.malformed");
     }
 
+    // The app gets the core's one list for a shared row: a key-less tunnel's agent and default keys, and a SQLite file.
+    #[cfg(feature = "engines")]
+    #[test]
+    fn a_shared_row_s_uses_of_this_device_cross_the_boundary() {
+        let registry = crate::drivers::registry();
+        let tunneled = team_connection(
+            Uuid::from_u128(1),
+            &json!({"name": "Orders", "host": "db", "port": 5432, "database": "orders", "username": "ro",
+                "type": "PostgreSQL", "sshConfig": {"enabled": true, "host": "bastion", "username": "ops",
+                "authMethod": "Private Key", "privateKeyPath": "", "agentSocketPath": ""}}),
+            DriverNames::Core,
+        );
+        let mut file = LibraryConnectionRecord::from(&team_connection(
+            Uuid::from_u128(2),
+            &json!({"name": "Local", "host": "", "port": 0, "database": "/data/app.sqlite", "username": "",
+                "type": "SQLite"}),
+            DriverNames::Core,
+        ));
+
+        assert_eq!(
+            local_uses(LibraryConnectionRecord::from(&tunneled), None, &registry).unwrap(),
+            [
+                LocalUseInfo::SshAgent {
+                    host: "bastion".to_owned(),
+                    port: 22
+                },
+                LocalUseInfo::SshDefaultKeys {
+                    host: "bastion".to_owned(),
+                    port: 22
+                },
+            ]
+        );
+        let opened = [LocalUseInfo::File {
+            path: "/data/app.sqlite".to_owned(),
+        }];
+        assert_eq!(local_uses(file.clone(), None, &registry).unwrap(), opened);
+        assert_eq!(
+            local_uses(file.clone(), Some(true), &DriverRegistry::new()).unwrap(),
+            opened
+        );
+        "not a uuid".clone_into(&mut file.connection.id);
+        assert!(local_uses(file, None, &registry).is_err());
+    }
+
     // A team's connection reads as a library connection; a folder or a query carries none.
     #[test]
     fn a_connection_item_reads_as_a_library_connection_and_a_query_as_none() {
@@ -1124,8 +1221,8 @@ mod tests {
         };
         let id = Uuid::from_u128(1).hyphenated().to_string().to_uppercase();
 
-        let connection = item_info(item(TeamLibraryKind::Connection, &id), DriverNames::Mac, &[]);
-        let query = item_info(item(TeamLibraryKind::Query, "Q1"), DriverNames::Mac, &[]);
+        let connection = item_info(item(TeamLibraryKind::Connection, &id), DriverNames::Mac);
+        let query = item_info(item(TeamLibraryKind::Query, "Q1"), DriverNames::Mac);
 
         let record = connection.connection.expect("a connection");
         assert_eq!(record.connection.name, "Shop");
@@ -1149,7 +1246,7 @@ mod tests {
             updated_at_ms: None,
         };
 
-        assert!(item_info(item, DriverNames::Mac, &[]).connection.is_none());
+        assert!(item_info(item, DriverNames::Mac).connection.is_none());
     }
 
     fn signed_in(account: u128) -> StateIdentity {
@@ -1249,7 +1346,6 @@ mod tests {
                 }],
             },
             DriverNames::Mac,
-            &[],
         );
 
         assert_eq!(info.team_id, wire(5));
@@ -1323,7 +1419,8 @@ mod tests {
     }
 
     // A connection linked to a credential profile and an SSH profile signs in with theirs, so the team gets theirs; the
-    // rest are the connection's own, and an empty one is none.
+    // rest are the connection's own, and an empty one is none. A key passphrase, which opens a key file on this device,
+    // never goes.
     #[tokio::test]
     async fn a_saved_connection_publishes_the_secrets_it_signs_in_with_its_profiles_first() {
         let (credential, ssh) = (Uuid::from_u128(20), Uuid::from_u128(21));
@@ -1338,7 +1435,9 @@ mod tests {
         let device: Arc<dyn DeviceSecrets> = Arc::new(Kept(vec![
             (Kind::Connection, saved.id, SecretKind::Password, "own"),
             (Kind::Connection, saved.id, SecretKind::SshPassword, "own-tunnel"),
-            (Kind::Connection, saved.id, SecretKind::SshKeyPassphrase, ""),
+            (Kind::Connection, saved.id, SecretKind::SshKeyPassphrase, "own-key"),
+            (Kind::Connection, saved.id, SecretKind::SslKeyPassphrase, "own-tls-key"),
+            (Kind::Connection, saved.id, SecretKind::SshTotpSecret, ""),
             (Kind::CredentialProfile, credential, SecretKind::Password, "profile"),
             (Kind::SshProfile, ssh, SecretKind::SshPassword, "profile-tunnel"),
         ]));

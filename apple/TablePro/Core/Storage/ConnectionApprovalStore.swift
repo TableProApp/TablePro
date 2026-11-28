@@ -45,18 +45,26 @@ internal final class ConnectionApprovalStore {
         self.dialedDestination = dialedDestination
     }
 
-    internal func isApproved(_ connection: DatabaseConnection) -> Bool {
-        let items = kind.items(in: connection)
+    // `extra` is what the connect would use beyond its fields, such as a shared row's SSH credentials.
+    internal func isApproved(_ connection: DatabaseConnection, extra: Set<String> = []) -> Bool {
+        let items = kind.items(in: connection).union(extra)
         guard !items.isEmpty else { return true }
         migrateIfNeeded()
         let approved = approvals()[connection.id.uuidString]?[dialedDestination(connection).digest] ?? []
         return items.isSubset(of: approved)
     }
 
-    internal func approve(_ connection: DatabaseConnection) {
+    // Whether an item that starts with `itemPrefix` was approved for this connection at its destination.
+    internal func hasApproved(_ connection: DatabaseConnection, itemPrefix: String) -> Bool {
+        migrateIfNeeded()
+        let approved = approvals()[connection.id.uuidString]?[dialedDestination(connection).digest] ?? []
+        return approved.contains { $0.hasPrefix(itemPrefix) }
+    }
+
+    internal func approve(_ connection: DatabaseConnection, extra: Set<String> = []) {
         migrateIfNeeded()
         var all = approvals()
-        guard record(connection, in: &all) else { return }
+        guard record(connection, extra: extra, in: &all) else { return }
         save(all)
         Self.logger.info("Approved \(self.kind.logName, privacy: .public) for a connection")
     }
@@ -111,8 +119,8 @@ internal final class ConnectionApprovalStore {
         return storage.storeIsTrusted ? connections : []
     }
 
-    private func record(_ connection: DatabaseConnection, in all: inout Approvals) -> Bool {
-        let items = kind.items(in: connection)
+    private func record(_ connection: DatabaseConnection, extra: Set<String> = [], in all: inout Approvals) -> Bool {
+        let items = kind.items(in: connection).union(extra)
         guard !items.isEmpty else { return false }
         let digest = dialedDestination(connection).digest
         let approved = Set(all[connection.id.uuidString]?[digest] ?? []).union(items)

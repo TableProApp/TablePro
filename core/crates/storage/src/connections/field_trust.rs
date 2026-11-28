@@ -6,7 +6,10 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FieldTrust {
     Setting,
+    /// Where the connection goes: a host, an endpoint or a database file, which a pull applies only with approval.
     Destination,
+    /// A file on this device that proves or trusts an identity, or code it loads: a key, a certificate, a CA bundle, an
+    /// extension. It means nothing on another device, so a team copy never carries one.
     LocalFile,
     /// Any value outside `plain_values` (compared without case) signs in with something this device holds.
     LocalCredential {
@@ -202,7 +205,7 @@ const fn local_credential(plain_values: &'static [&'static str]) -> FieldTrust {
 
 // Field ids as the drivers read them, case and all, sorted by byte so a lookup can bisect.
 const TRUST_BY_KEY: &[(&str, FieldTrust)] = &[
-    ("attachedDatabases", FieldTrust::LocalFile),
+    ("attachedDatabases", FieldTrust::Destination),
     ("awsAccessKeyId", FieldTrust::Setting),
     ("awsAuth", local_credential(&["off", "accesskey"])),
     // DynamoDB Local signs with fixed placeholder keys.
@@ -246,7 +249,7 @@ const TRUST_BY_KEY: &[(&str, FieldTrust)] = &[
     ("duckdbAlias", FieldTrust::Setting),
     ("duckdbCACertificateFilePath", FieldTrust::LocalFile),
     ("duckdbCertificateFingerprint", FieldTrust::Setting),
-    ("duckdbFilePath", FieldTrust::LocalFile),
+    ("duckdbFilePath", FieldTrust::Destination),
     ("duckdbHost", FieldTrust::Destination),
     ("duckdbIdleReleaseMinutes", FieldTrust::Setting),
     ("duckdbMode", FieldTrust::Setting),
@@ -288,9 +291,9 @@ const TRUST_BY_KEY: &[(&str, FieldTrust)] = &[
     ("kafkaSecurityProtocol", FieldTrust::Setting),
     ("kerberosPassword", FieldTrust::Secret),
     ("kerberosPrincipal", FieldTrust::Setting),
-    ("libsqlFilePath", FieldTrust::LocalFile),
+    ("libsqlFilePath", FieldTrust::Destination),
     ("libsqlMode", FieldTrust::Setting),
-    ("localSocketPath", FieldTrust::LocalFile),
+    ("localSocketPath", FieldTrust::Destination),
     ("maskingRules", FieldTrust::Setting),
     ("mongoAWSSessionToken", FieldTrust::Secret),
     ("mongoAuthMechanism", local_credential(MONGO_MECHANISM_PLAIN_VALUES)),

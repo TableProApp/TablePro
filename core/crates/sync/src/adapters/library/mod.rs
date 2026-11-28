@@ -10,6 +10,7 @@ mod details;
 mod favourites;
 mod folders;
 mod groups;
+mod local_uses;
 mod profiles;
 mod reads;
 mod tunnel;
@@ -32,6 +33,7 @@ pub use bundle::{team_bundle, team_connection};
 pub use connection::DriverNames;
 pub use favourites::FavouriteAdapter;
 pub use folders::TableFolderAdapter;
+pub use local_uses::{LocalUse, shared_row_local_uses};
 pub use reads::at_base;
 
 use super::blocking;
