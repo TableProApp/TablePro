@@ -278,7 +278,7 @@ extension DatabaseConnection {
         return uses
     }
 
-    private nonisolated static func namedSSHUses(_ config: SSHConfiguration) -> [SharedRowLocalUse] {
+    nonisolated private static func namedSSHUses(_ config: SSHConfiguration) -> [SharedRowLocalUse] {
         let primary = server(config.host, config.port ?? 22)
         var uses: [SharedRowLocalUse] = []
         switch config.authMethod {
