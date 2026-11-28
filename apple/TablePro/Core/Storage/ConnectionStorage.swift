@@ -48,6 +48,10 @@ final class ConnectionStorage {
 
     private let keychain: any KeychainStoring
 
+    // A team library row is never saved, so what it signs in with is opened from the team's envelopes at connect and
+    // read here when the Keychain holds no item for it, in memory only. A form's Test stages its own items, which win.
+    private var sharedRowSecrets: [String: String] = [:]
+
     private let appEventsProvider: () -> AppEvents
 
     init(
@@ -673,22 +677,22 @@ final class ConnectionStorage {
 
     @discardableResult
     func savePassword(_ password: String, for connectionId: UUID) -> Bool {
-        let key = "com.TablePro.password.\(connectionId.uuidString)"
+        let key = Self.secretKey(.password, for: connectionId)
         return writeSecret(password, forKey: key, connectionId: connectionId)
     }
 
     func loadPassword(for connectionId: UUID) -> String? {
-        let key = "com.TablePro.password.\(connectionId.uuidString)"
+        let key = Self.secretKey(.password, for: connectionId)
         return resolveString(.init(label: "Database password", connectionId: connectionId), forKey: key)
     }
 
     func passwordRead(for connectionId: UUID) -> DeferredSecretRead {
-        let key = "com.TablePro.password.\(connectionId.uuidString)"
+        let key = Self.secretKey(.password, for: connectionId)
         return deferredRead(.init(label: "Database password", connectionId: connectionId), forKey: key)
     }
 
     func deletePassword(for connectionId: UUID) {
-        let key = "com.TablePro.password.\(connectionId.uuidString)"
+        let key = Self.secretKey(.password, for: connectionId)
         deleteSecret(forKey: key, connectionId: connectionId)
     }
 
@@ -696,22 +700,22 @@ final class ConnectionStorage {
 
     @discardableResult
     func saveSSHPassword(_ password: String, for connectionId: UUID) -> Bool {
-        let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sshPassword, for: connectionId)
         return writeSecret(password, forKey: key, connectionId: connectionId)
     }
 
     func loadSSHPassword(for connectionId: UUID) -> String? {
-        let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sshPassword, for: connectionId)
         return resolveString(.init(label: "SSH password", connectionId: connectionId), forKey: key)
     }
 
     func sshPasswordRead(for connectionId: UUID) -> DeferredSecretRead {
-        let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sshPassword, for: connectionId)
         return deferredRead(.init(label: "SSH password", connectionId: connectionId), forKey: key)
     }
 
     func deleteSSHPassword(for connectionId: UUID) {
-        let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sshPassword, for: connectionId)
         deleteSecret(forKey: key, connectionId: connectionId)
     }
 
@@ -719,22 +723,22 @@ final class ConnectionStorage {
 
     @discardableResult
     func saveKeyPassphrase(_ passphrase: String, for connectionId: UUID) -> Bool {
-        let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sshKeyPassphrase, for: connectionId)
         return writeSecret(passphrase, forKey: key, connectionId: connectionId)
     }
 
     func loadKeyPassphrase(for connectionId: UUID) -> String? {
-        let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sshKeyPassphrase, for: connectionId)
         return resolveString(.init(label: "Key passphrase", connectionId: connectionId), forKey: key)
     }
 
     func keyPassphraseRead(for connectionId: UUID) -> DeferredSecretRead {
-        let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sshKeyPassphrase, for: connectionId)
         return deferredRead(.init(label: "Key passphrase", connectionId: connectionId), forKey: key)
     }
 
     func deleteKeyPassphrase(for connectionId: UUID) {
-        let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sshKeyPassphrase, for: connectionId)
         deleteSecret(forKey: key, connectionId: connectionId)
     }
 
@@ -742,22 +746,22 @@ final class ConnectionStorage {
 
     @discardableResult
     func saveSSLClientKeyPassphrase(_ passphrase: String, for connectionId: UUID) -> Bool {
-        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sslClientKeyPassphrase, for: connectionId)
         return writeSecret(passphrase, forKey: key, connectionId: connectionId)
     }
 
     func loadSSLClientKeyPassphrase(for connectionId: UUID) -> String? {
-        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sslClientKeyPassphrase, for: connectionId)
         return resolveString(.init(label: "SSL client key passphrase", connectionId: connectionId), forKey: key)
     }
 
     func sslClientKeyPassphraseRead(for connectionId: UUID) -> DeferredSecretRead {
-        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sslClientKeyPassphrase, for: connectionId)
         return deferredRead(.init(label: "SSL client key passphrase", connectionId: connectionId), forKey: key)
     }
 
     func deleteSSLClientKeyPassphrase(for connectionId: UUID) {
-        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sslClientKeyPassphrase, for: connectionId)
         deleteSecret(forKey: key, connectionId: connectionId)
     }
 
@@ -794,22 +798,22 @@ final class ConnectionStorage {
 
     @discardableResult
     func saveTOTPSecret(_ secret: String, for connectionId: UUID) -> Bool {
-        let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
+        let key = Self.secretKey(.totpSecret, for: connectionId)
         return writeSecret(secret, forKey: key, connectionId: connectionId)
     }
 
     func loadTOTPSecret(for connectionId: UUID) -> String? {
-        let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
+        let key = Self.secretKey(.totpSecret, for: connectionId)
         return resolveString(.init(label: "TOTP secret", connectionId: connectionId), forKey: key)
     }
 
     func totpSecretRead(for connectionId: UUID) -> DeferredSecretRead {
-        let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
+        let key = Self.secretKey(.totpSecret, for: connectionId)
         return deferredRead(.init(label: "TOTP secret", connectionId: connectionId), forKey: key)
     }
 
     func deleteTOTPSecret(for connectionId: UUID) {
-        let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
+        let key = Self.secretKey(.totpSecret, for: connectionId)
         deleteSecret(forKey: key, connectionId: connectionId)
     }
 
@@ -1141,15 +1145,15 @@ final class ConnectionStorage {
     }
 
     func passwordState(for connectionId: UUID) -> StoredSecretState {
-        secretState(forKey: "com.TablePro.password.\(connectionId.uuidString)", connectionId: connectionId)
+        secretState(forKey: Self.secretKey(.password, for: connectionId), connectionId: connectionId)
     }
 
     func sshPasswordState(for connectionId: UUID) -> StoredSecretState {
-        secretState(forKey: "com.TablePro.sshpassword.\(connectionId.uuidString)", connectionId: connectionId)
+        secretState(forKey: Self.secretKey(.sshPassword, for: connectionId), connectionId: connectionId)
     }
 
     func keyPassphraseState(for connectionId: UUID) -> StoredSecretState {
-        secretState(forKey: "com.TablePro.keypassphrase.\(connectionId.uuidString)", connectionId: connectionId)
+        secretState(forKey: Self.secretKey(.sshKeyPassphrase, for: connectionId), connectionId: connectionId)
     }
 
     private func secretState(forKey key: String, connectionId: UUID) -> StoredSecretState {
@@ -1164,7 +1168,10 @@ final class ConnectionStorage {
     }
 
     private func readSecret(forKey key: String, connectionId: UUID) -> KeychainStringResult {
-        let result = keychain.readStringResult(forKey: key, deviceOnly: readsOwnItemFirst(connectionId))
+        var result = keychain.readStringResult(forKey: key, deviceOnly: readsOwnItemFirst(connectionId))
+        if case .notFound = result, let shared = sharedRowSecrets[key] {
+            result = .found(shared)
+        }
         switch result {
         case .found(let value):
             loadedSecretsSeen?[key] = value
@@ -1192,9 +1199,29 @@ final class ConnectionStorage {
     private func deferredRead(_ context: SecretContext, forKey key: String) -> DeferredSecretRead {
         let keychain = keychain
         let deviceOnly = readsOwnItemFirst(context.connectionId)
+        let shared = sharedRowSecrets[key]
         return DeferredSecretRead(key: key, label: context.logLabel, logger: Self.logger) {
-            keychain.readStringResult(forKey: key, deviceOnly: deviceOnly)
+            let result = keychain.readStringResult(forKey: key, deviceOnly: deviceOnly)
+            if case .notFound = result, let shared { return .found(shared) }
+            return result
         }
+    }
+
+    // MARK: - Shared Row Secrets
+
+    nonisolated static func secretKey(_ item: ConnectionSecretItem, for connectionId: UUID) -> String {
+        "\(item.keyPrefix).\(connectionId.uuidString)"
+    }
+
+    // Replaces what the row had: a secret the team no longer holds is never read again.
+    func setSharedRowSecrets(_ secrets: [ConnectionSecretItem: String], for connectionId: UUID) {
+        for item in ConnectionSecretItem.allCases {
+            sharedRowSecrets[Self.secretKey(item, for: connectionId)] = secrets[item]
+        }
+    }
+
+    func removeSharedRowSecrets() {
+        sharedRowSecrets.removeAll()
     }
 
     // MARK: - Plugin Secure Field Migration

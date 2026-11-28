@@ -55,6 +55,8 @@ final class ConnectionEditorWindowController: NSWindowController, NSWindowDelega
             // Read once: consume removes the draft, so a second read would drop its parsed URL.
             let draft = ConnectionFormDraftStore.shared.consume(draftId)
             return .new(type: draft?.type, parsedURL: draft?.parsedURL)
+        case .editTeamCopy(let teamID, let itemID):
+            return .editTeamCopy(TeamCopyEditStage.shared.consume(teamID: teamID, itemID: itemID))
         }
     }
 

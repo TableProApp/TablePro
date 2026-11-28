@@ -11,9 +11,33 @@ import TableProFFI
 internal enum TeamLibraryPublishResult: Equatable, Sendable {
     case unchanged
     case published(Int)
+    // The team took the connections, and their passwords stayed on this Mac.
+    case publishedWithoutPasswords(Int, TeamPasswordsLeftOut)
     case conflicts(Int)
     // Kept on this Mac and pushed once the team library answers again.
     case queued(TeamLibraryFailure)
+}
+
+// Why a publish carried no team envelope, as the core names it.
+internal enum TeamPasswordsLeftOut: Equatable, Sendable {
+    // The team's policy turns password sync off.
+    case off
+    // An owner or admin has not confirmed this account's keys for the team yet.
+    case notConfirmed
+    // The team key is being replaced after a member or device left.
+    case rotationDue
+    // The role this account holds writes no team secret.
+    case role
+
+    init?(code: String?) {
+        switch code {
+        case "sync.team_library.passwords_off": self = .off
+        case "sync.team_library.not_confirmed": self = .notConfirmed
+        case "sync.team_library.rotation_due": self = .rotationDue
+        case "sync.team_library.passwords_role": self = .role
+        default: return nil
+        }
+    }
 }
 
 internal enum TeamLibraryPublishError: Error, Equatable {
@@ -58,6 +82,7 @@ internal final class TeamLibrary: ObservableObject {
     private let account: AccountServices
     private let legacy: TeamLibraryLegacyImport
     private let reportDiscarded: @MainActor ([String]) -> Void
+    private let forgetSecrets: @MainActor () -> Void
     private var teamNames: [String: String] = [:]
     private var lastStatuses: [TeamScopeStatusInfo] = []
     private var observers: Set<AnyCancellable> = []
@@ -78,12 +103,14 @@ internal final class TeamLibrary: ObservableObject {
         source: any TeamLibraryEngineSource,
         account: AccountServices,
         legacy: TeamLibraryLegacyImport,
-        reportDiscarded: @escaping @MainActor ([String]) -> Void = TeamLibraryUnsentChanges.presentDiscarded
+        reportDiscarded: @escaping @MainActor ([String]) -> Void = TeamLibraryUnsentChanges.presentDiscarded,
+        forgetSecrets: @escaping @MainActor () -> Void = { ConnectionStorage.shared.removeSharedRowSecrets() }
     ) {
         self.source = source
         self.account = account
         self.legacy = legacy
         self.reportDiscarded = reportDiscarded
+        self.forgetSecrets = forgetSecrets
         conflicts = TeamLibraryConflictsModel(engine: { try await source.engine() })
     }
 
@@ -139,7 +166,57 @@ internal final class TeamLibrary: ObservableObject {
         }
     }
 
+    // MARK: - Team secrets
+
+    // What the team's envelopes hold for the connection, opened for the destination it points to now. Empty when the
+    // team holds none this Mac can open; nil when the team library could not be read.
+    func secrets(for connection: TeamLibraryConnection) async -> [ConnectionSecretItem: String]? {
+        guard let session = shownSession, let owner else { return nil }
+        do {
+            let engine = try await source.engine()
+            let opened = try await engine.teamConnectionSecrets(
+                expectedOwner: owner,
+                teamId: connection.teamID,
+                connectionId: connection.id
+            )
+            guard session == shownSession else { return nil }
+            var secrets: [ConnectionSecretItem: String] = [:]
+            for secret in opened {
+                guard let item = ConnectionSecretItem(envelopeKind: secret.kind) else { continue }
+                secrets[item] = secret.value
+            }
+            return secrets
+        } catch {
+            Self.logger.error("Reading a team connection's secrets failed: \(error.publicLogShape, privacy: .public)")
+            return nil
+        }
+    }
+
     // MARK: - Publishing
+
+    // An edit of the team's copy by an owner, admin or editor, under the team's id for it. Nil secrets keep the team's
+    // envelopes as they are; otherwise they are the whole set, sealed again for the edited destination.
+    func publishConnectionEdit(
+        _ edited: DatabaseConnection,
+        of original: TeamLibraryConnection,
+        secrets: [ConnectionSecretItem: String]?
+    ) async throws(TeamLibraryPublishError) -> TeamLibraryPublishResult {
+        var record = LibraryRecordMapping.record(edited, keeping: nil)
+        record.connection.id = original.id
+        let arguments = secrets.map { secrets in
+            ConnectionSecretItem.allCases.compactMap { item in
+                secrets[item].flatMap { $0.isEmpty ? nil : TeamSecretArg(kind: item.envelopeKind, value: $0) }
+            }
+        }
+        return try await publish(to: destination(original.teamID)) { engine, owner in
+            try await engine.publishTeamConnectionEdit(
+                expectedOwner: owner,
+                teamId: original.teamID,
+                connection: record,
+                secrets: arguments
+            )
+        }
+    }
 
     func publishConnections(
         _ connections: [DatabaseConnection],
@@ -195,7 +272,12 @@ internal final class TeamLibrary: ObservableObject {
             guard failure.isRetryable else { throw .failed(failure) }
             return .queued(failure)
         }
-        return publish.edits == 0 ? .unchanged : .published(Int(publish.edits))
+        guard publish.edits > 0 else { return .unchanged }
+        // The confirmation already said a team with password sync off takes none.
+        if let leftOut = TeamPasswordsLeftOut(code: publish.secretsLeftOut), leftOut != .off {
+            return .publishedWithoutPasswords(Int(publish.edits), leftOut)
+        }
+        return .published(Int(publish.edits))
     }
 
     private func publish(
@@ -405,6 +487,7 @@ internal final class TeamLibrary: ObservableObject {
         teamNames = [:]
         status = .idle
         conflicts.end()
+        forgetSecrets()
     }
 
     private func commit(teams: [TeamLibraryTeamInfo], statuses: [TeamScopeStatusInfo], unsent: [UnsentTeamEditInfo]) {
@@ -429,7 +512,13 @@ internal final class TeamLibrary: ObservableObject {
         }
         conflicts.name(teamNames, writers: writers)
         let writable = teams.filter(\.canWrite)
-            .map { TeamLibraryTeam(id: $0.teamId, name: $0.name ?? String(localized: "Team Library")) }
+            .map {
+                TeamLibraryTeam(
+                    id: $0.teamId,
+                    name: $0.name ?? String(localized: "Team Library"),
+                    syncsPasswords: $0.syncsPasswords
+                )
+            }
             .sorted { ($0.name, $0.id) < ($1.name, $1.id) }
         if writable != writableTeams {
             writableTeams = writable

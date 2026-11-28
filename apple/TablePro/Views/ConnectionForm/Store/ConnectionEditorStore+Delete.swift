@@ -45,7 +45,7 @@ enum ConnectionEditorDeleteError: Error, Equatable, LocalizedError {
 }
 
 extension ConnectionEditorStore {
-    var canDelete: Bool { !isNew && !isRecordMissing }
+    var canDelete: Bool { !isNew && !isRecordMissing && teamCopy == nil }
 
     // The same warning Welcome gives: linked saved queries go with the connection.
     func deleteConfirmation() async -> ConnectionDeleteConfirmation {

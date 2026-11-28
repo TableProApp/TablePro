@@ -24,6 +24,12 @@ internal enum TeamLibraryPublishing {
         switch result {
         case .published, .unchanged, .conflicts:
             return nil
+        case .publishedWithoutPasswords(_, let leftOut):
+            return Message(
+                title: String(localized: "Published without passwords"),
+                text: passwordsText(leftOut),
+                isError: false
+            )
         case .queued(let failure):
             return Message(
                 title: String(localized: "Not published yet"),
@@ -47,6 +53,19 @@ internal enum TeamLibraryPublishing {
                 text: failureText(failure),
                 isError: true
             )
+        }
+    }
+
+    static func passwordsText(_ leftOut: TeamPasswordsLeftOut) -> String {
+        switch leftOut {
+        case .off:
+            return String(localized: "Your team doesn't sync passwords, so teammates enter their own.")
+        case .notConfirmed:
+            return String(localized: "Passwords go to the team once an owner or admin confirms your keys. Publish again after that.")
+        case .rotationDue:
+            return String(localized: "The team's key is being replaced, so passwords wait. Publish again in a moment.")
+        case .role:
+            return String(localized: "Your role in this team doesn't share passwords.")
         }
     }
 

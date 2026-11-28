@@ -20,7 +20,8 @@ struct WelcomeMenuSpecTests {
         syncProvider: SyncProviderSetting = .off,
         isCompareSyncEnabled: Bool = false,
         teamLibraryTeams: [TeamLibraryTeam] = [],
-        hasTeamLibraryConflicts: Bool = false
+        hasTeamLibraryConflicts: Bool = false,
+        editableTeamConnections: Set<UUID> = []
     ) -> WelcomeMenuContext {
         var resolved = WelcomeResolvedRows()
         let byId = Dictionary(uniqueKeysWithValues: connections.map { ($0.id, $0) })
@@ -52,7 +53,8 @@ struct WelcomeMenuSpecTests {
             isCompareSyncEnabled: isCompareSyncEnabled,
             canPublishToTeamCatalog: false,
             teamLibraryTeams: teamLibraryTeams,
-            hasTeamLibraryConflicts: hasTeamLibraryConflicts
+            hasTeamLibraryConflicts: hasTeamLibraryConflicts,
+            editableTeamConnectionIds: editableTeamConnections
         )
     }
 
@@ -329,6 +331,22 @@ struct WelcomeMenuSpecTests {
         #expect(titles(WelcomeMenuSpec.sections(for: context(rows: [row], hasTeamLibraryConflicts: true))) == [
             ["Connect"], ["Resolve Team Library Conflicts…"]
         ])
+    }
+
+    @Test("A Team Library connection offers Edit to an owner, admin or editor of its team, and never to a member")
+    func teamLibraryEdit() {
+        let id = UUID()
+        let row = LibraryRowID.connection(id, section: .teamLibrary)
+
+        let editor = WelcomeMenuSpec.sections(for: context(rows: [row], editableTeamConnections: [id]))
+        #expect(titles(editor) == [["Connect"], ["Edit…"]])
+        #expect(entries(editor).last?.command == .editTeamConnection(id))
+        #expect(titles(WelcomeMenuSpec.sections(for: context(rows: [row]))) == [["Connect"]])
+        let two = WelcomeMenuSpec.sections(for: context(
+            rows: [row, .connection(UUID(), section: .teamLibrary)],
+            editableTeamConnections: [id]
+        ))
+        #expect(!titles(two).joined().contains("Edit…"))
     }
 
     @Test("Publish to Team Library names the one team, or lists each team this account writes to")

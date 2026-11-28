@@ -119,12 +119,31 @@ struct WelcomeViewModelTeamLibraryTests {
         #expect(several.contains("2"))
     }
 
-    @Test("The confirmation says what the team sees and that passwords stay here")
+    @Test("The confirmation says what the team sees, and that the passwords go encrypted unless the team turns that off")
     func confirmationMessageNamesWhatIsShared() {
-        let message = WelcomeViewModel.teamLibraryPublishConfirmationMessage
+        let syncing = WelcomeViewModel.teamLibraryPublishConfirmationMessage(syncsPasswords: true)
+        let off = WelcomeViewModel.teamLibraryPublishConfirmationMessage(syncsPasswords: false)
 
-        #expect(message.contains("SSH settings"))
-        #expect(message.contains("Passwords are not included"))
-        #expect(!message.contains("replaces"))
+        #expect(syncing.contains("SSH settings"))
+        #expect(syncing.contains("encrypted"))
+        #expect(!syncing.contains("not included"))
+        #expect(off.contains("SSH settings"))
+        #expect(off.contains("not included"))
+        #expect(!syncing.contains("replaces"))
+    }
+
+    @Test("A publish whose passwords stayed on this Mac says why, and one to a team that syncs none says nothing more")
+    func passwordsLeftOutAreNamed() throws {
+        let unconfirmed = TeamPublishInfo(
+            edits: 1, conflicts: 0, unsent: 0, problem: nil, secretsLeftOut: "sync.team_library.not_confirmed"
+        )
+        let off = TeamPublishInfo(
+            edits: 1, conflicts: 0, unsent: 0, problem: nil, secretsLeftOut: "sync.team_library.passwords_off"
+        )
+
+        #expect(try TeamLibrary.result(of: unconfirmed) == .publishedWithoutPasswords(1, .notConfirmed))
+        #expect(try TeamLibrary.result(of: off) == .published(1))
+        #expect(TeamLibraryPublishing.message(for: .publishedWithoutPasswords(1, .notConfirmed)) != nil)
+        #expect(TeamLibraryPublishing.message(for: .published(1)) == nil)
     }
 }
