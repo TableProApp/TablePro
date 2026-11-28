@@ -57,6 +57,10 @@ public sealed partial class SettingsView
         SyncCategoriesExpander.Visibility = pane.ShowsCategories ? Visibility.Visible : Visibility.Collapsed;
         SyncKeysCard.Visibility = _workbench.SignInSession is null ? Visibility.Collapsed : Visibility.Visible;
         SyncKeysCard.Description = KeysSummary(host.Keys);
+        // Every team member compares words here, not only those who manage the team's keys.
+        SyncTeamKeysCard.Visibility = _workbench.TeamLibraryAvailable && _workbench.TeamLibrary.Teams.Count > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         SyncPasswordsCard.IsEnabled = sync.Connections && !pane.PasswordsOffOnServer;
         SyncPasswordsCard.Description = Strings.Get(pane.PasswordsOffOnServer
             ? "SyncPasswordsOffOnServer"
@@ -324,6 +328,8 @@ public sealed partial class SettingsView
     }
 
     private void OnSyncKeysCard(object sender, RoutedEventArgs e) => _shell.ShowAccountKeys();
+
+    private void OnSyncTeamKeysCard(object sender, RoutedEventArgs e) => _shell.ShowTeamKeys();
 
     private static string KeysSummary(KeyState? keys) => keys switch
     {

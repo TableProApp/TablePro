@@ -45,6 +45,10 @@ public sealed partial class SettingsView : UserControl
             _workbench.Updates.Changed += OnUpdatesChanged;
             _workbench.SyncChanged -= OnSyncChanged;
             _workbench.SyncChanged += OnSyncChanged;
+            _workbench.TeamLibraryChanged -= OnSyncChanged;
+            _workbench.TeamLibraryChanged += OnSyncChanged;
+            // The Team keys card shows once the teams are read.
+            _workbench.RefreshTeamLibrary();
             ShowAccount();
             ShowSync();
             ShowMcp();
@@ -57,6 +61,7 @@ public sealed partial class SettingsView : UserControl
             _workbench.McpChanged -= OnMcpChanged;
             _workbench.Updates.Changed -= OnUpdatesChanged;
             _workbench.SyncChanged -= OnSyncChanged;
+            _workbench.TeamLibraryChanged -= OnSyncChanged;
         };
     }
 
@@ -625,8 +630,9 @@ public sealed partial class SettingsView : UserControl
         }
     }
 
-    // This computer's keys are erased before the sign-in is revoked; when they could not be, the person decides
-    // (core ADR 0056, Sign Out).
+    // Team Library edits not uploaded are settled first, then this computer's keys are erased before the sign-in is
+    // revoked; when they could not be, the person decides (core ADR 0056, Sign Out). The account's Team Library data
+    // goes once it signed out, through the service of the sign-in that ended (TeamSignOutFlow).
     private async Task SignOutAsync()
     {
         if (_accountBusy)
@@ -637,29 +643,47 @@ public sealed partial class SettingsView : UserControl
         var session = _workbench.SignInSession;
         _accountBusy = true;
         ShowAccount();
-        bool erased;
+        // A lapsed or unverified plan may still hold edits this computer cannot list without the service.
+        var hadTeamLibrary = _workbench.TeamLibrary.Teams.Count > 0
+            || _workbench.TeamLibrary.Unsent.Count > 0
+            || _workbench.Gate(PlanFeatures.TeamLibrary) is not { Kind: LicenseNoticeKind.NeedsPlan };
+        using var flow = new TeamSignOutFlow(
+            _workbench.Sync.LeaseAsync,
+            _workbench.Sync.GetKeyFlowsAsync,
+            () => _workbench.SignInSession == session,
+            hadTeamLibrary,
+            question => TeamDialogs.SignOutUnsentAsync(this, question),
+            reason =>
+            {
+                CrashLog.Note("keys sign out", reason.Code);
+                return KeyDialogs.SignOutFailedAsync(this, reason);
+            });
         try
         {
-            erased = await KeysSignOut.RunAsync(
-                _workbench.Sync.GetKeyFlowsAsync,
-                () => _workbench.SignInSession == session,
-                reason =>
-                {
-                    CrashLog.Note("keys sign out", reason.Code);
-                    return KeyDialogs.SignOutFailedAsync(this, reason);
-                });
+            bool erased;
+            try
+            {
+                erased = await flow.BeforeSignOutAsync();
+            }
+            finally
+            {
+                _accountBusy = false;
+            }
+
+            // Another sign-in meanwhile was not the one asked to end, and its keys were not erased.
+            if (!erased || _workbench.SignInSession != session)
+            {
+                return;
+            }
+
+            await RunAccountAsync(account => account.SignOutAsync());
+            if (_workbench.SignInSession != session && await flow.AfterSignOutAsync() is { } failure)
+            {
+                CrashLog.Note("team library delete", failure.Code);
+                _accountError ??= failure;
+            }
         }
         finally
-        {
-            _accountBusy = false;
-        }
-
-        // Another sign-in meanwhile was not the one asked to end, and its keys were not erased.
-        if (erased && _workbench.SignInSession == session)
-        {
-            await RunAccountAsync(account => account.SignOutAsync());
-        }
-        else
         {
             ShowAccount();
         }

@@ -8,6 +8,7 @@ namespace TablePro.App.Services;
 internal sealed partial class Workbench
 {
     private SyncHost? _sync;
+    private TeamLibraryModel? _teamLibrary;
     private (AccountState State, string? Id)? _syncSignIn;
     private SynchronizationContext? _syncContext;
 
@@ -18,6 +19,37 @@ internal sealed partial class Workbench
     public event EventHandler? SyncKeysChanged;
 
     public SyncHost Sync => _sync ??= OpenSyncHost();
+
+    // Raised on the UI thread after the team library's teams, edits or conflicts changed.
+    public event EventHandler? TeamLibraryChanged;
+
+    // The team library of the sign-in in front (docs/decisions/0031-team-library-and-team-keys.md).
+    public TeamLibraryModel TeamLibrary => _teamLibrary ??= OpenTeamLibrary();
+
+    // The plan's team_library and a sign-in, which every team view asks first.
+    public bool TeamLibraryAvailable => SignInSession is not null && Gate(PlanFeatures.TeamLibrary) is null;
+
+    // Reads the teams again while the plan holds them; another sign-in clears them first. A view opens the service to
+    // read; a sync event reads only from one already open, since a failed open raises another event.
+    public void RefreshTeamLibrary(bool open = true)
+    {
+        var library = TeamLibrary;
+        library.FollowSignIn();
+        if (TeamLibraryAvailable && (open || Sync.IsOpen))
+        {
+            _ = library.RefreshAsync();
+        }
+    }
+
+    private TeamLibraryModel OpenTeamLibrary()
+    {
+        var library = new TeamLibraryModel(() => Sync.GetTeamCallsAsync(), () => SignInSession);
+        library.Changed += (_, _) => TeamLibraryChanged?.Invoke(this, EventArgs.Empty);
+        SyncChanged += (_, _) => RefreshTeamLibrary(open: false);
+        SyncKeysChanged += (_, _) => RefreshTeamLibrary(open: false);
+        AccountChanged += (_, _) => RefreshTeamLibrary(open: false);
+        return library;
+    }
 
     // The sign-in the account holds now, which the service and a confirmed upload are bound to; null while signed out.
     public string? SignInSession => AccountStatus.State == AccountState.SignedIn ? AccountStatus.SessionId : null;
@@ -74,6 +106,7 @@ internal sealed partial class Workbench
         {
             _syncSignIn = signIn;
             Sync.Start();
+            RefreshTeamLibrary(open: false);
             return;
         }
 
@@ -81,6 +114,7 @@ internal sealed partial class Workbench
         {
             _syncSignIn = signIn;
             Sync.SignInChanged();
+            RefreshTeamLibrary(open: false);
         }
     }
 

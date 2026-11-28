@@ -74,6 +74,9 @@
             <toolkit:SettingsCard x:Uid="SyncKeysCard" x:Name="SyncKeysCard" AutomationProperties.AutomationId="SyncKeysCard" IsClickEnabled="True" Click="OnSyncKeysCard" Visibility="Collapsed">
                 <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE72E;" /></toolkit:SettingsCard.HeaderIcon>
             </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="SyncTeamKeysCard" x:Name="SyncTeamKeysCard" AutomationProperties.AutomationId="SyncTeamKeysCard" IsClickEnabled="True" Click="OnSyncTeamKeysCard" Visibility="Collapsed">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE716;" /></toolkit:SettingsCard.HeaderIcon>
+            </toolkit:SettingsCard>
             <toolkit:SettingsExpander x:Uid="SyncCategoriesExpander" x:Name="SyncCategoriesExpander" AutomationProperties.AutomationId="SyncCategoriesExpander" Visibility="Collapsed">
                 <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE71D;" /></toolkit:SettingsExpander.HeaderIcon>
                 <toolkit:SettingsExpander.Items>

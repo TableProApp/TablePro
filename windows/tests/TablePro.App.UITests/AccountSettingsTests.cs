@@ -33,6 +33,7 @@ public sealed partial class ShellTests
         // Open from the start, as the plan's features are a section of their own on macOS.
         app.FindByName("Pro options for shared links", app.Find("PlanFeaturesExpander"));
         app.FindByName("Not included", app.Find("PlanFeature_service_sync"));
+        app.FindByName("Not included", app.Find("PlanFeature_team_library"));
         app.FindByName("Not included", app.Find("PlanFeature_shared_links"));
         Assert.Equal("Buy a license", app.Find("BuyLicenseLink").Name);
         Assert.Equal("Learn more about licensing", app.Find("LicensingGuideLink").Name);

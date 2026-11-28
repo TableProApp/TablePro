@@ -7,6 +7,8 @@ internal sealed class SyncEngineAdapter(TableProSync sync) : ISyncEngine
 {
     public IKeyFlows Keys => new KeyFlowsAdapter(sync);
 
+    public ITeamCalls Team => new TeamCallsAdapter(sync);
+
     public SyncStatus Status => sync.Status;
 
     public IReadOnlyList<SyncScopeStatus> Scopes => sync.Scopes;
@@ -99,4 +101,64 @@ internal sealed class KeyFlowsAdapter(TableProSync sync) : IKeyFlows
     public Task ActivateResetAsync(string reset) => sync.ActivateResetAsync(reset);
 
     public Task ResumeResetAsync(string reset) => sync.ResumeResetAsync(reset);
+}
+
+internal sealed class TeamCallsAdapter(TableProSync sync) : ITeamCalls
+{
+    public TeamLibraryOwner? Owner => sync.GetTeamLibraryOwner();
+
+    public Task<IReadOnlyList<TeamLibraryTeam>> GetTeamLibraryAsync(TeamLibraryOwner owner) => sync.GetTeamLibraryAsync(owner);
+
+    public Task<IReadOnlyList<TeamScopeStatus>> GetTeamScopeStatusAsync(TeamLibraryOwner owner) =>
+        sync.GetTeamScopeStatusAsync(owner);
+
+    public Task<TeamPublish> PublishTeamSavedQueriesAsync(
+        TeamLibraryOwner owner,
+        string teamId,
+        IReadOnlyList<TeamFolderEdit> folders,
+        IReadOnlyList<TeamQueryEdit> queries) => sync.PublishTeamSavedQueriesAsync(owner, teamId, folders, queries);
+
+    public Task<TeamPublish> RemoveTeamItemsAsync(TeamLibraryOwner owner, string teamId, IReadOnlyList<TeamItemRef> items) =>
+        sync.RemoveTeamItemsAsync(owner, teamId, items);
+
+    public Task<IReadOnlyList<UnsentTeamEdit>> GetUnsentTeamEditsAsync(TeamLibraryOwner owner) =>
+        sync.GetUnsentTeamEditsAsync(owner);
+
+    public Task DiscardTeamEditsAsync(TeamLibraryOwner owner, string? teamId) => sync.DiscardTeamEditsAsync(owner, teamId);
+
+    public Task DeleteTeamLibraryDataAsync(TeamLibraryOwner owner) => sync.DeleteTeamLibraryDataAsync(owner);
+
+    public Task<IReadOnlyList<TeamConflict>> GetConflictsAsync() => sync.GetConflictsAsync();
+
+    public Task ResolveConflictAsync(TeamConflict conflict, ConflictChoice keep) => sync.ResolveConflictAsync(conflict, keep);
+
+    public Task SyncNowAsync() => sync.SyncNowAsync(SyncPassReason.Person);
+
+    public Task<TeamKeys> GetTeamKeysAsync(string team) => sync.GetTeamKeysAsync(team);
+
+    public Task CreateTeamKeysAsync(string team) => sync.CreateTeamKeysAsync(team);
+
+    public Task ConfirmMemberAsync(string team, string account) => sync.ConfirmMemberAsync(team, account);
+
+    public Task RotateTeamKeyAsync(string team, IReadOnlyList<string> remove) => sync.RotateTeamKeyAsync(team, remove);
+
+    public Task RestartTeamKeyAsync(string team, IReadOnlyList<string> confirm) => sync.RestartTeamKeyAsync(team, confirm);
+
+    public Task<HeldRestart?> GetHeldTeamRestartAsync(string team) => sync.GetHeldTeamRestartAsync(team);
+
+    public Task AcceptTeamRestartAsync(string team, string signerIdentityKey) =>
+        sync.AcceptTeamRestartAsync(team, signerIdentityKey);
+
+    public Task<KeyFingerprint> GetOwnFingerprintAsync() => sync.GetOwnFingerprintAsync();
+
+    public Task<KeyFingerprint> GetAccountFingerprintAsync(string account) => sync.GetAccountFingerprintAsync(account);
+
+    public Task<KeyChange?> GetKeyChangeAsync(string account) => sync.GetKeyChangeAsync(account);
+
+    public Task AcceptKeyChangeAsync(string account, string offeredIdentityKey, bool compared) =>
+        sync.AcceptKeyChangeAsync(account, offeredIdentityKey, compared);
+
+    public Task<IReadOnlyList<KeyNotice>> GetKeyNoticesAsync() => sync.GetKeyNoticesAsync();
+
+    public Task DismissKeyNoticeAsync(string notice) => sync.DismissKeyNoticeAsync(notice);
 }

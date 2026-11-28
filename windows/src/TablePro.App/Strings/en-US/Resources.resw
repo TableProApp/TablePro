@@ -7711,4 +7711,525 @@ New fingerprint: {2}</value>
   <data name="KeysSignOutAnyway" xml:space="preserve">
     <value>Sign out anyway</value>
   </data>
+  <data name="PlanFeature_team_library" xml:space="preserve">
+    <value>Team Library</value>
+  </data>
+  <data name="PlanFeatureDescription_team_library" xml:space="preserve">
+    <value>Share saved queries with your team, and confirm the members who hold the team's keys.</value>
+  </data>
+  <data name="SyncTeamKeysCard.Header" xml:space="preserve">
+    <value>Team keys</value>
+  </data>
+  <data name="SyncTeamKeysCard.Description" xml:space="preserve">
+    <value>Your words, and each team's key and members</value>
+  </data>
+  <data name="TeamKeysTitle.Text" xml:space="preserve">
+    <value>Team keys</value>
+  </data>
+  <data name="TeamKeysIntro.Text" xml:space="preserve">
+    <value>Each team shares its passwords end-to-end under a team key. An owner or admin confirms each member by comparing the member's words before the key goes to them.</value>
+  </data>
+  <data name="TeamOwnWordsCard.Header" xml:space="preserve">
+    <value>Your words</value>
+  </data>
+  <data name="TeamOwnWordsCard.Description" xml:space="preserve">
+    <value>The six words an owner or admin compares to confirm you. They are the same on every device of your account.</value>
+  </data>
+  <data name="TeamShowMyWords.Content" xml:space="preserve">
+    <value>Show my words...</value>
+  </data>
+  <data name="TeamShowMyWordsButton" xml:space="preserve">
+    <value>Show my words...</value>
+  </data>
+  <data name="TeamLibraryHeader.Text" xml:space="preserve">
+    <value>Team Library</value>
+  </data>
+  <data name="TeamPublishToTeamButton.Content" xml:space="preserve">
+    <value>Publish to team...</value>
+  </data>
+  <data name="TeamKeysUnavailable" xml:space="preserve">
+    <value>Team keys need a sign-in and a plan with Team Library.</value>
+  </data>
+  <data name="TeamKeysNoTeams" xml:space="preserve">
+    <value>Your account isn't on a team yet.</value>
+  </data>
+  <data name="TeamLibraryReadFailed" xml:space="preserve">
+    <value>Couldn't read your teams</value>
+  </data>
+  <data name="TeamLibraryReadFailedMessage" xml:space="preserve">
+    <value>Couldn't read the team library. {0}</value>
+    <comment>{0} is why.</comment>
+  </data>
+  <data name="TeamKeysFailedTitle" xml:space="preserve">
+    <value>Couldn't change the keys of {0}</value>
+    <comment>{0} is the team's name.</comment>
+  </data>
+  <data name="TeamKeysLoading" xml:space="preserve">
+    <value>Loading team keys</value>
+  </data>
+  <data name="TeamChangedByAt" xml:space="preserve">
+    <value>Changed by {0}, {1:d}</value>
+    <comment>{0} is who changed the item last, {1} when.</comment>
+  </data>
+  <data name="TeamChangedBy" xml:space="preserve">
+    <value>Changed by {0}</value>
+    <comment>{0} is who changed the item last.</comment>
+  </data>
+  <data name="TeamChangedAt" xml:space="preserve">
+    <value>Changed {0:d}</value>
+    <comment>{0} is when the item last changed.</comment>
+  </data>
+  <data name="TeamPublishing" xml:space="preserve">
+    <value>Publishing to the team library...</value>
+  </data>
+  <data name="TeamPublishUnchanged" xml:space="preserve">
+    <value>The team library already has these saved queries.</value>
+  </data>
+  <data name="TeamPublished_one" xml:space="preserve">
+    <value>Published {0:N0} change to the team library.</value>
+    <comment>{0} is the number of changes.</comment>
+  </data>
+  <data name="TeamPublished_other" xml:space="preserve">
+    <value>Published {0:N0} changes to the team library.</value>
+    <comment>{0} is the number of changes.</comment>
+  </data>
+  <data name="TeamPublishConflicts_one" xml:space="preserve">
+    <value>{0:N0} change conflicts with the team's version. Choose which one the team library keeps.</value>
+    <comment>{0} is the number of conflicts.</comment>
+  </data>
+  <data name="TeamPublishConflicts_other" xml:space="preserve">
+    <value>{0:N0} changes conflict with the team's version. Choose which one the team library keeps.</value>
+    <comment>{0} is the number of conflicts.</comment>
+  </data>
+  <data name="TeamPublishQueued" xml:space="preserve">
+    <value>Not published yet. TablePro publishes your changes once the team library answers again.</value>
+  </data>
+  <data name="TeamNotWritable" xml:space="preserve">
+    <value>Only the team's owner, admins and editors publish to its library.</value>
+  </data>
+  <data name="TeamSignedOut" xml:space="preserve">
+    <value>The sign-in changed before the publish went out, so nothing was sent.</value>
+  </data>
+  <data name="TeamUnsentConflict" xml:space="preserve">
+    <value>{0} (not sent: changed on the team since)</value>
+    <comment>{0} is the item's name.</comment>
+  </data>
+  <data name="TeamUnsentRefused" xml:space="preserve">
+    <value>{0} (not sent: {1})</value>
+    <comment>{0} is the item's name, {1} why the team library refused it.</comment>
+  </data>
+  <data name="TeamRefusedUnknown" xml:space="preserve">
+    <value>the team library refused it</value>
+  </data>
+  <data name="TeamConflictTitle_ChangedAfterYouDeleted" xml:space="preserve">
+    <value>“{0}” changed after you deleted it</value>
+    <comment>{0} is the item's name.</comment>
+  </data>
+  <data name="TeamConflictTitle_DeletedFromTeam" xml:space="preserve">
+    <value>“{0}” was deleted from the team library</value>
+    <comment>{0} is the item's name.</comment>
+  </data>
+  <data name="TeamConflictTitle_BothChanged" xml:space="preserve">
+    <value>“{0}” changed since you last synced</value>
+    <comment>{0} is the item's name.</comment>
+  </data>
+  <data name="TeamConflictMessage_ChangedAfterYouDeleted" xml:space="preserve">
+    <value>Someone in {0} changed this item after you deleted it. Keep mine deletes it, and Keep theirs keeps the team's version.</value>
+    <comment>{0} is the team's name.</comment>
+  </data>
+  <data name="TeamConflictMessage_DeletedFromTeam" xml:space="preserve">
+    <value>Someone in {0} deleted this item after you changed it. Keep mine puts it back with your changes, and Keep theirs leaves it deleted.</value>
+    <comment>{0} is the team's name.</comment>
+  </data>
+  <data name="TeamConflictMessage_BothChanged" xml:space="preserve">
+    <value>You and someone in {0} changed the same fields of this item. Choose the version the team library keeps.</value>
+    <comment>{0} is the team's name.</comment>
+  </data>
+  <data name="TeamField_name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="TeamField_query" xml:space="preserve">
+    <value>Query</value>
+  </data>
+  <data name="TeamField_keyword" xml:space="preserve">
+    <value>Keyword</value>
+  </data>
+  <data name="TeamField_folder_client_id" xml:space="preserve">
+    <value>Folder</value>
+  </data>
+  <data name="TeamField_parent_client_id" xml:space="preserve">
+    <value>Folder</value>
+  </data>
+  <data name="TeamField_connection_client_id" xml:space="preserve">
+    <value>Connection</value>
+  </data>
+  <data name="TeamField_sort_order" xml:space="preserve">
+    <value>Position</value>
+  </data>
+  <data name="TeamValueNone" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="TeamValueYes" xml:space="preserve">
+    <value>Yes</value>
+  </data>
+  <data name="TeamValueNo" xml:space="preserve">
+    <value>No</value>
+  </data>
+  <data name="TeamValueDeleted" xml:space="preserve">
+    <value>Deleted</value>
+  </data>
+  <data name="TeamConflictField" xml:space="preserve">
+    <value>Field</value>
+  </data>
+  <data name="TeamConflictMine" xml:space="preserve">
+    <value>Yours</value>
+  </data>
+  <data name="TeamConflictTheirs" xml:space="preserve">
+    <value>The team's</value>
+  </data>
+  <data name="TeamConflictsLeft_one" xml:space="preserve">
+    <value>{0:N0} more conflict after this one</value>
+    <comment>{0} is the number of conflicts left.</comment>
+  </data>
+  <data name="TeamConflictsLeft_other" xml:space="preserve">
+    <value>{0:N0} more conflicts after this one</value>
+    <comment>{0} is the number of conflicts left.</comment>
+  </data>
+  <data name="TeamKeepMine" xml:space="preserve">
+    <value>Keep mine</value>
+  </data>
+  <data name="TeamKeepTheirs" xml:space="preserve">
+    <value>Keep theirs</value>
+  </data>
+  <data name="TeamDecideLater" xml:space="preserve">
+    <value>Decide later</value>
+  </data>
+  <data name="TeamConflictsWaiting_one" xml:space="preserve">
+    <value>{0:N0} change conflicts with the team library.</value>
+    <comment>{0} is the number of conflicts.</comment>
+  </data>
+  <data name="TeamConflictsWaiting_other" xml:space="preserve">
+    <value>{0:N0} changes conflict with the team library.</value>
+    <comment>{0} is the number of conflicts.</comment>
+  </data>
+  <data name="TeamResolveButton" xml:space="preserve">
+    <value>Resolve...</value>
+  </data>
+  <data name="TeamUnsentNotice_one" xml:space="preserve">
+    <value>{0:N0} change isn't uploaded yet. It stays on this computer until the team library takes it, and signing out asks first.</value>
+    <comment>{0} is the number of changes.</comment>
+  </data>
+  <data name="TeamUnsentNotice_other" xml:space="preserve">
+    <value>{0:N0} changes aren't uploaded yet. They stay on this computer until the team library takes them, and signing out asks first.</value>
+    <comment>{0} is the number of changes.</comment>
+  </data>
+  <data name="TeamDiscardEllipsis" xml:space="preserve">
+    <value>Discard...</value>
+  </data>
+  <data name="TeamDiscardTitle" xml:space="preserve">
+    <value>Discard the changes not uploaded?</value>
+  </data>
+  <data name="TeamDiscardMessage" xml:space="preserve">
+    <value>These changes are lost if you discard them:</value>
+  </data>
+  <data name="TeamDiscardButton" xml:space="preserve">
+    <value>Discard</value>
+  </data>
+  <data name="TeamQueriesName" xml:space="preserve">
+    <value>Queries of {0}</value>
+    <comment>{0} is the team's name.</comment>
+  </data>
+  <data name="TeamNoQueries" xml:space="preserve">
+    <value>No saved queries in this team yet.</value>
+  </data>
+  <data name="TeamPublishTitle" xml:space="preserve">
+    <value>Publish to team</value>
+  </data>
+  <data name="TeamPublishButton" xml:space="preserve">
+    <value>Publish</value>
+  </data>
+  <data name="TeamPublishTeam" xml:space="preserve">
+    <value>Team</value>
+  </data>
+  <data name="TeamPublishMessage_one" xml:space="preserve">
+    <value>{0:N0} saved query and its folders on this computer go to {1}'s library, where everyone on the team can open them.</value>
+    <comment>{0} is the number of saved queries, {1} the team's name.</comment>
+  </data>
+  <data name="TeamPublishMessage_other" xml:space="preserve">
+    <value>{0:N0} saved queries and their folders on this computer go to {1}'s library, where everyone on the team can open them.</value>
+    <comment>{0} is the number of saved queries, {1} the team's name.</comment>
+  </data>
+  <data name="TeamPublishExplain" xml:space="preserve">
+    <value>Queries you published before and deleted since are removed from the team library. Team connections are not sent from this computer yet.</value>
+  </data>
+  <data name="TeamSignOutTitle" xml:space="preserve">
+    <value>Sign out of TablePro on this computer?</value>
+  </data>
+  <data name="TeamSignOutUploadFailed" xml:space="preserve">
+    <value>The upload did not finish. {0}</value>
+    <comment>{0} is why.</comment>
+  </data>
+  <data name="TeamSignOutUnsent" xml:space="preserve">
+    <value>These Team Library changes are not uploaded yet and are lost if you discard them: {0}.</value>
+    <comment>{0} is the list of changes.</comment>
+  </data>
+  <data name="TeamSignOutUnlisted" xml:space="preserve">
+    <value>TablePro couldn't list the Team Library changes not uploaded yet. Discarding loses any there are.</value>
+  </data>
+  <data name="TeamSignOutUpload" xml:space="preserve">
+    <value>Upload and sign out</value>
+  </data>
+  <data name="TeamSignOutDiscard" xml:space="preserve">
+    <value>Discard and sign out</value>
+  </data>
+  <data name="TeamOwnWordsTitle" xml:space="preserve">
+    <value>Your words</value>
+  </data>
+  <data name="TeamOwnWordsMessage" xml:space="preserve">
+    <value>Read these words to the owner or admin who confirms you. They are the same on every device of your account.</value>
+  </data>
+  <data name="TeamLoadingWords" xml:space="preserve">
+    <value>Loading the words</value>
+  </data>
+  <data name="TeamDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="TeamClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="TeamNotNow" xml:space="preserve">
+    <value>Not now</value>
+  </data>
+  <data name="TeamConfirmTitle" xml:space="preserve">
+    <value>Confirm {0}</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamConfirmMessage" xml:space="preserve">
+    <value>Ask {0} to read the six words under Settings &gt; Sync &gt; Team keys &gt; Show my words. Confirm only if they match these.</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamConfirmButton" xml:space="preserve">
+    <value>Confirm</value>
+  </data>
+  <data name="TeamConfirmEllipsis" xml:space="preserve">
+    <value>Confirm...</value>
+  </data>
+  <data name="TeamConfirmName" xml:space="preserve">
+    <value>Confirm {0}</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamWordsDontMatch" xml:space="preserve">
+    <value>Words don't match</value>
+  </data>
+  <data name="TeamMismatchTitle" xml:space="preserve">
+    <value>Don't confirm {0}</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamMismatchMessage" xml:space="preserve">
+    <value>The keys this computer has for them aren't the keys they hold, so someone may be standing in for them. Tell the person who runs your TablePro server.</value>
+  </data>
+  <data name="TeamKeyChangeTitle" xml:space="preserve">
+    <value>The keys of {0} changed</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamKeyChangeMessage" xml:space="preserve">
+    <value>Ask {0} to read their six words. Accept only if they match the new words.</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamKeyChangeSettled" xml:space="preserve">
+    <value>This key change was already settled on this computer.</value>
+  </data>
+  <data name="TeamKeyChangeShares" xml:space="preserve">
+    <value>Accepting also shares the team key with their new keys.</value>
+  </data>
+  <data name="TeamNewWords" xml:space="preserve">
+    <value>New words</value>
+  </data>
+  <data name="TeamPreviousWords" xml:space="preserve">
+    <value>Previous words</value>
+  </data>
+  <data name="TeamWordsMatch" xml:space="preserve">
+    <value>Words match</value>
+  </data>
+  <data name="TeamWordsMatchName" xml:space="preserve">
+    <value>The words of {0} match</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamAcceptWithoutComparing" xml:space="preserve">
+    <value>Accept without comparing</value>
+  </data>
+  <data name="TeamHeldRestartTitle" xml:space="preserve">
+    <value>The team key was started over</value>
+  </data>
+  <data name="TeamHeldRestartGone" xml:space="preserve">
+    <value>This computer no longer holds a restarted team key.</value>
+  </data>
+  <data name="TeamHeldRestartMessage" xml:space="preserve">
+    <value>Ask {0} to read their six words. Until the words match and you accept, this computer keeps the passwords it already has for {1} and saves no new ones there.</value>
+    <comment>{0} is who started the key over, {1} the team's name.</comment>
+  </data>
+  <data name="TeamTheOwner" xml:space="preserve">
+    <value>the owner</value>
+  </data>
+  <data name="TeamRestartTitle" xml:space="preserve">
+    <value>Start the team key over</value>
+  </data>
+  <data name="TeamRestartMessage" xml:space="preserve">
+    <value>No one on {0} holds the current team key, so it can't be passed on. Starting over makes a new key and shares it with the members you include. Passwords saved under the old key stay readable only where a device still has that key.</value>
+    <comment>{0} is the team's name.</comment>
+  </data>
+  <data name="TeamRestartNoCandidates" xml:space="preserve">
+    <value>No other member has set up their keys yet. You can start over now and confirm them later.</value>
+  </data>
+  <data name="TeamRestartCompare" xml:space="preserve">
+    <value>Compare each member's words with them. Only those whose words match get the new key.</value>
+  </data>
+  <data name="TeamRestartWaiting" xml:space="preserve">
+    <value>Left out until you compare their new keys on this page: {0}.</value>
+    <comment>{0} is the list of members.</comment>
+  </data>
+  <data name="TeamRestartButton" xml:space="preserve">
+    <value>Start over</value>
+  </data>
+  <data name="TeamStartOver" xml:space="preserve">
+    <value>Start over...</value>
+  </data>
+  <data name="TeamCreateKeys" xml:space="preserve">
+    <value>Create team keys</value>
+  </data>
+  <data name="TeamCompareWords" xml:space="preserve">
+    <value>Compare words...</value>
+  </data>
+  <data name="TeamCompare" xml:space="preserve">
+    <value>Compare...</value>
+  </data>
+  <data name="TeamCompareName" xml:space="preserve">
+    <value>Compare the words of {0}</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamDismiss" xml:space="preserve">
+    <value>Dismiss</value>
+  </data>
+  <data name="TeamRotate" xml:space="preserve">
+    <value>Rotate team key...</value>
+  </data>
+  <data name="TeamRotateButton" xml:space="preserve">
+    <value>Rotate</value>
+  </data>
+  <data name="TeamRotateTitle" xml:space="preserve">
+    <value>Rotate the team key?</value>
+  </data>
+  <data name="TeamRotateMessage" xml:space="preserve">
+    <value>Every confirmed member gets the new key. New passwords for this team can be saved again once it is done.</value>
+  </data>
+  <data name="TeamReconfirmTitle" xml:space="preserve">
+    <value>Confirm this device again?</value>
+  </data>
+  <data name="TeamReconfirmMessage" xml:space="preserve">
+    <value>Confirming it again rotates the team key. Every confirmed member, that device included, gets the new key.</value>
+  </data>
+  <data name="TeamConfirmAgain" xml:space="preserve">
+    <value>Confirm again...</value>
+  </data>
+  <data name="TeamStoppedOwnDevice" xml:space="preserve">
+    <value>One of your devices</value>
+  </data>
+  <data name="TeamStoppedDevice" xml:space="preserve">
+    <value>A device of {0}</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamStoppedAt" xml:space="preserve">
+    <value>Stopped at version {0:N0}</value>
+    <comment>{0} is the team key's version.</comment>
+  </data>
+  <data name="TeamStoppedAtOthers" xml:space="preserve">
+    <value>Stopped at version {0:N0}. Only an owner or admin who held it can confirm it again.</value>
+    <comment>{0} is the team key's version.</comment>
+  </data>
+  <data name="TeamMemberYou" xml:space="preserve">
+    <value>{0} (you)</value>
+    <comment>{0} is your name.</comment>
+  </data>
+  <data name="TeamKeyStatus_Ended" xml:space="preserve">
+    <value>This team's keys ended on this computer. An owner needs to create a new team and share its connections again.</value>
+  </data>
+  <data name="TeamKeyStatus_StoppedCatchUp" xml:space="preserve">
+    <value>This computer stopped using the team key: it couldn't verify a newer version. An owner or admin needs to confirm this computer again.</value>
+  </data>
+  <data name="TeamKeyStatus_RestoreWait" xml:space="preserve">
+    <value>The server lost a team key in a restore. This computer waits until the device that made it sends it again, then carries on by itself.</value>
+  </data>
+  <data name="TeamKeyStatus_RestartHeld" xml:space="preserve">
+    <value>The team key was started over. Compare the words of the owner who did it before this computer uses it.</value>
+  </data>
+  <data name="TeamKeyStatus_NoKeys" xml:space="preserve">
+    <value>The team's owner hasn't set up its keys yet.</value>
+  </data>
+  <data name="TeamKeyStatus_NoKeysCreate" xml:space="preserve">
+    <value>This team has no keys yet. Create them to share passwords with the team end-to-end.</value>
+  </data>
+  <data name="TeamKeyStatus_NoHolderLeft" xml:space="preserve">
+    <value>No one on this team holds the current team key. An owner needs to start it over.</value>
+  </data>
+  <data name="TeamKeyStatus_NoHolderLeftRestart" xml:space="preserve">
+    <value>No one on this team holds the current team key. Start it over to share passwords with the team again.</value>
+  </data>
+  <data name="TeamKeyStatus_AwaitingConfirmation" xml:space="preserve">
+    <value>Waiting for an owner or admin to confirm you. Show them your words so they can compare.</value>
+  </data>
+  <data name="TeamKeyStatus_RotationDue" xml:space="preserve">
+    <value>A team key rotation is due. New passwords for this team wait until the key is rotated.</value>
+  </data>
+  <data name="TeamKeyStatus_Holder" xml:space="preserve">
+    <value>Version {0:N0}. This computer holds the team key and can share passwords with the team.</value>
+    <comment>{0} is the team key's version.</comment>
+  </data>
+  <data name="TeamMemberStatus_NoKeys" xml:space="preserve">
+    <value>Waiting for this person to set up their keys</value>
+  </data>
+  <data name="TeamMemberStatus_AwaitingConfirmation" xml:space="preserve">
+    <value>Waiting for confirmation</value>
+  </data>
+  <data name="TeamMemberStatus_Holder" xml:space="preserve">
+    <value>Confirmed</value>
+  </data>
+  <data name="TeamMemberStatus_Alert" xml:space="preserve">
+    <value>Keys changed</value>
+  </data>
+  <data name="TeamRole_Owner" xml:space="preserve">
+    <value>Owner</value>
+  </data>
+  <data name="TeamRole_Admin" xml:space="preserve">
+    <value>Admin</value>
+  </data>
+  <data name="TeamRole_Editor" xml:space="preserve">
+    <value>Editor</value>
+  </data>
+  <data name="TeamRole_Member" xml:space="preserve">
+    <value>Member</value>
+  </data>
+  <data name="TeamNotice_KeysChanged" xml:space="preserve">
+    <value>The keys of {0} changed. Compare their words before sharing team keys with them.</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamNotice_RecoveryKeyReplaced" xml:space="preserve">
+    <value>{0} replaced their recovery key.</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamNotice_Restarted" xml:space="preserve">
+    <value>The team key was started over.</value>
+  </data>
+  <data name="TeamNotice_RestartHeld" xml:space="preserve">
+    <value>{0} started the team key over. Compare their words before this computer uses it.</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamNotice_RestartHeldStranger" xml:space="preserve">
+    <value>Someone who is not on this team started the team key over. Don't accept it unless an owner tells you why.</value>
+  </data>
+  <data name="TeamNotice_SupersededWrap" xml:space="preserve">
+    <value>A teammate's device sent the team key to your old keys, so TablePro shared your current keys with the team again. The server may have kept your key change from that teammate.</value>
+  </data>
+  <data name="TeamNotice_Conflict" xml:space="preserve">
+    <value>The server offered a team key that differs from one this computer already checked. This computer stopped using this team's keys.</value>
+  </data>
 </root>
