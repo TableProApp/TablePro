@@ -13,6 +13,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         LaunchTracer.shared.mark(.willFinishLaunchingBegan)
+        // Before anything opens the core, so its first line reaches the log.
+        CoreLogBridge.install()
         // First: the migration below writes the flag that tells an existing install from a new one.
         AppModule.recordDefaults(
             in: AppStorageEnvironment.shared.defaults,
@@ -158,6 +160,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         KeychainProviderFollower.shared.start(host: .shared)
         SyncProviderCoordinator.shared.start()
         ProviderMoves.shared.start()
+        SyncApprovalsModel.shared.start()
         QueryHistoryPassFollower.shared.start(host: .shared)
         // Its gate reads the sign-in the core restores after launch.
         Task {

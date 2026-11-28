@@ -31,7 +31,8 @@ struct SyncPaneLayoutTests {
         service: ProFeatureAccess = .available,
         status: SyncStatus = .idle,
         engine: SyncStatusInfo? = nil,
-        serverLicense: AccountServerLicense? = nil
+        serverLicense: AccountServerLicense? = nil,
+        waitingApprovals: Int = 0
     ) -> SyncPaneLayout {
         SyncPaneLayout(SyncPaneInputs(
             provider: provider,
@@ -40,8 +41,59 @@ struct SyncPaneLayoutTests {
             serviceAccess: service,
             iCloudStatus: status,
             engine: engine,
-            serverLicense: serverLicense
+            serverLicense: serverLicense,
+            waitingApprovals: waitingApprovals
         ))
+    }
+
+    // MARK: - Changes waiting for approval
+
+    @Test("iCloud up to date with changes waiting: the status row names the count and offers Review")
+    func approvalsReplaceUpToDateOnICloud() {
+        let layout = Self.layout(provider: .iCloud, status: .idle, engine: Self.engine(.icloud), waitingApprovals: 3)
+        #expect(layout.showsICloudStatus)
+        #expect(layout.approvalsInStatus)
+        #expect(layout.offersReview)
+        #expect(!layout.showsApprovalsRow)
+        #expect(layout.waitingApprovals == 3)
+    }
+
+    @Test("TablePro Sync up to date with changes waiting: the status row names the count, never Up to Date")
+    func approvalsReplaceUpToDateOnService() {
+        let layout = Self.layout(provider: .tableproSync, engine: Self.engine(.tableproSync, .idle), waitingApprovals: 1)
+        #expect(layout.serviceStatus == .upToDate)
+        #expect(layout.approvalsInStatus)
+        #expect(layout.offersReview)
+    }
+
+    @Test("A pass or a problem keeps its own status line, and Review stays beside it")
+    func approvalsBesideAnotherStatus() {
+        let syncing = Self.layout(provider: .iCloud, status: .syncing, engine: Self.engine(.icloud), waitingApprovals: 2)
+        #expect(!syncing.approvalsInStatus)
+        #expect(syncing.offersReview)
+        #expect(!syncing.showsApprovalsRow)
+
+        let waiting = Self.layout(provider: .tableproSync, engine: Self.engine(.tableproSync, .waiting(retryInMs: 1_000)), waitingApprovals: 2)
+        #expect(waiting.serviceStatus == .waiting)
+        #expect(!waiting.approvalsInStatus)
+        #expect(waiting.offersReview)
+    }
+
+    @Test("Sync off with Team Library values waiting: the count gets a row of its own")
+    func approvalsRowWithSyncOff() {
+        let layout = Self.layout(provider: .off, engine: Self.engine(.off, .off), waitingApprovals: 4)
+        #expect(!layout.showsICloudStatus)
+        #expect(layout.serviceStatus == nil)
+        #expect(layout.showsApprovalsRow)
+        #expect(layout.offersReview)
+    }
+
+    @Test("Nothing waiting: no Review and no approvals row")
+    func noApprovals() {
+        let layout = Self.layout(provider: .iCloud, status: .idle, engine: Self.engine(.icloud))
+        #expect(!layout.approvalsInStatus)
+        #expect(!layout.offersReview)
+        #expect(!layout.showsApprovalsRow)
     }
 
     // MARK: - The picker and the organization

@@ -12,6 +12,7 @@ struct SyncSettingsView: View {
     @ObservedObject private var moves = ProviderMoves.shared
     @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var policy = ManagedPolicyCenter.shared
+    @ObservedObject private var approvals = SyncApprovalsModel.shared
 
     @State private var sheet: SyncProviderSheet?
     @State private var asksICloudDeletion = false
@@ -37,7 +38,8 @@ struct SyncSettingsView: View {
             // A Mac that never synced with iCloud has nothing of its own to delete there.
             offersICloudDataDeletion: coordinator.lastSyncDate != nil
                 && ProviderMoves.offersICloudDataDeletion(settings.provider, under: policy.snapshot),
-            scopes: moves.scopes
+            scopes: moves.scopes,
+            waitingApprovals: approvals.waiting
         ))
     }
 
@@ -74,11 +76,15 @@ struct SyncSettingsView: View {
                 }
 
                 if layout.showsICloudStatus {
-                    statusRow(presentation)
+                    statusRow(presentation, layout: layout)
                 }
 
                 if let status = layout.serviceStatus {
-                    serviceStatusRow(status)
+                    serviceStatusRow(status, layout: layout)
+                }
+
+                if layout.showsApprovalsRow {
+                    approvalsRow(layout)
                 }
 
                 ForEach(layout.serverPolicies, id: \.self) { serverPolicy in
@@ -114,6 +120,8 @@ struct SyncSettingsView: View {
                 SyncMoveSheet(moves: moves, fromICloud: fromICloud, session: session)
             case .moveToICloud(let session):
                 SyncMoveBackSheet(moves: moves, session: session)
+            case .reviewApprovals:
+                SyncApprovalReviewSheet(model: approvals)
             }
         }
         .alert(String(localized: "Delete TablePro's Data from iCloud?"), isPresented: $asksICloudDeletion) {
@@ -236,53 +244,48 @@ struct SyncSettingsView: View {
         }
     }
 
-    private func statusRow(_ presentation: SyncStatusPresentation) -> some View {
-        LabeledContent {
-            // First baseline keeps the value on the label's baseline while the spinner shows.
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                if isSyncing {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityHidden(true)
-                } else {
-                    Image(systemName: presentation.symbolName)
-                        .foregroundStyle(presentation.isWarning ? Color.orange : Color.secondary)
-                        .accessibilityHidden(true)
-                }
-
-                Text(presentation.title)
-                    .accessibilityIdentifier("settings-sync-status")
-            }
-        } label: {
-            Text("Status")
-            if let detail = presentation.statusDetail {
-                Text(detail)
-            }
-        }
+    private func statusRow(_ presentation: SyncStatusPresentation, layout: SyncPaneLayout) -> some View {
+        let waits = layout.approvalsInStatus
+        return SyncStatusRow(
+            title: waits ? SyncApprovalPresentation.waitingLine(layout.waitingApprovals) : presentation.title,
+            symbolName: waits ? Self.approvalsSymbol : presentation.symbolName,
+            isWarning: waits || presentation.isWarning,
+            isBusy: isSyncing,
+            detail: presentation.statusDetail ?? Self.approvalsDetail(layout),
+            review: layout.offersReview ? { sheet = .reviewApprovals } : nil
+        )
     }
 
-    private func serviceStatusRow(_ status: SyncServiceStatus) -> some View {
-        LabeledContent {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                if status == .syncing {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityHidden(true)
-                } else {
-                    Image(systemName: status.symbolName)
-                        .foregroundStyle(status.isWarning ? Color.orange : Color.secondary)
-                        .accessibilityHidden(true)
-                }
+    private func serviceStatusRow(_ status: SyncServiceStatus, layout: SyncPaneLayout) -> some View {
+        let waits = layout.approvalsInStatus
+        return SyncStatusRow(
+            title: waits ? SyncApprovalPresentation.waitingLine(layout.waitingApprovals) : status.title,
+            symbolName: waits ? Self.approvalsSymbol : status.symbolName,
+            isWarning: waits || status.isWarning,
+            isBusy: status == .syncing,
+            detail: serviceSyncProblem ?? Self.approvalsDetail(layout),
+            review: layout.offersReview ? { sheet = .reviewApprovals } : nil
+        )
+    }
 
-                Text(status.title)
-                    .accessibilityIdentifier("settings-sync-status")
-            }
-        } label: {
-            Text("Status")
-            if let serviceSyncProblem {
-                Text(serviceSyncProblem)
-            }
-        }
+    // Sync is off, or its state is stated in a notice above, and pulled changes still wait: Team Library's go on.
+    private func approvalsRow(_ layout: SyncPaneLayout) -> some View {
+        SyncStatusRow(
+            title: SyncApprovalPresentation.waitingLine(layout.waitingApprovals),
+            symbolName: Self.approvalsSymbol,
+            isWarning: true,
+            isBusy: false,
+            detail: nil,
+            review: { sheet = .reviewApprovals }
+        )
+    }
+
+    private static let approvalsSymbol = "exclamationmark.circle"
+
+    // While a pass runs or the status names a problem, the count stays in sight under it.
+    private static func approvalsDetail(_ layout: SyncPaneLayout) -> String? {
+        guard layout.waitingApprovals > 0, !layout.approvalsInStatus else { return nil }
+        return SyncApprovalPresentation.waitingLine(layout.waitingApprovals)
     }
 
     private func lastSyncedRow(offersSyncNow: Bool) -> some View {
@@ -443,6 +446,7 @@ struct SyncSettingsView: View {
 enum SyncProviderSheet: Hashable, Identifiable {
     case moveToService(fromICloud: Bool, session: String?)
     case moveToICloud(session: String?)
+    case reviewApprovals
 
     var id: Self { self }
 }

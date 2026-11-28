@@ -14,6 +14,8 @@ struct SyncPaneInputs {
     var offersICloudDataDeletion = false
     // The scopes TablePro Sync read last, with the server's switches.
     var scopes: [ScopeStatusInfo] = []
+    // Records whose pulled values wait for the person, on any provider, Team Library's included.
+    var waitingApprovals = 0
 }
 
 // A server switch that keeps something off TablePro Sync while this Mac is signed in to it (core ADR 0051, Policies).
@@ -70,6 +72,11 @@ struct SyncPaneLayout: Equatable {
     let showsCategories: Bool
     let offersICloudDataDeletion: Bool
     let serverPolicies: [SyncServerPolicy]
+    let waitingApprovals: Int
+    // The status row says how many changes wait in place of Up to Date, and offers Review wherever it shows.
+    let approvalsInStatus: Bool
+    // With no status row, as with sync off and Team Library values waiting, the count gets a row of its own.
+    let showsApprovalsRow: Bool
 
     init(_ inputs: SyncPaneInputs) {
         let policies = Self.serverPolicies(inputs.scopes)
@@ -133,6 +140,17 @@ struct SyncPaneLayout: Equatable {
         showsCategories = (iCloudAllowed && iCloudLicensed) || (serviceAllowed && serviceLicensed)
         offersICloudDataDeletion = inputs.offersICloudDataDeletion
         serverPolicies = inputs.provider == .tableproSync ? policies : []
+
+        let waiting = max(inputs.waitingApprovals, 0)
+        waitingApprovals = waiting
+        let idle = (showsICloudStatus && inputs.iCloudStatus == .idle) || serviceStatus == .upToDate
+        approvalsInStatus = waiting > 0 && idle
+        showsApprovalsRow = waiting > 0 && !showsICloudStatus && serviceStatus == nil
+    }
+
+    // Review shows beside the status while anything waits, whatever the status says.
+    var offersReview: Bool {
+        waitingApprovals > 0
     }
 
     // Passwords on this server stay on this Mac, so the switch has nothing to turn on.
@@ -181,7 +199,8 @@ struct SyncPaneLayout: Equatable {
             return .waiting
         }
         return switch phase {
-        case .idle: .upToDate
+        // The count of changes waiting takes the place of Up to Date in the row.
+        case .idle, .needsApproval: .upToDate
         case .syncing: .syncing
         case .waiting: .waiting
         case .pullOnly: .downloadOnly

@@ -43,6 +43,8 @@ final class SyncEngineHost {
     let transport: CloudKitCoreTransport
     let statusChanges = PassthroughSubject<Void, Never>()
     let keyChanges = PassthroughSubject<Void, Never>()
+    // The set of pulled values waiting for the person changed, after a pass or a decision.
+    let approvalsChanged = PassthroughSubject<Void, Never>()
     // A sign-in change opened the service again, which takes no choice the old one was told.
     let reopened = PassthroughSubject<Void, Never>()
     private let open: @MainActor (SyncProviderTag, any SyncListener) async throws -> any SyncEngine
@@ -56,6 +58,11 @@ final class SyncEngineHost {
     private var signInObserver: AnyCancellable?
     // Each closed service's flush of the marks it still held, which a quit waits for.
     private var retiring: [UUID: Task<Void, Never>] = [:]
+
+    // A pass also moves the count of records waiting, which the status carries.
+    var approvalChanges: AnyPublisher<Void, Never> {
+        statusChanges.merge(with: approvalsChanged).eraseToAnyPublisher()
+    }
 
     func openedEngine(for provider: SyncProviderTag) -> (any SyncEngine)? {
         guard let opened, Self.serves(opened.provider, provider) else { return nil }
@@ -292,5 +299,9 @@ nonisolated private final class SyncEngineListener: SyncListener, @unchecked Sen
 
     func keysChanged() {
         Task { @MainActor [weak host] in host?.listenerSignalled(keys: true) }
+    }
+
+    func approvalsChanged() {
+        Task { @MainActor [weak host] in host?.approvalsChanged.send() }
     }
 }
