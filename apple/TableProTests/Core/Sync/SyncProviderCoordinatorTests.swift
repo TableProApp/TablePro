@@ -144,7 +144,6 @@ private final class Fixture {
     var policy: DisableReason?
     var opens = true
     var listener: (any SyncListener)?
-    private(set) var coreWriteReads = 0
     private let suite: EphemeralDefaults
     let metadata: SyncMetadataStorage
     private(set) var coordinator: SyncProviderCoordinator!
@@ -189,8 +188,7 @@ private final class Fixture {
             metadata: metadata,
             pushRegistrar: .inert,
             activationClock: clock,
-            notificationCenter: notifications,
-            readCoreWrites: { [unowned self] in coreWriteReads += 1 }
+            notificationCenter: notifications
         )
     }
 
@@ -679,30 +677,6 @@ struct SyncProviderCoordinatorTests {
 
         try await waitUntil { fixture.coordinator.syncStatus == .error(.blocked(.storageFull)) }
         #expect(fixture.coordinator.lastSyncDate == Date(timeIntervalSince1970: 1_764_000_000))
-    }
-
-    @Test("Each pass the engine finished has the stores it may have written read again, once")
-    func aFinishedPassReadsTheCoresWrites() async throws {
-        let fixture = try Fixture()
-        let engine = fixture.engine
-        engine.update { state in
-            state.pass = { _ in engine.update { $0.info.lastPassMs = 1_764_000_000_000 } }
-        }
-        fixture.coordinator.start()
-        await fixture.coordinator.passesFinished()
-        #expect(fixture.coreWriteReads == 1)
-
-        engine.update { $0.info.problem = "sync.icloud.quota_exceeded" }
-        try #require(fixture.listener).statusChanged()
-        try await waitUntil { fixture.coordinator.syncStatus == .error(.blocked(.storageFull)) }
-        #expect(fixture.coreWriteReads == 1)
-
-        engine.update { state in
-            state.info.problem = nil
-            state.info.lastPassMs = 1_764_000_060_000
-        }
-        try #require(fixture.listener).statusChanged()
-        try await waitUntil { fixture.coreWriteReads == 2 }
     }
 
     @Test("An iCloud account change cancels the call in flight, then asks for a pass")

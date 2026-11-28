@@ -144,6 +144,26 @@ struct TeamLibraryTests {
         try await waitUntil { fixture.library.content.connections.count == 1 && fixture.library.conflicts.conflicts.count == 1 }
     }
 
+    // A read of the new service while this one is held would wait for the state file it holds (E2E F17).
+    @Test("A refresh reads the conflicts from the service it read the teams from, never one opened meanwhile")
+    func refreshReadsOneService() async throws {
+        let fixture = try await TeamLibraryFixture()
+        try await fixture.start()
+        let gate = AsyncGate()
+        fixture.engine.holdNextTeamRead(at: gate)
+        let replacement = FakeTeamLibraryEngine()
+        let readsBefore = fixture.engine.reads
+
+        let refreshing = Task { await fixture.library.refresh() }
+        await gate.arrived(1)
+        fixture.source.current = replacement
+        await gate.open()
+        await refreshing.value
+
+        #expect(fixture.engine.reads == readsBefore + 1)
+        #expect(replacement.reads == 0)
+    }
+
     // MARK: - Sign-ins
 
     @Test("An involuntary sign-out hides the library and its conflicts at once and keeps the data for the same account")

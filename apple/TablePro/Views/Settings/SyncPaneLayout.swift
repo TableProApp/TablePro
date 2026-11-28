@@ -67,6 +67,8 @@ struct SyncPaneLayout: Equatable {
     let asksNewIdentity: Bool
     let showsICloudStatus: Bool
     let serviceStatus: SyncServiceStatus?
+    // Why TablePro Sync is unavailable, in the person's terms; the code goes to the log.
+    let serviceProblem: String?
     let showsLastSynced: Bool
     let offersSyncNow: Bool
     let showsCategories: Bool
@@ -106,6 +108,7 @@ struct SyncPaneLayout: Equatable {
             serviceNotice = pullOnly ? .pullOnly(selfHosted: inputs.serverLicense != nil) : nil
             showsICloudStatus = live && presentation.notice == nil
             serviceStatus = nil
+            serviceProblem = nil
             showsLastSynced = live
             offersSyncNow = live && presentation.offersSyncNow
         case .tableproSync:
@@ -120,6 +123,7 @@ struct SyncPaneLayout: Equatable {
             let live = serviceLicensed && !newIdentity && !refused
             let status = live ? Self.serviceStatus(inputs.engine?.phase, problem: inputs.engine?.problem) : nil
             serviceStatus = status
+            serviceProblem = status == .unavailable ? inputs.engine?.problem.map(ProviderMoves.message(forCode:)) : nil
             showsLastSynced = live
             offersSyncNow = live && status != .syncing
         case .off:
@@ -132,6 +136,7 @@ struct SyncPaneLayout: Equatable {
                 : nil
             showsICloudStatus = false
             serviceStatus = nil
+            serviceProblem = nil
             showsLastSynced = false
             offersSyncNow = false
         }
@@ -199,13 +204,28 @@ struct SyncPaneLayout: Equatable {
             return .waiting
         }
         return switch phase {
-        // The count of changes waiting takes the place of Up to Date in the row.
-        case .idle, .needsApproval: .upToDate
+        // A pass that failed leaves its code, never up to date; after a clean one the count of changes waiting takes the
+        // place of Up to Date in the row.
+        case .idle, .needsApproval: problem.map(afterFailedPass) ?? .upToDate
         case .syncing: .syncing
         case .waiting: .waiting
         case .pullOnly: .downloadOnly
         case .off, .none: .off
         case .unavailable, .zoneRemoved, .newIdentity: .unavailable
+        }
+    }
+
+    // The core's scheduler tries the failures it can get past by itself again; any other waits for the person.
+    private static func afterFailedPass(_ code: String) -> SyncServiceStatus {
+        switch code {
+        // The pass gave way, or held a record this build cannot read and synced the rest.
+        case "sync.cancelled", "sync.adapter.unreadable":
+            .upToDate
+        case "sync.network", "sync.server", "sync.rate_limited", "sync.restore_check_unavailable", "sync.state.busy",
+             "account.unreachable":
+            .waiting
+        default:
+            .unavailable
         }
     }
 }

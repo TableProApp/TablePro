@@ -257,35 +257,3 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Que
         )
     }
 }
-
-// After each finished pass of the sync service: the runs it pulled come down into `query_history.db` and get their
-// shape, the ones another device deleted leave it, and the pane reads again.
-@MainActor
-final class QueryHistoryPassFollower {
-    static let shared = QueryHistoryPassFollower()
-
-    private var subscription: AnyCancellable?
-    private var passSeen: Int64?
-
-    func start(host: SyncEngineHost) {
-        start(changes: host.statusChanges.eraseToAnyPublisher(), lastPass: { [weak host] in
-            host?.openedEngine(for: .off)?.status().lastPassMs
-        }) {
-            await QueryHistoryManager.shared.coreMirror?.pushSoon()
-            await QueryHistoryManager.shared.coreMirror?.fillFingerprints()
-        }
-    }
-
-    func start(
-        changes: AnyPublisher<Void, Never>,
-        lastPass: @escaping @MainActor () -> Int64?,
-        onPass: @escaping @MainActor () async -> Void
-    ) {
-        guard subscription == nil else { return }
-        subscription = changes.sink { [weak self] in
-            guard let self, let pass = lastPass(), pass != passSeen else { return }
-            passSeen = pass
-            Task { await onPass() }
-        }
-    }
-}

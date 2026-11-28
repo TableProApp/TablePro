@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProFFI
 import TableProSyncTransport
 
 // One Mac's library folder. Each `launch()` is a new run of the app over the same files and defaults.
@@ -125,6 +126,44 @@ final class CoreLibraryFixture {
         ConnectionStoreIntegrity.shared.stamp(
             CoreLibraryStore.tag(forDigest: LegacyLibraryMirror.digest(of: bytes)),
             fileURL: coreURL
+        )
+    }
+
+    // Another core over the same folder. Reporting, it seals its own writes as the app's core does for its engine.
+    func coreLibrary(reporting: Bool = false) throws -> ConnectionLibrary {
+        try core(reporting: reporting).library()
+    }
+
+    // A second core over the store's folder, as the engine's writes reach it; with the store's key, it reads and
+    // acknowledges the same reports.
+    func core(reporting: Bool) throws -> Core {
+        let core = try Core(
+            config: HostConfig(clientVersion: "test", storageDir: coreURL.deletingLastPathComponent().path),
+            secrets: ConnectionKeychainSecrets(keychain: keychain) { _ in false }
+        )
+        if reporting, let key = ConnectionStoreIntegrity.shared.libraryReportKey() {
+            try core.reportLibraryWrites(key: key)
+        }
+        return core
+    }
+
+    // A write the core makes on its own, as its engine does for a pull, which this Mac's store is not told of.
+    func writeAsTheCore(_ edit: (inout LibraryContents) -> Void) async throws {
+        let library = try coreLibrary()
+        var contents = try await library.libraryContents()
+        edit(&contents)
+        _ = try await library.replaceLibrary(
+            library: LibraryWriteRecord(
+                connections: contents.connections,
+                groups: contents.groups,
+                tags: contents.tags,
+                favorites: contents.favorites,
+                projects: contents.projects,
+                sshProfiles: contents.sshProfiles,
+                credentialProfiles: contents.credentialProfiles,
+                removing: []
+            ),
+            over: contents.digest
         )
     }
 

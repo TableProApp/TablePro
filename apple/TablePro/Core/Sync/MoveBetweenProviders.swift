@@ -173,16 +173,28 @@ internal final class ProviderMoves: ObservableObject {
         guard !Self.refusesPersonalSync(scopes) else { throw ProviderMoveError.serverRefusesPersonalSync }
         let asked = choice
         return try await exclusively {
-            let outcome = try await moveOnOpenService(asked, confirmedUnder: session)
-            guard outcome == .moved else { return outcome }
-            // TablePro Sync's service waits for the state file the service that moved still holds, so that one is let
-            // go before the first pass.
-            await firstPass(asked)
-            return .moved
+            // TablePro Sync's service waits for the state file the service that moved still holds, so each step after
+            // the move runs once that one is let go.
+            switch try await moveOnOpenService(asked, confirmedUnder: session) {
+            case .needsKeys(let keys):
+                return .needsKeys(keys)
+            case .superseded:
+                await stopPersonalSyncAfterSupersededMove()
+                throw ProviderMoveError.superseded
+            case .moved:
+                await firstPass(asked)
+                return .moved
+            }
         }
     }
 
-    private func moveOnOpenService(_ asked: Int, confirmedUnder session: String?) async throws -> MoveToServiceOutcome {
+    private enum OpenServiceMove {
+        case moved
+        case needsKeys(KeyStateInfo)
+        case superseded
+    }
+
+    private func moveOnOpenService(_ asked: Int, confirmedUnder session: String?) async throws -> OpenServiceMove {
         let from = current
         let engine = try await host.engine(from)
         let keys = try await engine.keyState()
@@ -193,10 +205,7 @@ internal final class ProviderMoves: ObservableObject {
         guard choices.providers.contains(.tableproSync) else { throw ProviderMoveError.notAllowed }
         guard host.session() == session else { throw ProviderMoveError.signInChanged }
         try await engine.chooseProvider(provider: .tableproSync)
-        guard choice == asked else {
-            await stopPersonalSyncAfterSupersededMove()
-            throw ProviderMoveError.superseded
-        }
+        guard choice == asked else { return .superseded }
         setProvider(.tableproSync)
         if from == .icloud {
             // Stopping iCloud has the coordinator tell the service it holds Off. That service is still the open one

@@ -83,13 +83,17 @@ internal final class TeamLibraryConflictsModel: ObservableObject {
         failure?.record == record ? failure?.message : nil
     }
 
-    // A failed read keeps the conflicts already shown.
-    func refresh() async {
+    // A failed read keeps the conflicts already shown. With no service given, the one open now.
+    func refresh(from service: (any TeamConflictEngine)? = nil) async {
         generation += 1
         let started = generation
         let read: [TeamConflictInfo]
         do {
-            read = try await engine().conflicts()
+            if let service {
+                read = try await service.conflicts()
+            } else {
+                read = try await engine().conflicts()
+            }
         } catch {
             Self.logger.error("Reading team conflicts failed: \(error.publicLogShape, privacy: .public)")
             return

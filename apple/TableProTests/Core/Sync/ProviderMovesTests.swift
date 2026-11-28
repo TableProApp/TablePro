@@ -397,6 +397,29 @@ struct ProviderMovesTests {
         #expect(fixture.opened == nil)
     }
 
+    @Test("Off chosen during the move stops personal sync once the service that moved is let go")
+    func supersededStopAfterTheMovedServiceGoes() async throws {
+        let fixture = Fixture(provider: .iCloud, open: .icloud)
+        let gate = AsyncGate()
+        fixture.opened?.update {
+            $0.logsClose = true
+            $0.moveGate = gate
+        }
+
+        let move = Task { try await fixture.moves.moveToService(confirmedUnder: nil) == .moved }
+        await gate.arrived(1)
+        fixture.slice.update { $0.provider = .off }
+        await gate.open()
+
+        await #expect(throws: ProviderMoveError.superseded) {
+            try await move.value
+        }
+        let log = fixture.log.all
+        let closed = try #require(log.firstIndex(of: "icloud closed"))
+        let stopped = try #require(log.firstIndex(of: "tablepro-sync chooseProvider off"))
+        #expect(closed < stopped)
+    }
+
     @Test("A profile that takes TablePro Sync away while the keys are read refuses the move")
     func policyRevokedDuringTheKeys() async {
         let fixture = Fixture(provider: .iCloud, open: .icloud)

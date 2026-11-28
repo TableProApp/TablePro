@@ -1,4 +1,3 @@
-import Combine
 import Foundation
 @testable import TablePro
 import TableProFFI
@@ -328,28 +327,5 @@ struct QueryHistoryCoreMirrorTests {
         )
         #expect(await replacementManager.clear(matching: QueryHistoryFilter(scope: .all)))
         #expect(try await coreIds().isEmpty)
-    }
-}
-
-@MainActor
-struct QueryHistoryPassFollowerTests {
-    @Test("Each finished sync pass fills the shapes once, and a status change with no new pass does nothing")
-    func eachPassOnce() async throws {
-        let changes = PassthroughSubject<Void, Never>()
-        var pass: Int64?
-        var reads = 0
-        let follower = QueryHistoryPassFollower()
-        follower.start(changes: changes.eraseToAnyPublisher(), lastPass: { pass }) { reads += 1 }
-
-        changes.send()
-        pass = 1
-        changes.send()
-        changes.send()
-        try await waitUntil { reads == 1 }
-        pass = 2
-        changes.send()
-        try await waitUntil { reads == 2 }
-
-        #expect(reads == 2)
     }
 }

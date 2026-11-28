@@ -80,7 +80,7 @@ struct SyncSettingsView: View {
                 }
 
                 if let status = layout.serviceStatus {
-                    serviceStatusRow(status, layout: layout)
+                    serviceStatusRow(status, layout: layout, problem: serviceSyncProblem ?? layout.serviceProblem)
                 }
 
                 if layout.showsApprovalsRow {
@@ -256,14 +256,14 @@ struct SyncSettingsView: View {
         )
     }
 
-    private func serviceStatusRow(_ status: SyncServiceStatus, layout: SyncPaneLayout) -> some View {
+    private func serviceStatusRow(_ status: SyncServiceStatus, layout: SyncPaneLayout, problem: String?) -> some View {
         let waits = layout.approvalsInStatus
         return SyncStatusRow(
             title: waits ? SyncApprovalPresentation.waitingLine(layout.waitingApprovals) : status.title,
             symbolName: waits ? Self.approvalsSymbol : status.symbolName,
             isWarning: waits || status.isWarning,
             isBusy: status == .syncing,
-            detail: serviceSyncProblem ?? Self.approvalsDetail(layout),
+            detail: problem ?? Self.approvalsDetail(layout),
             review: layout.offersReview ? { sheet = .reviewApprovals } : nil
         )
     }
