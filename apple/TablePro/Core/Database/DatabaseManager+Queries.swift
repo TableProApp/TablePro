@@ -45,6 +45,11 @@ extension DatabaseManager {
             globalSeconds: AppSettingsManager.shared.general.queryTimeoutSeconds
         )
 
+        // A shared row's test signs in as its connect would, with this Mac's SSH credentials or files, so it asks first.
+        if connection.isSharedRow {
+            try await localCredentialConsent.check(connection, trigger: .request)
+        }
+
         // A remote file answers the only question this button asks without moving the file.
         if connection.activeTunnelKind == .remoteFile {
             do {

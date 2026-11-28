@@ -7,7 +7,7 @@ import Foundation
 @testable import TablePro
 import TableProConnectionLibrary
 import TableProPluginKit
-import TableProSSHConfig
+@testable import TableProSSHConfig
 import Testing
 
 @MainActor
@@ -37,8 +37,13 @@ struct LocalCredentialConsentTests {
         spy = SignInQuestionSpy(answer: .declined)
     }
 
-    private func makeConsent() -> LocalCredentialConsent {
-        LocalCredentialConsent(approvals: store, ask: { [spy] question in await spy.ask(question) })
+    // `sshConfig` stands in for `~/.ssh/config`, so no test reads this Mac's own.
+    private func makeConsent(sshConfig: String = "") -> LocalCredentialConsent {
+        LocalCredentialConsent(
+            approvals: store,
+            ask: { [spy] question in await spy.ask(question) },
+            sshDocument: { SSHConfigParser.parseDocumentContent(sshConfig) }
+        )
     }
 
     // An imported file whose author picked the server and asked for this Mac's Kerberos ticket.
@@ -417,7 +422,15 @@ struct LocalCredentialConsentTests {
         return connection
     }
 
-    @Test("A team row that would sign in with this Mac's SSH agent asks first, for that SSH server")
+    private func withJump(_ connection: DatabaseConnection, _ jump: SSHJumpHost) -> DatabaseConnection {
+        var routed = connection
+        var ssh = connection.resolvedSSHConfig
+        ssh.jumpHosts = [jump]
+        routed.sshTunnelMode = .inline(ssh)
+        return routed
+    }
+
+    @Test("A team row that would sign in with this Mac's SSH agent asks first, naming the server")
     func teamRowUsingTheAgentAsks() async throws {
         spy.answer = .approved
         let connection = teamRow(.sshAgent)
@@ -426,37 +439,88 @@ struct LocalCredentialConsentTests {
         try await makeConsent().check(connection, trigger: .request)
 
         let question = try #require(spy.questions.first)
-        #expect(question.uses == ["SSH Agent"])
+        #expect(question.uses == ["SSH Agent: 127.0.0.1:1"])
         #expect(question.destination.contains("127.0.0.1:1"))
         #expect(question.origin == .teamLibrary)
     }
 
-    @Test("A linked folder's row asks for each key and the jump host's agent, and a password tunnel asks nothing")
+    @Test("A linked folder's row names its key and each hop's agent with the host, and a password tunnel asks nothing")
     func linkedRowNamesEachUse() async throws {
         spy.answer = .approved
-        var linked = teamRow(.privateKey, keyPath: "~/.ssh/id_ed25519")
+        var linked = withJump(
+            teamRow(.privateKey, keyPath: "~/.ssh/id_ed25519"),
+            SSHJumpHost(host: "edge.example", username: "a", authMethod: .sshAgent)
+        )
         linked.origin = .linkedFolder
-        var ssh = linked.resolvedSSHConfig
-        ssh.jumpHosts = [SSHJumpHost(host: "edge.example", username: "a", authMethod: .sshAgent)]
-        linked.sshTunnelMode = .inline(ssh)
-        let password = teamRow(.password)
 
         try await makeConsent().check(linked, trigger: .request)
 
-        #expect(spy.questions.first?.uses == ["Private Key: ~/.ssh/id_ed25519", "SSH Agent"])
-        #expect(!makeConsent().requiresApproval(password))
+        #expect(spy.questions.first?.uses == [
+            "Private Key: ~/.ssh/id_ed25519, 127.0.0.1:1", "SSH Agent: edge.example:22",
+        ])
+        #expect(!makeConsent().requiresApproval(teamRow(.password)))
     }
 
-    @Test("The same tunnel on a row of this Mac's own asks nothing")
+    @Test("A hop only ~/.ssh/config names signs in with the agent, so it asks too")
+    func configProxyJumpAsks() async throws {
+        spy.answer = .approved
+        let config = "Host 127.0.0.1\n  ProxyJump gate\nHost gate\n  User ops\n"
+
+        try await makeConsent(sshConfig: config).check(teamRow(.password), trigger: .request)
+
+        #expect(spy.questions.first?.uses == ["SSH Agent: gate:22"])
+    }
+
+    @Test("An agent hop's fallback key is approved with it, and a changed one asks again")
+    func agentHopFallbackKeyAsksAgain() async throws {
+        spy.answer = .approved
+        let first = withJump(
+            teamRow(.password),
+            SSHJumpHost(host: "edge.example", username: "a", authMethod: .sshAgent, privateKeyPath: "~/.ssh/edge")
+        )
+        var changed = first.resolvedSSHConfig
+        changed.jumpHosts[0].privateKeyPath = "~/.ssh/other"
+        var second = first
+        second.sshTunnelMode = .inline(changed)
+
+        try await makeConsent().check(first, trigger: .request)
+        try await makeConsent().check(second, trigger: .request)
+
+        #expect(spy.questions.map(\.uses) == [
+            ["SSH Agent: edge.example:22", "Private Key: ~/.ssh/edge, edge.example:22"],
+            ["SSH Agent: edge.example:22", "Private Key: ~/.ssh/other, edge.example:22"],
+        ])
+    }
+
+    @Test("A team row that opens a database file here asks once, and a MotherDuck one asks nothing")
+    func teamRowOpeningAFileAsksOnce() async throws {
+        spy.answer = .approved
+        var file = DatabaseConnection(name: "Local", database: "/tmp/team-copy.sqlite", type: .sqlite)
+        file.origin = .teamLibrary
+        var motherDuck = DatabaseConnection(
+            name: "Cloud",
+            type: .duckdb,
+            additionalFields: ["duckdbMode": "motherduck", "duckdbFilePath": "md:analytics"]
+        )
+        motherDuck.origin = .teamLibrary
+
+        try await makeConsent().check(file, trigger: .request)
+        try await makeConsent().check(file, trigger: .background)
+
+        #expect(spy.questions.map(\.uses) == [["Database File: /tmp/team-copy.sqlite"]])
+        #expect(!makeConsent().requiresApproval(motherDuck))
+    }
+
+    @Test("The same tunnel and file on a row of this Mac's own asks nothing")
     func ownRowDoesNotAsk() {
         var own = teamRow(.privateKey)
         own.origin = .thisMac
 
-        #expect(own.localSSHCredentialUses.isEmpty)
+        #expect(own.sharedRowLocalUses(document: nil).isEmpty)
         #expect(!makeConsent().requiresApproval(own))
     }
 
-    @Test("An unapproved team row never reaches the SSH tunnel")
+    @Test("An unapproved team row never reaches the SSH tunnel, from a connect or a Test")
     func unapprovedTeamRowNeverDials() async throws {
         let manager = DatabaseManager(localCredentialConsent: makeConsent())
         let connection = teamRow(.privateKey)
@@ -464,17 +528,23 @@ struct LocalCredentialConsentTests {
         await #expect(throws: LocalCredentialConsentError.declined) {
             try await manager.connectToSession(connection, trigger: .request)
         }
+        await #expect(throws: LocalCredentialConsentError.declined) {
+            _ = try await manager.testConnection(connection)
+        }
 
-        #expect(spy.questions.count == 1)
+        #expect(spy.questions.count == 2)
         #expect(await !SSHTunnelManager.shared.hasTunnel(connectionId: connection.id))
         #expect(manager.activeSessions[connection.id] == nil)
     }
 
     @Test("An approved team row goes on to its tunnel without asking again")
     func approvedTeamRowDoesNotAskAgain() async throws {
+        spy.answer = .approved
         let connection = teamRow(.sshAgent)
-        store.approve(connection)
-        let manager = DatabaseManager(localCredentialConsent: makeConsent())
+        let consent = makeConsent()
+        #expect(await consent.confirm(connection))
+        spy.answer = .declined
+        let manager = DatabaseManager(localCredentialConsent: consent)
 
         do {
             try await manager.connectToSession(connection, trigger: .background)
@@ -483,7 +553,7 @@ struct LocalCredentialConsentTests {
             Issue.record("The approved row was asked again: \(error)")
         } catch {}
 
-        #expect(spy.questions.isEmpty)
-        #expect(!makeConsent().requiresApproval(connection))
+        #expect(spy.questions.count == 1)
+        #expect(!consent.requiresApproval(connection))
     }
 }

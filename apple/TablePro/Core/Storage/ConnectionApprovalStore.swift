@@ -45,18 +45,19 @@ internal final class ConnectionApprovalStore {
         self.dialedDestination = dialedDestination
     }
 
-    internal func isApproved(_ connection: DatabaseConnection) -> Bool {
-        let items = kind.items(in: connection)
+    // `extra` is what the connect would use beyond its fields, such as a shared row's SSH credentials.
+    internal func isApproved(_ connection: DatabaseConnection, extra: Set<String> = []) -> Bool {
+        let items = kind.items(in: connection).union(extra)
         guard !items.isEmpty else { return true }
         migrateIfNeeded()
         let approved = approvals()[connection.id.uuidString]?[dialedDestination(connection).digest] ?? []
         return items.isSubset(of: approved)
     }
 
-    internal func approve(_ connection: DatabaseConnection) {
+    internal func approve(_ connection: DatabaseConnection, extra: Set<String> = []) {
         migrateIfNeeded()
         var all = approvals()
-        guard record(connection, in: &all) else { return }
+        guard record(connection, extra: extra, in: &all) else { return }
         save(all)
         Self.logger.info("Approved \(self.kind.logName, privacy: .public) for a connection")
     }
@@ -111,8 +112,8 @@ internal final class ConnectionApprovalStore {
         return storage.storeIsTrusted ? connections : []
     }
 
-    private func record(_ connection: DatabaseConnection, in all: inout Approvals) -> Bool {
-        let items = kind.items(in: connection)
+    private func record(_ connection: DatabaseConnection, extra: Set<String> = [], in all: inout Approvals) -> Bool {
+        let items = kind.items(in: connection).union(extra)
         guard !items.isEmpty else { return false }
         let digest = dialedDestination(connection).digest
         let approved = Set(all[connection.id.uuidString]?[digest] ?? []).union(items)
@@ -139,8 +140,7 @@ internal final class ConnectionApprovalStore {
 }
 
 extension ConnectionApprovalStore.Kind {
-    // Variable names, or each field that signs in with something this Mac holds, with its value, and the SSH credentials
-    // of this Mac a row from another origin would use.
+    // Variable names, or each field that signs in with something this Mac holds, with its value.
     internal func items(in connection: DatabaseConnection) -> Set<String> {
         switch self {
         case .envVarReferences:
@@ -148,7 +148,7 @@ extension ConnectionApprovalStore.Kind {
         case .localCredentials:
             Set(ConnectionFieldCatalog.localCredentialUses(in: connection.additionalFields).map { use in
                 use.fieldId + "=" + use.value
-            }).union(connection.localSSHCredentialUses.map(\.approvalItem))
+            })
         }
     }
 

@@ -321,6 +321,8 @@ extension DatabaseManager {
         let connectionId = session.connection.id
         noteSessionLost(with: session.driver, for: connectionId)
         session.driver?.disconnect()
+        // An approval the row no longer has, such as for a key its SSH profile now names, needs a person.
+        try await localCredentialConsent.check(session.connection, trigger: .background)
         // Resolved as the connect resolved it; a reference that lost its approval needs a person.
         let resolved = try await envVarReferenceConsent.resolve(session.connection, trigger: .background)
         // Followed again, for a direct dial too: the CNAME may lead to another RDS endpoint than at the connect.
@@ -523,6 +525,8 @@ extension DatabaseManager {
             }
             try requireCurrentAttempt(generation, for: sessionId)
 
+            try await localCredentialConsent.check(session.connection, trigger: .request)
+            try requireCurrentAttempt(generation, for: sessionId)
             // Resolved as the connect resolved it: the session keeps the row as saved, `${VAR}` references included.
             let resolved = try await envVarReferenceConsent.resolve(session.connection, trigger: .request)
             try requireCurrentAttempt(generation, for: sessionId)
