@@ -185,9 +185,14 @@ internal final class TabRouter {
         }
         let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
         if transientConnection != nil {
+            // The seeded entry reads as a connect in flight, so a window opened over it never dials on its own.
             DatabaseManager.shared.registerPendingSession(connection)
+            WindowManager.shared.openTab(payload: payload, autoConnect: false)
+            (WindowManager.shared.window(for: id)?.contentViewController as? MainSplitViewController)?
+                .reconnectWorkspace(id, adoptsSSHProfileEdits: false)
+        } else {
+            WindowManager.shared.openTab(payload: payload, autoConnect: true)
         }
-        WindowManager.shared.openTab(payload: payload, autoConnect: true)
         AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         WindowOpener.shared.closeWelcome()
     }
