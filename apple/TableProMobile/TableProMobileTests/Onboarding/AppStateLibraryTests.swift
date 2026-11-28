@@ -42,6 +42,20 @@ struct AppStateLibraryTests {
         )
     }
 
+    // A read-only mode does not hold, since the core sets its folder back to 0700 before each write; a locked folder
+    // refuses that too. The lock comes off on every way out, or the fixture's folder could never be deleted.
+    private func whileLocked(_ folder: URL, _ body: () throws -> Void) throws {
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: folder.path)
+        defer {
+            do {
+                try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: folder.path)
+            } catch {
+                Issue.record("The lock on \(folder.path) stayed: \(error)")
+            }
+        }
+        try body()
+    }
+
     @Test("A library that failed to load refuses every write and leaves the file alone")
     func failedLoadRefusesWrites() throws {
         let unreadable = Data("{ not json".utf8)
@@ -643,13 +657,11 @@ struct AppStateLibraryTests {
         renamed.name = "Renamed"
 
         // A folder that takes no new file fails the write and keeps the file, so the next write still answers for it.
-        let coreDirectory = fixture.coreConnectionsFile.deletingLastPathComponent().path
-        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: coreDirectory)
-        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: coreDirectory) }
-        #expect(!state.applySyncedConnections([renamed]))
-        #expect(!state.applySyncedConnections([renamed]))
+        try whileLocked(fixture.coreConnectionsFile.deletingLastPathComponent()) {
+            #expect(!state.applySyncedConnections([renamed]))
+            #expect(!state.applySyncedConnections([renamed]))
+        }
 
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: coreDirectory)
         #expect(state.applySyncedConnections([renamed]))
         let reloaded = try JSONDecoder().decode([DatabaseConnection].self, from: Data(contentsOf: fixture.connectionsFile))
         #expect(reloaded.map(\.name) == ["Renamed"])
