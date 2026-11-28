@@ -26,5 +26,11 @@ Team Library shares saved queries, folders and connections with a team through t
 ## Consequences
 
 - Team connections and their passwords come next, over `PublishTeamConnections` and the items' records; the credentials a removed member could read are not listed yet.
+- The change that first connects a team row (`TeamItem.Connection`) asks before that row signs in with this computer's own credentials, and lands its parts together:
+  - The core's helper lists the row's local uses with the host each signs in to: the SSH agent, a key file or the default keys when the copy names none, a database file or a socket.
+  - `LocalUseApprovals` keeps the approvals in `local-use-approvals.json` in the data folder, never synced, as connection id to destination to the sorted uses approved there, like the macOS app's `ConnectionApprovalStore` (`localCredentials`). A new use or another host asks again; deleting the row or its leaving the team revokes them; there is no trust on first use.
+  - `LocalUseConsent` asks once per destination in a ContentDialog, "Sign in with credentials from this computer?", listing each use with its host, Connect or Cancel with Cancel the default.
+  - Only a connect the person starts asks. A restore, a reconnect, MCP or the command line refuses an unapproved row with "Connect again to review the sign-in", as the macOS app's `needsPerson` does.
+  - Tests cover the store (approve, a new use or host, revoke, a damaged file) and the consent (no uses, Connect, Cancel, a restore that never asks).
 - Deleting another account's Team Library data after an involuntary sign-out (`DeleteOtherTeamLibraryData`) is not called yet.
 - The UI tests run signed out, so the section and the page are reached only signed in; their rules are covered by the models' tests.
