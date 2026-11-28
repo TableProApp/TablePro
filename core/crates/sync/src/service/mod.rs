@@ -285,6 +285,7 @@ impl ServiceSync {
                 provider: Some(Provider::Service),
                 phase: SyncPhase::Idle,
                 last_pass_ms: None,
+                last_synced_ms: None,
                 problem: None,
                 waiting_approvals: 0,
                 conflicts: 0,
@@ -465,6 +466,17 @@ impl ServiceSync {
 
     fn status_lock(&self) -> MutexGuard<'_, SyncStatus> {
         self.status.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    // What the state file kept of the last pass that got through, for the status before this run's first one does.
+    pub async fn read_last_synced(&self) {
+        match self.state.last_synced_ms().await {
+            Ok(kept) => {
+                let mut status = self.status_lock();
+                status.last_synced_ms = status.last_synced_ms.max(kept);
+            }
+            Err(error) => tracing::warn!(code = error.code(), "the last sync time was not read"),
+        }
     }
 
     fn set_phase(&self, phase: SyncPhase) {
@@ -769,6 +781,10 @@ impl ServiceSync {
         self.after_team_pass(session, &outcome).await;
         if let Ok(keys) = self.keys.key_state().await {
             self.hooks.read_keys(keys);
+        }
+        if let Ok(devices) = self.keys.account_devices().await {
+            self.hooks
+                .read_roster(devices.into_iter().map(|device| device.key_device).collect());
         }
         if outcome.is_err() {
             self.journal.give_back(taken);
@@ -1169,10 +1185,17 @@ impl ServiceSync {
                 .clone_from(&report.queued_in);
         }
         let queued = self.queued_shown();
+        let now = self.clock.now_ms();
+        if outcome.is_ok()
+            && let Err(error) = self.state.set_last_synced_ms(now).await
+        {
+            tracing::warn!(code = error.code(), "the last sync time was not kept");
+        }
         let mut status = self.status_lock();
-        status.last_pass_ms = Some(self.clock.now_ms());
+        status.last_pass_ms = Some(now);
         match outcome {
             Ok(report) => {
+                status.last_synced_ms = Some(now);
                 // A record the store refused is held, never dropped silently: the pass that held it says so.
                 status.problem = (!report.store_refused.is_empty()).then_some(crate::api::error::UNREADABLE);
                 if !journal_only {

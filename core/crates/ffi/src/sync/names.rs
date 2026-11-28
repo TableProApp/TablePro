@@ -17,7 +17,7 @@ pub(crate) struct Person {
 }
 
 async fn still_bound(account: &Account, binding: &Binding) -> bool {
-    SignIn::signed_in(account)
+    SignIn::signed_in_as(account)
         .await
         .is_ok_and(|signed_in| binding.holds(&signed_in))
 }

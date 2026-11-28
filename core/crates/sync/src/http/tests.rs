@@ -115,12 +115,14 @@ impl Account {
         Arc::new(Self {
             now: Mutex::new(SignedIn {
                 token: SecretString::from(TOKEN),
-                api: api.to_owned(),
-                origin: Origin::of_url(api).expect("an origin").as_str().to_owned(),
-                sign_in: "0123456789abcdef".to_owned(),
-                account_id: Some(ACCOUNT_TYPEID.to_owned()),
-                device_id: Some(DEVICE.to_owned()),
-                session_id: Some("session-1".to_owned()),
+                of: SignedInAs {
+                    api: api.to_owned(),
+                    origin: Origin::of_url(api).expect("an origin").as_str().to_owned(),
+                    sign_in: "0123456789abcdef".to_owned(),
+                    account_id: Some(ACCOUNT_TYPEID.to_owned()),
+                    device_id: Some(DEVICE.to_owned()),
+                    session_id: Some("session-1".to_owned()),
+                },
             }),
             rejected: AtomicUsize::new(0),
         })
@@ -129,6 +131,10 @@ impl Account {
 
 #[async_trait]
 impl SignIn for Account {
+    async fn signed_in_as(&self) -> Result<SignedInAs, TransportError> {
+        Ok(self.now.lock().expect("the sign-in").of.clone())
+    }
+
     async fn signed_in(&self) -> Result<SignedIn, TransportError> {
         Ok(self.now.lock().expect("the sign-in").clone())
     }
@@ -375,7 +381,7 @@ async fn a_refused_token_is_refreshed_once_and_a_second_refusal_ends_the_sign_in
 async fn a_call_after_the_sign_in_changed_is_refused_and_never_sent() {
     let (api, log) = server(|_, _| ok(r#"{"records":[]}"#.to_owned()));
     let (transport, account) = transport(&api).await;
-    account.now.lock().unwrap().session_id = Some("session-2".to_owned());
+    account.now.lock().unwrap().of.session_id = Some("session-2".to_owned());
 
     let answered = transport
         .pull(PullRequest {
@@ -390,10 +396,44 @@ async fn a_call_after_the_sign_in_changed_is_refused_and_never_sent() {
     assert!(log.lock().unwrap().is_empty());
 }
 
+// An account whose server is out of reach: it knows the sign-in it holds, and every bearer fails as the network does.
+struct OutOfReach(SignedInAs);
+
+#[async_trait]
+impl SignIn for OutOfReach {
+    async fn signed_in_as(&self) -> Result<SignedInAs, TransportError> {
+        Ok(self.0.clone())
+    }
+
+    async fn signed_in(&self) -> Result<SignedIn, TransportError> {
+        Err(TransportError::Network {
+            detail: "connection timed out".to_owned(),
+        })
+    }
+
+    async fn rejected(&self, _: &SecretString) {}
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_transport_opens_with_the_server_out_of_reach_and_its_calls_fail_as_the_network_does() {
+    let (api, log) = server(|_, _| ok(r#"{"records":[]}"#.to_owned()));
+    let held = Account::at(&api).now.lock().unwrap().of.clone();
+
+    let transport = HttpTransport::open(Arc::new(OutOfReach(held.clone())), reqwest::Client::new())
+        .await
+        .expect("a transport");
+    let answered = transport.scopes(None, Proof::None).await;
+
+    assert_eq!(transport.binding().device_row.0, DEVICE);
+    assert!(transport.binding().holds(&held));
+    assert!(matches!(answered, Err(TransportError::Network { .. })), "{answered:?}");
+    assert!(log.lock().unwrap().is_empty());
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_sign_in_with_no_device_row_opens_no_transport() {
     let account = Account::at("http://127.0.0.1:1/v2");
-    account.now.lock().unwrap().device_id = None;
+    account.now.lock().unwrap().of.device_id = None;
 
     let opened = HttpTransport::open(account, reqwest::Client::new()).await;
 

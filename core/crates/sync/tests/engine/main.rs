@@ -18,5 +18,6 @@ mod parts;
 mod pass;
 mod rules;
 mod state_file;
+mod status;
 mod stop;
 mod teams_only;

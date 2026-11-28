@@ -28,6 +28,9 @@ pub const SCHEMA_VERSION: u32 = 2;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations/state");
 
+// The one table outside the MAC, as its migration makes it.
+const LAST_SYNCED: &str = "CREATE TABLE last_synced (id INTEGER PRIMARY KEY CHECK (id = 0), at_ms INTEGER NOT NULL)";
+
 fn io(error: impl std::fmt::Display) -> StateError {
     StateError::Io {
         detail: error.to_string(),
@@ -237,6 +240,7 @@ async fn check_schema(pool: &SqlitePool) -> Result<(), StateError> {
     for (kind, name, statement) in objects {
         let expected = match kind.as_str() {
             "table" if name == "_sqlx_migrations" => true,
+            "table" if name == "last_synced" => statement.as_deref() == Some(LAST_SYNCED),
             "table" => Table::SYNC.into_iter().chain(Table::KEY).any(|table| {
                 table.name() == name
                     && statement.as_deref()
@@ -374,6 +378,24 @@ impl StateStore for SqliteState {
                 detail: "the WAL could not be checkpointed whole".to_owned(),
             });
         }
+        Ok(())
+    }
+
+    async fn last_synced_ms(&self) -> Result<Option<i64>, StateError> {
+        sqlx::query_scalar("SELECT at_ms FROM last_synced WHERE id = 0")
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(sql)
+    }
+
+    async fn set_last_synced_ms(&self, at_ms: i64) -> Result<(), StateError> {
+        sqlx::query(
+            "INSERT INTO last_synced (id, at_ms) VALUES (0, ?) ON CONFLICT (id) DO UPDATE SET at_ms = excluded.at_ms",
+        )
+        .bind(at_ms)
+        .execute(&self.pool)
+        .await
+        .map_err(sql)?;
         Ok(())
     }
 }

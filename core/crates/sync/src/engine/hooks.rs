@@ -1,5 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+
+use tablepro_keys::encoding::KeyDeviceId;
 
 use super::scheduler::Wake;
 use crate::api::control::PassReason;
@@ -33,6 +35,8 @@ struct HookState {
     notices: Vec<KeyNotice>,
     // What the key state read after the last pass.
     keys: Option<KeyState>,
+    // The key devices the account certifies, as the last pass left them.
+    roster: Option<BTreeSet<KeyDeviceId>>,
 }
 
 impl std::fmt::Debug for EngineHooks {
@@ -102,6 +106,18 @@ impl EngineHooks {
         let mut state = self.state();
         let changed = state.keys.as_ref() != Some(&keys);
         state.keys = Some(keys);
+        drop(state);
+        if changed {
+            self.keys_changed();
+        }
+    }
+
+    // Another device approved or removed elsewhere moves the account's devices with no flow here, and the app hears
+    // that as a key change, so a list of them reads again before the next pass.
+    pub fn read_roster(&self, roster: BTreeSet<KeyDeviceId>) {
+        let mut state = self.state();
+        let changed = state.roster.as_ref().is_some_and(|held| *held != roster);
+        state.roster = Some(roster);
         drop(state);
         if changed {
             self.keys_changed();
