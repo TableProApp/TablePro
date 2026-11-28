@@ -16,6 +16,10 @@ enum ConnectionEditorSaveError: Error, Equatable, LocalizedError {
     case recordMissing
     case keychainWriteFailed
     case recordWriteFailed
+    // A Team Library edit the team refused, worded as the publish words it.
+    case teamPublish(String)
+    // A Team Library edit is on its way; the window closes once the team takes it.
+    case teamPublishInFlight
 
     var errorDescription: String? {
         switch self {
@@ -29,6 +33,10 @@ enum ConnectionEditorSaveError: Error, Equatable, LocalizedError {
             return String(localized: "Could not save this connection's passwords to the Keychain. Your changes were not saved.")
         case .recordWriteFailed:
             return String(localized: "Could not save the connection. Check disk space and permissions, then try again.")
+        case .teamPublish(let reason):
+            return reason
+        case .teamPublishInFlight:
+            return String(localized: "Publishing to the team library…")
         }
     }
 }
@@ -44,6 +52,9 @@ extension ConnectionEditorStore {
     @discardableResult
     func save(connect: Bool = false) -> Result<DatabaseConnection, ConnectionEditorSaveError> {
         revealAllIssues()
+        if let teamCopy {
+            return saveTeamCopy(teamCopy)
+        }
         switch performSave() {
         case .success(let saved):
             saveError = nil

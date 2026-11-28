@@ -683,14 +683,25 @@ final class WelcomeViewModel: ObservableObject {
     }
 
     func connectToSharedConnection(_ shared: WelcomeSharedConnection) {
-        let connection = shared.databaseConnection()
         Task {
+            let connection = await signInReady(shared)
             do {
                 try await TabRouter.shared.openTransientConnection(connection)
             } catch {
                 handleConnectError(error, connection: connection)
             }
         }
+    }
+
+    // A team row signs in with what the team's envelopes hold for where it points now, read at each connect so a
+    // password a teammate changed since is the one used.
+    private func signInReady(_ shared: WelcomeSharedConnection) async -> DatabaseConnection {
+        guard case .team(let row) = shared, let team = TeamLibrary.shared.content.connection(rowID: row.id) else {
+            return shared.databaseConnection()
+        }
+        let secrets = await TeamLibrary.shared.secrets(for: team) ?? [:]
+        storage.setSharedRowSecrets(secrets, for: row.id)
+        return row.sharedCopy(from: .teamLibrary, holdsPassword: secrets[.password] != nil)
     }
 
     private static func buildTeamLibraryConnections() -> [DatabaseConnection] {

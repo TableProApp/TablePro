@@ -417,3 +417,66 @@ fn an_item_s_writer_is_replaced_by_the_next_pull_and_goes_with_the_item() {
     assert_eq!(held, [writer("Grace", 2)]);
     assert!(store.local_blocking("team_a").expect("read").writers.is_empty());
 }
+
+fn envelope(id: &str, kv: u32) -> TeamLibraryEnvelope {
+    TeamLibraryEnvelope {
+        id: id.to_owned(),
+        fields: json!({"suite": "tp1", "kv": kv, "nonce": "bm9uY2U", "ct": "Y3Q"}),
+    }
+}
+
+#[test]
+fn a_team_s_sealed_envelopes_round_trip_keep_the_team_and_tell_the_journal_nothing() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let store = TeamLibraryStore::new(&paths(&root), owner("o", "a"));
+    let journal = Arc::new(Recording::default());
+    store.set_journal(Some(journal.clone()));
+    let id = "library_connection/c1/password";
+
+    store
+        .put_envelopes_blocking("team_a", vec![envelope(id, 1)])
+        .expect("put");
+    let first = store
+        .team_blocking("team_a")
+        .expect("read")
+        .expect("a team of envelopes alone");
+    store
+        .put_envelopes_blocking("team_a", vec![envelope(id, 2)])
+        .expect("replaced");
+    let second = store.team_blocking("team_a").expect("read").expect("team");
+    let refused = store.put_envelopes_blocking(
+        "team_a",
+        vec![TeamLibraryEnvelope {
+            id: id.to_owned(),
+            fields: json!("plaintext"),
+        }],
+    );
+    store
+        .remove_envelopes_blocking("team_a", &[id.to_owned()])
+        .expect("removed");
+
+    assert_eq!(first.envelopes, vec![envelope(id, 1)]);
+    assert!(first.items.is_empty());
+    assert_eq!(second.envelopes, vec![envelope(id, 2)]);
+    assert!(matches!(refused, Err(StorageError::Schema(_))));
+    assert!(store.team_blocking("team_a").expect("read").is_none());
+    assert!(journal.take().is_empty());
+}
+
+#[test]
+fn a_file_without_envelopes_reads_as_none_and_a_team_that_leaves_takes_them() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let store = TeamLibraryStore::new(&paths(&root), owner("o", "a"));
+    store
+        .put_items_blocking("team_a", vec![item(TeamLibraryKind::Connection, "c1", "Shop")])
+        .expect("put");
+    let written = std::fs::read_to_string(store.path()).expect("file");
+    store
+        .put_envelopes_blocking("team_a", vec![envelope("library_connection/c1/password", 1)])
+        .expect("put");
+
+    store.remove_team_blocking("team_a").expect("left the team");
+
+    assert!(!written.contains("envelopes"));
+    assert!(store.teams_blocking().expect("teams").is_empty());
+}

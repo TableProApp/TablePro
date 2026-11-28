@@ -717,6 +717,7 @@ impl DeviceFlows for KeyLog {
             .map(|key_device| AccountDevice {
                 key_device: *key_device,
                 device: None,
+                requested_by: None,
                 name: None,
                 platform: None,
                 added_at_us: None,

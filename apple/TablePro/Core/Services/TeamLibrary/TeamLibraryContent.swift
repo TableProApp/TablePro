@@ -9,6 +9,8 @@ import TableProFFI
 internal struct TeamLibraryTeam: Equatable, Identifiable, Sendable {
     let id: String
     let name: String
+    // False when the team's policy turns password sync off (core ADR 0051, Policies).
+    var syncsPasswords = true
 }
 
 internal struct TeamLibraryConnection: Equatable, Identifiable, Sendable {
@@ -16,6 +18,9 @@ internal struct TeamLibraryConnection: Equatable, Identifiable, Sendable {
     let id: String
     // Under an id of its own: the team's copy of a connection this Mac published has that connection's.
     let connection: DatabaseConnection
+    let teamID: String
+    // The role the core reports for this account in the team: owners, admins and editors write its library.
+    let canWrite: Bool
 }
 
 internal struct TeamLibraryQuery: Equatable, Identifiable, Sendable {
@@ -111,7 +116,12 @@ internal struct TeamLibraryContent: Equatable, Sendable {
                 switch item.kind {
                 case .connection:
                     if let connection = Self.connection(item, id: id) {
-                        connections[id] = TeamLibraryConnection(id: id, connection: connection)
+                        connections[id] = TeamLibraryConnection(
+                            id: id,
+                            connection: connection,
+                            teamID: team.teamId,
+                            canWrite: team.canWrite
+                        )
                     }
                 case .query:
                     guard let query = Self.decode(TeamLibraryQueryData.self, item) else { continue }
@@ -138,6 +148,10 @@ internal struct TeamLibraryContent: Equatable, Sendable {
                 return left < right
             }
             .map(\.query)
+    }
+
+    func connection(rowID: UUID) -> TeamLibraryConnection? {
+        connections.first { $0.connection.id == rowID }
     }
 
     // The server leaves the writer out when it names no one to this account.

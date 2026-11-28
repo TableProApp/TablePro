@@ -150,9 +150,10 @@ struct TeamKeysPresentationTests {
         #expect(TeamCodeComparison.settled(after: .matches, reading: .unreadable) == .unreadable)
     }
 
-    @Test("Each secret kind reads by its name, a driver's own by that driver's label")
+    @Test("Each secret kind a team envelope carries reads by its name, a driver's own by that driver's label")
     func credentialsToRotate() {
-        #expect(TeamKeysPresentation.secretName("ssh_key_passphrase") { _ in nil } == String(localized: "SSH key passphrase"))
+        #expect(TeamKeysPresentation.secretName("ssh_password") { _ in nil } == String(localized: "SSH password"))
+        #expect(TeamKeysPresentation.secretName("ssh_totp_secret") { _ in nil } == String(localized: "SSH one-time code secret"))
         #expect(TeamKeysPresentation.secretName("plugin.awsSecretKey") { $0 == "awsSecretKey" ? "Secret Access Key" : nil } == "Secret Access Key")
         #expect(TeamKeysPresentation.secretName("plugin.other") { _ in nil } == String(localized: "Secret"))
     }

@@ -10,7 +10,7 @@ use tablepro_records::record_id::library_ids_match;
 use tablepro_storage::{TeamLibraryCopy, TeamLibraryKind, TeamLibraryRef};
 
 use super::super::{ServiceSync, Session, begin};
-use super::plan::{Planned, TeamView, kind_of, same_item};
+use super::plan::{Planned, TeamView, kind_of, same_item, secret_targets};
 use super::unsent::{Unsent, settled};
 use super::writes;
 use crate::adapters::conflict::{contested, overlay};
@@ -20,13 +20,15 @@ use crate::api::error::SyncError;
 use crate::api::ids::{KindName, RecordKey, ScopeName};
 use crate::api::scopes::ScopeInfo;
 use crate::api::state::{ConflictRow, Row, RowKey, RowRange, Table};
-use crate::api::team_library::{TeamLibraryError, TeamPublish, UnsentState};
+use crate::api::team_library::{TeamConnection, TeamLibraryError, TeamPublish, UnsentState};
 
 impl ServiceSync {
+    // `secrets` names the connections whose secrets go up as team envelopes; a removed connection's go with it.
     pub(super) async fn publish(
         &self,
         team: TeamId,
         plan: impl FnOnce(&TeamView<'_>) -> Vec<Planned> + Send,
+        secrets: &[TeamConnection],
     ) -> Result<TeamPublish, SyncError> {
         let scope = ScopeName::Team(team);
         self.signed_in()?;
@@ -38,18 +40,48 @@ impl ServiceSync {
         let items = self.team_items(scope).await?;
         let bases = self.team_bases(scope).await?;
         let local = self.team_local(scope).await?;
-        let planned = plan(&TeamView::new(&items, &bases, &local));
+        let view = TeamView::new(&items, &bases, &local);
+        let targets = secret_targets(&view, secrets);
+        let planned = plan(&view);
+        let removed: Vec<String> = planned
+            .iter()
+            .filter_map(|planned| match planned {
+                Planned::Delete {
+                    kind: TeamLibraryKind::Connection,
+                    id,
+                } => Some(id.clone()),
+                _ => None,
+            })
+            .collect();
+        // Sealed before the policy read is taken: the keys answer from the state file alone.
+        let envelopes = self.envelope_writes(scope, &info, targets, &removed).await?;
         let read = self.policy_read().await?;
         self.write_planned(scope, &planned).await?;
+        self.write_envelopes(scope, &envelopes).await?;
         drop(read);
         drop(session);
-        if planned.is_empty() {
-            return Ok(TeamPublish::default());
+        if planned.is_empty() && envelopes.is_empty() {
+            return Ok(TeamPublish {
+                secrets_left_out: envelopes.left_out,
+                ..TeamPublish::default()
+            });
         }
         let second = self.run_pass(PassReason::Person).await;
         let _session = self.session.lock().await;
         let unsent = self.team_diff(scope).await?;
-        Ok(outcome(&planned, &unsent, &info, second.err()))
+        let waiting = self.envelopes_waiting(scope, &envelopes).await?;
+        let mut publish = outcome(&planned, &unsent, &info, second.err());
+        publish.edits = publish
+            .edits
+            .saturating_add(u32::try_from(envelopes.count()).unwrap_or(u32::MAX));
+        publish.unsent = publish
+            .unsent
+            .saturating_add(u32::try_from(waiting).unwrap_or(u32::MAX));
+        if waiting > 0 && publish.problem.is_none() {
+            publish.problem = self.envelope_refusal(scope, &envelopes).await?;
+        }
+        publish.secrets_left_out = envelopes.left_out;
+        Ok(publish)
     }
 
     // The team as the scopes body has it, when this account writes its library and it was pulled at least once: an
@@ -313,5 +345,6 @@ fn outcome(planned: &[Planned], unsent: &[Unsent], info: &ScopeInfo, failed: Opt
         conflicts: u32::try_from(conflicts).unwrap_or(u32::MAX),
         unsent: u32::try_from(mine.len() - conflicts).unwrap_or(u32::MAX),
         problem,
+        secrets_left_out: None,
     }
 }

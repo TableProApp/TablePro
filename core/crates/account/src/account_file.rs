@@ -53,11 +53,15 @@ pub(crate) async fn read(path: &Path) -> Result<Option<AccountFile>, AccountErro
     let file = match serde_json::from_slice::<Stored>(&bytes) {
         Ok(stored) if stored.version == VERSION => stored.file,
         Ok(stored) => {
-            tracing::warn!(version = stored.version, "the account file is of another version");
+            tracing::warn!(
+                code = crate::account_error::STORAGE,
+                version = stored.version,
+                "the account file is of another version"
+            );
             AccountFile::default()
         }
         Err(error) => {
-            tracing::warn!(%error, "the account file does not read");
+            tracing::warn!(code = crate::account_error::STORAGE, %error, "the account file does not read");
             AccountFile::default()
         }
     };

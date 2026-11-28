@@ -13,6 +13,8 @@ internal enum WelcomeMenuCommand: Equatable {
     /// way in. Its own command rather than a mode on Connect, because they land somewhere different.
     case startAgentSession(UUID)
     case edit(UUID)
+    // A Team Library row, edited in the connection form and published back to its team.
+    case editTeamConnection(UUID)
     case rename(LibraryRowID)
     case duplicate(UUID)
     case compareAndSync(UUID)
@@ -76,6 +78,8 @@ internal struct WelcomeMenuContext {
     internal let teamLibraryTeams: [TeamLibraryTeam]
     internal let hasTeamLibraryConflicts: Bool
     internal var projects: [ConnectionProject] = []
+    // Team Library rows of teams whose library this account writes, by the role the core reports.
+    internal var editableTeamConnectionIds: Set<UUID> = []
 }
 
 @MainActor
@@ -246,6 +250,9 @@ internal enum WelcomeMenuSpec {
         var sections = [WelcomeMenuSection([.command(Titles.connect(count: ids.count), .connect(context.rows))])]
         if ids.count == 1, let id = ids.first, context.linkedFolderConnectionIds.contains(id) {
             sections.append(WelcomeMenuSection([.command(Titles.showInFinder, .showInFinder(id))]))
+        }
+        if ids.count == 1, let id = ids.first, context.editableTeamConnectionIds.contains(id) {
+            sections.append(WelcomeMenuSection([.command(Titles.edit, .editTeamConnection(id))]))
         }
         let inTeamLibrary = context.rows.contains { row in
             if case .connection(_, .teamLibrary) = row { return true }

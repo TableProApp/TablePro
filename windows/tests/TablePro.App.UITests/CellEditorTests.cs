@@ -44,10 +44,10 @@ public sealed partial class ShellTests
         var toggled = AppSession.Cell(grid, 0, 1);
         Assert.True(toggled is "0" or "false", toggled);
 
-        // Enter on a NULL boolean makes it true.
+        // Enter on a NULL boolean makes it true; a boolean the engine stores as an integer shows that as 1.
         app.Click(CellOf(grid, 1, 1));
         app.Chord(() => ItemStatusOf(grid, 1, 1) == "edited", VirtualKeyShort.RETURN);
-        Assert.Equal("true", app.WaitForCell(grid, 1, 1, value => value == "true"));
+        Assert.Equal("1", app.WaitForCell(grid, 1, 1, value => value == "1"));
         Assert.Null(GridEditor(grid));
         app.Screenshot("150-cell-boolean-toggled");
 

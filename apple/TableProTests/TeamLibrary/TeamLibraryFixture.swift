@@ -27,6 +27,9 @@ final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @u
     private var teamReadGate: AsyncGate?
     private var passGate: AsyncGate?
     private(set) var connectionPublishes: [(team: String, connections: [LibraryConnectionRecord])] = []
+    private(set) var connectionEdits: [(team: String, connection: LibraryConnectionRecord, secrets: [TeamSecretArg]?)] = []
+    private var heldSecrets: [String: [TeamSecretArg]] = [:]
+    private var secretsFailure: CoreError?
     private(set) var queryPublishes: [(team: String, folders: [TeamFolderArg], queries: [TeamQueryArg])] = []
     private(set) var discards: [String?] = []
     private(set) var deletes = 0
@@ -46,6 +49,15 @@ final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @u
             if let statuses { self.statuses = statuses }
             if let unsent { unsentEdits = unsent }
         }
+    }
+
+    // What the team's envelopes open to for one connection id, as the core answers it.
+    func hold(secrets: [TeamSecretArg], for connectionId: String) {
+        state.withLock { heldSecrets[connectionId] = secrets }
+    }
+
+    func failSecretReads(with error: CoreError?) {
+        state.withLock { secretsFailure = error }
     }
 
     func answerPublishes(with answer: Result<TeamPublishInfo, CoreError>) {
@@ -120,6 +132,33 @@ final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @u
         return try state.withLock {
             connectionPublishes.append((teamId, connections))
             return try publishAnswer.get()
+        }
+    }
+
+    func publishTeamConnectionEdit(
+        expectedOwner: TeamLibraryOwnerArg,
+        teamId: String,
+        connection: LibraryConnectionRecord,
+        secrets: [TeamSecretArg]?
+    ) async throws -> TeamPublishInfo {
+        try check(expectedOwner)
+        try signedIn()
+        return try state.withLock {
+            connectionEdits.append((teamId, connection, secrets))
+            return try publishAnswer.get()
+        }
+    }
+
+    func teamConnectionSecrets(
+        expectedOwner: TeamLibraryOwnerArg,
+        teamId: String,
+        connectionId: String
+    ) async throws -> [TeamSecretArg] {
+        try check(expectedOwner)
+        try signedIn()
+        return try state.withLock {
+            if let secretsFailure { throw secretsFailure }
+            return heldSecrets[connectionId] ?? []
         }
     }
 

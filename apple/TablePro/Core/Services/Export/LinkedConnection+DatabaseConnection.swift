@@ -22,11 +22,11 @@ internal extension LinkedConnection {
 }
 
 internal extension DatabaseConnection {
-    // A linked folder's or a team's row is never saved, so nothing it came with holds its password.
+    // A linked folder's or a team's row is never saved, so it asks for its password unless the team's envelopes held one.
     @MainActor
-    func sharedCopy(from origin: ConnectionOrigin) -> DatabaseConnection {
+    func sharedCopy(from origin: ConnectionOrigin, holdsPassword: Bool = false) -> DatabaseConnection {
         var copy = self
-        copy.promptForPassword = Self.signsInWithPassword(copy)
+        copy.promptForPassword = !holdsPassword && Self.signsInWithPassword(copy)
         copy.origin = origin
         return copy
     }

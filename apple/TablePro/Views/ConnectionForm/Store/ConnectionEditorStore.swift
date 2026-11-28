@@ -18,6 +18,8 @@ final class ConnectionEditorStore: ObservableObject {
     enum Request {
         case edit(connectionId: UUID)
         case new(type: DatabaseType?, parsedURL: ParsedConnectionURL?)
+        // Nil when the copy was not staged, which reads as a record that is gone.
+        case editTeamCopy(TeamCopyTarget?)
     }
 
     enum BinaryDetection: Equatable {
@@ -51,6 +53,9 @@ final class ConnectionEditorStore: ObservableObject {
     let managedPolicy: any ManagedPolicyReading
     let scope: ConnectionScope
     let approvalStores: [ConnectionApprovalStore]
+    let teamLibrary: TeamLibrary
+    // Set for a Team Library connection, whose Save publishes to its team.
+    let teamCopy: TeamCopyTarget?
 
     // Written only through update(_:), the edit methods and the binding helpers, which keep everything below in step.
     @Published var draft: ConnectionDraft
@@ -77,6 +82,7 @@ final class ConnectionEditorStore: ObservableObject {
     // Made once per presentation: the sheet saves, retries and leases Test Source's user under this id.
     @Published var credentialProfileToSave: CredentialProfile?
     @Published var saveError: ConnectionEditorSaveError?
+    @Published var isPublishingTeamCopy = false
     @Published var deleteError: ConnectionEditorDeleteError?
 
     @Published var cloudflaredDetection: BinaryDetection = .notChecked
@@ -127,10 +133,12 @@ final class ConnectionEditorStore: ObservableObject {
         cloudSQLProxyDownload: CloudSQLProxyDownload = .shared,
         managedPolicy: any ManagedPolicyReading = ManagedPolicyReader.shared,
         approvalStores: [ConnectionApprovalStore] = ConnectionApprovalStore.all,
-        scope: ConnectionScope = .shared
+        scope: ConnectionScope = .shared,
+        teamLibrary: TeamLibrary = .shared
     ) {
         self.services = services
         self.scope = scope
+        self.teamLibrary = teamLibrary
         self.recentConnections = recentConnections
         self.listPreferences = listPreferences
         self.cloudSQLProxyDownload = cloudSQLProxyDownload
@@ -142,11 +150,18 @@ final class ConnectionEditorStore: ObservableObject {
         case .edit(let id):
             connectionId = id
             isNew = false
+            teamCopy = nil
             initialType = services.connectionStorage.loadConnection(id: id)?.type ?? .mysql
         case .new(let type, let parsedURL):
             connectionId = UUID()
             isNew = true
+            teamCopy = nil
             initialType = parsedURL?.type ?? type ?? .mysql
+        case .editTeamCopy(let target):
+            connectionId = target?.original.connection.id ?? UUID()
+            isNew = false
+            teamCopy = target
+            initialType = target?.original.connection.type ?? .mysql
         }
         let traits = ConnectionTypeTraits.live(for: initialType, pluginManager: services.pluginManager)
         let draft = ConnectionDraft.new(type: initialType, traits: traits)
@@ -272,7 +287,7 @@ final class ConnectionEditorStore: ObservableObject {
         )
     }
 
-    var canSave: Bool { !isRecordMissing && firstBlockingIssue == nil }
+    var canSave: Bool { !isRecordMissing && !isPublishingTeamCopy && firstBlockingIssue == nil }
 
     var canTest: Bool { !isTesting && !isRecordMissing && !issues.contains(where: \.blocksTest) }
 

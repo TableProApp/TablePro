@@ -86431,7 +86431,13 @@
         }
       }
     },
+    "Everyone on your team will see the host, port, user, database and SSH settings, and can use the passwords, which are encrypted so only the team's members can read them. Publishing again updates the team's copy." : {
+
+    },
     "Everyone on your team will see the host, port, user, database and SSH settings. Publishing again updates the team's copy. Passwords are not included." : {
+
+    },
+    "Everyone on your team will see the host, port, user, database and SSH settings. Publishing again updates the team's copy. Your team doesn't sync passwords, so they are not included." : {
 
     },
     "Everyone on your team will see the host, port, user, database and SSH settings. This replaces the connections and saved queries you published before. Passwords are not included." : {
@@ -152396,6 +152402,9 @@
         }
       }
     },
+    "Passwords go to the team once an owner or admin confirms your keys. Publish again after that." : {
+
+    },
     "Passwords stay in your Keychain. Tunnel through SSH or connect over SSL/TLS." : {
       "localizations" : {
         "fr" : {
@@ -160435,6 +160444,12 @@
           }
         }
       }
+    },
+    "Published without passwords" : {
+
+    },
+    "Publishing to the team library…" : {
+
     },
     "Pull" : {
 
@@ -223696,6 +223711,9 @@
     "The team library refused the change. It may be too large or hold a field the library never stores." : {
 
     },
+    "The team's key is being replaced, so passwords wait. Publish again in a moment." : {
+
+    },
     "The team's owner hasn't set up its keys yet." : {
 
     },
@@ -251864,6 +251882,9 @@
         }
       }
     },
+    "Your role in this team doesn't share passwords." : {
+
+    },
     "Your role on this team doesn't allow this." : {
 
     },
@@ -251970,6 +251991,9 @@
           }
         }
       }
+    },
+    "Your team doesn't sync passwords, so teammates enter their own." : {
+
     },
     "Your team will see the names and SQL of %d saved queries. Queries you published from this Mac and deleted since are removed from the team library." : {
 

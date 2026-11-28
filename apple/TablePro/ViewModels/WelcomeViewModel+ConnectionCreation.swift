@@ -32,6 +32,8 @@ extension WelcomeViewModel {
             activeSheet = .newProject
         case .manageProjects:
             activeSheet = .manageProjects
+        case .resolveTeamLibraryConflicts:
+            presentTeamLibraryConflicts()
         }
     }
 

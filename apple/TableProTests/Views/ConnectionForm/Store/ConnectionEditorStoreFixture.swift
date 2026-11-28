@@ -168,7 +168,7 @@ final class ConnectionEditorStoreFixture {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    func makeStore(_ request: ConnectionEditorStore.Request) -> ConnectionEditorStore {
+    func makeStore(_ request: ConnectionEditorStore.Request, teamLibrary: TeamLibrary = .shared) -> ConnectionEditorStore {
         ConnectionEditorStore(
             request: request,
             services: services,
@@ -176,7 +176,8 @@ final class ConnectionEditorStoreFixture {
             listPreferences: listPreferences,
             managedPolicy: NoManagedPolicy(),
             approvalStores: [envVarApprovals, localCredentialApprovals],
-            scope: scope
+            scope: scope,
+            teamLibrary: teamLibrary
         )
     }
 

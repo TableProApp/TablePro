@@ -107,7 +107,7 @@ impl Account {
         };
         if let Err(error) = refused {
             if let Err(revoked) = oauth.revoke(&refresh).await {
-                tracing::warn!(error = %revoked, "a step-up the account did not take was not revoked");
+                tracing::warn!(code = revoked.code(), error = %revoked, "a step-up the account did not take was not revoked");
             }
             return Err(error);
         }
@@ -120,7 +120,7 @@ impl Account {
         if let Some(previous) = previous
             && let Err(error) = oauth.revoke(&previous).await
         {
-            tracing::warn!(%error, "the sign-in the step-up replaced was not revoked");
+            tracing::warn!(code = error.code(), %error, "the sign-in the step-up replaced was not revoked");
         }
         tracing::info!("stepped up the TablePro account's sign-in");
         let registered = self.register(&mut session).await.map(drop);

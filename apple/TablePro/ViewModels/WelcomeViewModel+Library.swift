@@ -455,7 +455,10 @@ extension WelcomeViewModel {
             canPublishToTeamCatalog: services.featureAccess.isAvailable(.teamCatalog),
             teamLibraryTeams: services.featureAccess.isAvailable(.teamLibrary) ? TeamLibrary.shared.writableTeams : [],
             hasTeamLibraryConflicts: !TeamLibrary.shared.conflicts.conflicts.isEmpty,
-            projects: projects
+            projects: projects,
+            editableTeamConnectionIds: services.featureAccess.isAvailable(.teamLibrary)
+                ? Set(TeamLibrary.shared.content.connections.filter(\.canWrite).map(\.connection.id))
+                : []
         )
     }
 
@@ -477,6 +480,8 @@ extension WelcomeViewModel {
             }
         case .edit(let id):
             WindowOpener.shared.openConnectionForm(editing: id)
+        case .editTeamConnection(let id):
+            editTeamConnection(rowID: id)
         case .rename(let row):
             outlineController?.beginRename(row)
         case .duplicate(let id):

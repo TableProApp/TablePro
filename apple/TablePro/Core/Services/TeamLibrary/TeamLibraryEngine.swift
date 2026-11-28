@@ -19,6 +19,17 @@ nonisolated protocol TeamLibraryEngine: TeamConflictEngine {
         teamId: String,
         connections: [LibraryConnectionRecord]
     ) async throws -> TeamPublishInfo
+    func publishTeamConnectionEdit(
+        expectedOwner: TeamLibraryOwnerArg,
+        teamId: String,
+        connection: LibraryConnectionRecord,
+        secrets: [TeamSecretArg]?
+    ) async throws -> TeamPublishInfo
+    func teamConnectionSecrets(
+        expectedOwner: TeamLibraryOwnerArg,
+        teamId: String,
+        connectionId: String
+    ) async throws -> [TeamSecretArg]
     func publishTeamSavedQueries(
         expectedOwner: TeamLibraryOwnerArg,
         teamId: String,

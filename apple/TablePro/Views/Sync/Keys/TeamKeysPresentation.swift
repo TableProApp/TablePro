@@ -118,9 +118,7 @@ internal enum TeamKeysPresentation {
     static func secretName(_ fieldKey: String, driverLabel: (String) -> String?) -> String {
         switch fieldKey {
         case "password": return String(localized: "Password")
-        case "ssl_key_passphrase": return String(localized: "SSL key passphrase")
         case "ssh_password": return String(localized: "SSH password")
-        case "ssh_key_passphrase": return String(localized: "SSH key passphrase")
         case "ssh_totp_secret": return String(localized: "SSH one-time code secret")
         default:
             guard fieldKey.hasPrefix("plugin.") else { return String(localized: "Secret") }

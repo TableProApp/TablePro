@@ -94,6 +94,11 @@ impl TeamFlows for KeyService {
         self.apply_team(arrival).await
     }
 
+    async fn team_writing_version(&self, team: TeamId) -> Result<Version, SyncError> {
+        let _serial = self.serialized().await;
+        self.team_sealing_version(team).await
+    }
+
     async fn seal_team_envelope(
         &self,
         team: TeamId,
@@ -114,6 +119,16 @@ impl TeamFlows for KeyService {
     ) -> Result<OpenedEnvelope, SyncError> {
         let _serial = self.serialized().await;
         self.open_team(team, &envelope, &fields, in_force).await
+    }
+
+    async fn open_held_team_envelope(
+        &self,
+        team: TeamId,
+        envelope: EnvelopeId,
+        fields: Value,
+    ) -> Result<OpenedEnvelope, SyncError> {
+        let _serial = self.serialized().await;
+        self.open_team_held(team, &envelope, &fields).await
     }
 }
 

@@ -6,7 +6,9 @@
 // the engine's lane overrides it.
 
 use async_trait::async_trait;
+use secrecy::{ExposeSecret, SecretString};
 use serde_json::Value;
+use tablepro_records::envelope::SecretKind;
 // The FFI names teams by this type without depending on the keys crate.
 pub use tablepro_keys::encoding::TeamId;
 use tablepro_storage::{TeamLibraryItem, TeamLibraryKind};
@@ -88,6 +90,14 @@ pub trait TeamLibraryControl: Send + Sync {
         let _ = teams;
         unimplemented("sync.import_team_library")
     }
+
+    // The secrets the team keeps for one of its connections, each opened and sealed for the destination the store's
+    // copy names now. A secret sealed for another destination, one this device cannot open, and a kind with no
+    // envelope are left out.
+    async fn team_connection_secrets(&self, team: TeamId, connection: String) -> Result<Vec<TeamSecret>, SyncError> {
+        let _ = (team, connection);
+        unimplemented("sync.team_connection_secrets")
+    }
 }
 
 // The managed policy's word on the server this sign-in reaches (0055), read under the account's gate from a publish's
@@ -123,6 +133,8 @@ pub struct TeamLibraryTeam {
     // None until the first scopes body this run.
     pub role: Option<Role>,
     pub writable: bool,
+    // False only while the team's `password_sync` is off (0051, Policies).
+    pub syncs_passwords: bool,
     pub items: Vec<TeamItem>,
 }
 
@@ -141,11 +153,37 @@ pub struct TeamItemRef {
     pub id: String,
 }
 
-// `settings` is the connection's bundle (`ExportableConnection`); its secret keys never leave the device.
+// `settings` is the connection's bundle (`ExportableConnection`); its secret keys never leave the device. Its secrets
+// go up as team envelopes instead.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TeamConnection {
     pub id: Uuid,
     pub settings: Value,
+    pub secrets: TeamSecrets,
+}
+
+// One secret of a team connection, by the name 0056's envelope table gives it.
+#[derive(Debug, Clone)]
+pub struct TeamSecret {
+    pub kind: SecretKind,
+    pub value: SecretString,
+}
+
+impl PartialEq for TeamSecret {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind && self.value.expose_secret() == other.value.expose_secret()
+    }
+}
+
+impl Eq for TeamSecret {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum TeamSecrets {
+    // The team's envelopes of the connection stay as they are.
+    #[default]
+    Keep,
+    // Every secret the connection signs in with: each kind not named here loses its envelope.
+    Set(Vec<TeamSecret>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -175,6 +213,32 @@ pub struct TeamPublish {
     pub unsent: u32,
     // The pass's error code while edits wait.
     pub problem: Option<String>,
+    // Why the connections went without their secrets, when they did.
+    pub secrets_left_out: Option<SecretsLeftOut>,
+}
+
+// Why a publish wrote no team envelope: the connection still goes up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecretsLeftOut {
+    // The team's `password_sync`, or this device's password sync, is off.
+    PasswordsOff,
+    // This device holds no current team key to seal with: its account is not confirmed yet, the key stopped or a
+    // restart waits for the person's words.
+    NotConfirmed,
+    RotationDue,
+    // The account's role writes no team envelope.
+    Role,
+}
+
+impl SecretsLeftOut {
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::PasswordsOff => "sync.team_library.passwords_off",
+            Self::NotConfirmed => "sync.team_library.not_confirmed",
+            Self::RotationDue => "sync.team_library.rotation_due",
+            Self::Role => "sync.team_library.passwords_role",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -47,6 +47,8 @@ extension ConnectionEditorStore {
             loadedRecord = record
             baselineEdits = ConnectionEditorEngine.edits(draft, traits, originalTraits: originalTraits, context)
             dirtyBaseline = dirtyFingerprint()
+        case .editTeamCopy(let target):
+            loadTeamCopy(target)
         }
         refreshDerivedState()
         loadSSHConfigEntries()
@@ -229,7 +231,8 @@ extension ConnectionEditorStore {
 
     // The baseline stays where load put it: moving it would make every untouched field look edited and revert the change.
     func connectionDidUpdate(_ id: UUID?) {
-        guard !isClosing, !isNew, id == nil || id == connectionId else { return }
+        // A team's copy is never in the library, so the library's changes say nothing about it.
+        guard !isClosing, !isNew, teamCopy == nil, id == nil || id == connectionId else { return }
         if !storage.isLibraryUnreadable, storage.loadConnection(id: connectionId) == nil {
             isRecordMissing = true
             cancelTest()

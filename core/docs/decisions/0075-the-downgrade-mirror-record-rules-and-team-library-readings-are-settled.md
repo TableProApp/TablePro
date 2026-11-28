@@ -1,6 +1,6 @@
 # 0075: The downgrade mirror, record rules and Team Library readings are settled
 
-- **Status**: Accepted; amends 0051, 0052, 0054 and 0061
+- **Status**: Accepted; amends 0051, 0052, 0054 and 0061; credential profile names extended to SSH profiles by 0078
 - **Date**: 2026-11-28
 
 ## Context

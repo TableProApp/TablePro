@@ -201,7 +201,10 @@ impl TableFolderAdapter {
                 (Kind::TableFolder, LocalChange::Put { record_id, fields }) => {
                     match parse_uuid(&record_id).and_then(|id| folder_from_wire(id, &fields)) {
                         Some(folder) => write.folders.push(folder),
-                        None => tracing::warn!("a table folder this build cannot hold was left out"),
+                        None => tracing::warn!(
+                            code = crate::api::error::SyncError::Malformed { what: "table folder" }.code(),
+                            "a table folder this build cannot hold was left out"
+                        ),
                     }
                 }
                 (Kind::TableFolder, LocalChange::Delete { record_id }) => {
@@ -209,7 +212,10 @@ impl TableFolderAdapter {
                 }
                 (_, LocalChange::Put { fields, .. }) => match item_from_wire(&fields) {
                     Some(item) => write.items.push(item),
-                    None => tracing::warn!("a filed table this build cannot hold was left out"),
+                    None => tracing::warn!(
+                        code = crate::api::error::SyncError::Malformed { what: "filed table" }.code(),
+                        "a filed table this build cannot hold was left out"
+                    ),
                 },
                 (_, LocalChange::Delete { record_id }) => write.removed_items.extend(
                     contents
