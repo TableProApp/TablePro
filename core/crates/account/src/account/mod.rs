@@ -1647,17 +1647,54 @@ mod tests {
         );
     }
 
-    // The events logged on this thread, each with its level, its text and its public `code`.
+    // Every event the test process logs, with the thread that logged it, through the one subscriber the process takes.
+    // A scoped one misses an event whose callsite another test's thread reached first, which tracing then caches as
+    // wanted by no one.
     #[derive(Clone, Default)]
-    struct Logged(Arc<std::sync::Mutex<Vec<(tracing::Level, String, Option<String>)>>>);
+    struct Logged(Arc<std::sync::Mutex<Vec<(std::thread::ThreadId, Line)>>>);
 
-    impl tracing::Subscriber for Logged {
-        fn register_callsite(&self, _: &'static tracing::Metadata<'static>) -> tracing::subscriber::Interest {
-            tracing::subscriber::Interest::sometimes()
+    // An event's level, text and public `code`.
+    type Line = (tracing::Level, String, Option<String>);
+
+    impl Logged {
+        fn installed() -> Self {
+            static LOGGED: std::sync::OnceLock<Logged> = std::sync::OnceLock::new();
+            LOGGED
+                .get_or_init(|| {
+                    let logged = Logged::default();
+                    tracing::subscriber::set_global_default(logged.clone()).unwrap();
+                    logged
+                })
+                .clone()
         }
 
-        fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
-            true
+        fn len(&self) -> usize {
+            self.0.lock().unwrap().len()
+        }
+
+        // What this thread logged from `from` on.
+        fn here(&self, from: usize) -> Vec<Line> {
+            let thread = std::thread::current().id();
+            self.0.lock().unwrap()[from..]
+                .iter()
+                .filter(|(logged_on, _)| *logged_on == thread)
+                .map(|(_, line)| line.clone())
+                .collect()
+        }
+    }
+
+    impl tracing::Subscriber for Logged {
+        fn register_callsite(&self, metadata: &'static tracing::Metadata<'static>) -> tracing::subscriber::Interest {
+            if self.enabled(metadata) {
+                tracing::subscriber::Interest::always()
+            } else {
+                tracing::subscriber::Interest::never()
+            }
+        }
+
+        // Only the core's own crates, so the other libraries' trace lines are not kept.
+        fn enabled(&self, metadata: &tracing::Metadata<'_>) -> bool {
+            metadata.target().starts_with("tablepro_")
         }
 
         fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
@@ -1689,10 +1726,10 @@ mod tests {
             }
             let mut fields = Fields::default();
             event.record(&mut fields);
-            self.0
-                .lock()
-                .unwrap()
-                .push((*event.metadata().level(), fields.text, fields.code));
+            self.0.lock().unwrap().push((
+                std::thread::current().id(),
+                (*event.metadata().level(), fields.text, fields.code),
+            ));
         }
 
         fn enter(&self, _: &tracing::span::Id) {}
@@ -1700,43 +1737,35 @@ mod tests {
         fn exit(&self, _: &tracing::span::Id) {}
     }
 
-    // A support log shows only an event's public fields, so the refresh that failed names its code there (E2E r4).
-    #[tokio::test(start_paused = true)]
+    // A support log shows only an event's public fields, so the refresh that failed names its code there (E2E r4). On
+    // the real clock: a paused one jumps ahead while the account's file write runs off the runtime.
+    #[tokio::test]
     async fn a_failed_refresh_logs_its_code_at_warn() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         keep(dir.path(), None).await;
         let account = account(dir.path(), Keyring::holding(Some("refresh")));
-        let mut status = account.status();
-        let logged = Logged::default();
-        let _logging = tracing::subscriber::set_default(logged.clone());
+        let logged = Logged::installed();
+        let from = logged.len();
 
         let running = tokio::spawn({
             let account = account.clone();
             async move { account.run().await }
         });
-        loop {
-            status.changed().await.expect("the account runs");
-            if let AccountStatus::SignedIn(held) = &*status.borrow_and_update()
-                && matches!(held.problem, Some(EntitlementProblem::RefreshFailed(_)))
-            {
-                break;
-            }
-        }
-        let failed = |lines: &[(tracing::Level, String, Option<String>)]| {
+        let failed = |lines: &[Line]| {
             lines
                 .iter()
                 .find(|(_, text, _)| text.contains("the entitlement refresh failed"))
                 .cloned()
         };
-        for _ in 0..100 {
-            if failed(&logged.0.lock().unwrap()).is_some() {
+        for _ in 0..500 {
+            if failed(&logged.here(from)).is_some() {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         running.abort();
 
-        let failed = failed(&logged.0.lock().unwrap()).expect("the failed refresh is logged");
+        let failed = failed(&logged.here(from)).expect("the failed refresh is logged");
         assert_eq!(failed.0, tracing::Level::WARN);
         assert_eq!(failed.2.as_deref(), Some("account.unreachable"));
     }
