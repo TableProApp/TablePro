@@ -415,7 +415,11 @@ impl TabChangeTracker {
                 touched: self.touch(),
             };
             let before = self.deletes.insert(row_key.clone(), after.clone());
-            steps.push(DeleteStep { row_key, before, after });
+            steps.push(DeleteStep {
+                row_key,
+                before,
+                after: Some(after),
+            });
         }
         if !steps.is_empty() {
             undo.push(UndoOp::Delete { steps });
@@ -501,7 +505,7 @@ impl TabChangeTracker {
             }
         } else {
             for step in steps {
-                put(&step.row_key, Some(step.after.clone()));
+                put(&step.row_key, step.after.clone());
             }
         }
         self.delta(steps.iter().map(|step| step.row_key.clone()).collect())
@@ -658,6 +662,34 @@ impl TabChangeTracker {
         delta
     }
 
+    /// Un-delete `keys`: drop their delete marks. The restore is one
+    /// undo step, so a step back marks them again. A row the running save
+    /// is already deleting is left as it is.
+    pub fn restore_rows(&mut self, keys: Vec<RowKey>) -> TrackerDelta {
+        let mut steps = Vec::new();
+        let mut changed = Vec::new();
+        for row_key in keys {
+            if self.row_in_flight(&row_key) {
+                continue;
+            }
+            if let Some(mark) = self.deletes.remove(&row_key) {
+                steps.push(DeleteStep {
+                    row_key: row_key.clone(),
+                    before: Some(mark),
+                    after: None,
+                });
+                changed.push(row_key);
+            }
+        }
+        if !steps.is_empty() {
+            self.push_undo(UndoOp::Delete { steps });
+        }
+        dedup(&mut changed);
+        let delta = self.delta(changed);
+        self.unmark_changed_error_row(&delta);
+        delta
+    }
+
     pub fn cell_overlay(&self, row_key: &RowKey, col: usize) -> CellOverlay {
         CellOverlay {
             pending: self.pending_input(row_key, col),
@@ -706,6 +738,22 @@ impl TabChangeTracker {
                 self.updates
                     .get(&(row_key, col) as &dyn CellKey)
                     .map(|edit| (col, edit.pending.value().cloned().unwrap_or(Value::Null)))
+            })
+            .collect()
+    }
+
+    /// A saved row's pending cell inputs among its first `width`
+    /// columns, in column order, keeping Default and an expression apart
+    /// from a value (unlike `pending_values`), so a draw can tint each.
+    pub fn pending_inputs(&self, row_key: &RowKey, width: usize) -> Vec<(usize, CellInput)> {
+        if self.updates.is_empty() {
+            return Vec::new();
+        }
+        (0..width)
+            .filter_map(|col| {
+                self.updates
+                    .get(&(row_key, col) as &dyn CellKey)
+                    .map(|edit| (col, edit.pending.clone()))
             })
             .collect()
     }
@@ -1274,6 +1322,26 @@ mod tests {
             persisted: Vec::new(),
             drafts,
         })
+    }
+
+    #[test]
+    fn restore_drops_the_delete_mark_and_undo_marks_again() {
+        let mut t = TabChangeTracker::default();
+        let key = rk(&[Value::Int(1)]);
+        delete(&mut t, key.clone(), vec![Value::Int(1)]);
+        assert_eq!(t.row_state(&key), RowState::PendingDelete);
+        assert_eq!(t.pending_count(), 1);
+
+        let delta = t.restore_rows(vec![key.clone()]);
+
+        assert_eq!(delta.changed, vec![key.clone()]);
+        assert_eq!(t.row_state(&key), RowState::Clean);
+        assert_eq!(t.pending_count(), 0);
+
+        t.undo().expect("a restore to undo");
+        assert_eq!(t.row_state(&key), RowState::PendingDelete);
+        t.redo().expect("a restore to redo");
+        assert_eq!(t.row_state(&key), RowState::Clean);
     }
 
     #[test]

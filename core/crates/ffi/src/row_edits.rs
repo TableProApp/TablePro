@@ -1,17 +1,18 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
 use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnKind, ResultColumn, TemporalZone};
 use tablepro_core::dialect::SqlDialect;
-use tablepro_core::dml::BuildSqlError;
 use tablepro_core::edit::{
-    CellInput, EditContext, EditParseError, ResultLock, is_unchanged, new_draft_cell, parse_edit_text,
-    read_only_reason, result_source, result_target, value_for_column,
+    CellInput, EditContext, EditParseError, ResultLock, new_draft_cell, parse_edit_text, read_only_reason,
+    result_source, result_target, value_for_column,
+};
+use tablepro_core::edits::{
+    RowKey, RowState, SaveOutcome, SaveSnapshot, StatementSource, TabChangeTracker, TrackedChanges, TrackerEdit,
+    TrackerRejection, UnknownCause, pk_identity,
 };
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{RowIdentity, TableRef};
-use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, SavePlan, plan_save};
+use tablepro_core::save::{ChangeSet, SavePlan, plan_save};
 use tablepro_core::sql_syntax::StatementAccess;
 use tablepro_core::statement::Statement;
 use tablepro_core::value::same_value;
@@ -34,21 +35,6 @@ pub enum CellEdit {
     Null,
     // The server's value: an insert leaves the column out, an update sets it to DEFAULT.
     Default,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
-pub struct CellChange {
-    pub column: u32,
-    pub edit: CellEdit,
-}
-
-// A row of the page, by its place in the result set the page was read into.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
-pub enum RowEdit {
-    Update { row: u64, cells: Vec<CellChange> },
-    // One cell per column, in the table's order.
-    Insert { cells: Vec<CellEdit> },
-    Delete { row: u64 },
 }
 
 // Why no row of the table, of the page or of the query result can be changed.
@@ -86,7 +72,7 @@ impl From<ResultLock> for EditLock {
     }
 }
 
-// The Linux grid's rules: a saved row's key and a column the server fills are locked, a new row may set its key.
+// The grid's rules: a saved row's key and a column the server fills are locked, a new row may set its key.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct EditColumnInfo {
     pub name: String,
@@ -116,6 +102,58 @@ pub enum EditStart {
     ReadOnly,
 }
 
+// A pending cell as the grid draws it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum PendingKind {
+    Value,
+    Null,
+    Default,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct PendingCell {
+    pub kind: PendingKind,
+    // The whole value as text, empty for NULL and DEFAULT.
+    pub text: String,
+}
+
+// One pending cell of a data row, by its place in the result set.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct OverlayCell {
+    pub row: u64,
+    pub column: u32,
+    pub cell: PendingCell,
+}
+
+// A new row's cells, one per table column, in the table's order.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct OverlayRow {
+    pub cells: Vec<PendingCell>,
+}
+
+// The pending edits over one result set, keyed by place so the grid draws them with no key of its own.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct GridOverlay {
+    pub cells: Vec<OverlayCell>,
+    pub modified_rows: Vec<u64>,
+    pub deleted_rows: Vec<u64>,
+    // New rows after the data rows, oldest first.
+    pub drafts: Vec<OverlayRow>,
+}
+
+// What changed after an edit, so the app updates its buttons without a second call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct PendingSummary {
+    pub pending_count: u64,
+    pub added_rows: u64,
+    pub has_changes: bool,
+    pub can_undo: bool,
+    pub can_redo: bool,
+    // A save may have landed; saving again is refused until the tab is reloaded or the changes discarded.
+    pub outcome_unknown: bool,
+    pub saving: bool,
+}
+
 // One statement of a save, with the values it binds as they would be written, NULL included.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct PlannedStatement {
@@ -131,17 +169,42 @@ pub enum SaveGate {
     Refuse,
 }
 
+// The plan a save would run now, for the confirm sheet and the delete question.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SavePreview {
+    pub statements: Vec<PlannedStatement>,
+    pub gate: SaveGate,
+    // How many rows the save deletes, for the delete question the app asks at every level.
+    pub deletes: u64,
+    pub is_empty: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum RowSaveOutcome {
     Saved { rows: Option<u64> },
-    // Nothing was written. `edit` is the place in the edits of the change the save stopped at, when the engine said.
-    RolledBack { error: BoxedErrorInfo, edit: Option<u32> },
+    // Nothing was written. `row` is the place of the row the save stopped at, when the engine said.
+    RolledBack { error: BoxedErrorInfo, row: Option<u64> },
     // The save may have landed in part or in full; saving again could write it twice.
-    Unknown { error: BoxedErrorInfo, edit: Option<u32> },
+    Unknown { error: BoxedErrorInfo, row: Option<u64> },
 }
 
-// A table tab's rows, or a query result's, as the save sees them: keyed by the primary key, as the Linux tracker keys
-// them.
+// Why the tracker refused a save before anything was sent. The app words it.
+fn rejection_error(rejection: TrackerRejection) -> CoreError {
+    let message = match &rejection {
+        TrackerRejection::OutcomeUnknown => "the last save's outcome is unknown; reload or discard first".to_owned(),
+        TrackerRejection::AlreadySaving => "these changes are already being saved".to_owned(),
+        TrackerRejection::ColumnsNotRead => "the table's columns have not been read yet".to_owned(),
+        TrackerRejection::Build(error) => error.to_string(),
+        TrackerRejection::ColumnsChanged(columns) => {
+            format!("the edits to {} no longer fit the table", columns.join(", "))
+        }
+        TrackerRejection::KeyChanged => "the table's primary key changed after these edits were made".to_owned(),
+    };
+    CoreError::failed(rejection.code(), message)
+}
+
+// A table tab's rows, or a query result's, as the tracker keys them: by the primary key (ADR 0068). The editor holds
+// the pending edits and undo; the app records edits by place, reads the overlay by place, and saves through here.
 #[derive(uniffi::Object)]
 pub struct TableEditor {
     session: Arc<Session>,
@@ -149,8 +212,10 @@ pub struct TableEditor {
     table: TableRef,
     // The columns a save writes, one per column of the rows; a query result's column that writes none is generated.
     columns: Arc<[ColumnInfo]>,
+    identity: RowIdentity,
     lock: Option<EditLock>,
     layout: Layout,
+    tracker: Mutex<TabChangeTracker>,
 }
 
 enum Layout {
@@ -194,14 +259,7 @@ impl TableEditor {
             } else {
                 None
             };
-            Ok(Arc::new(Self {
-                session,
-                tasks,
-                table,
-                columns,
-                lock,
-                layout: Layout::Page,
-            }))
+            Ok(Self::build(session, tasks, table, columns, lock, Layout::Page))
         })
         .await
     }
@@ -220,18 +278,18 @@ impl TableEditor {
         on_runtime(&runtime, async move {
             let read = rows.result_columns();
             let held = Arc::downgrade(rows.store());
-            let locked = |session, tasks, read, lock: EditLock| {
-                Arc::new(Self {
+            let locked = |session, tasks, read: Arc<[ResultColumn]>, lock: EditLock| {
+                Self::build(
                     session,
                     tasks,
-                    table: TableRef::new(None, String::new()),
-                    columns: Arc::from([]),
-                    lock: Some(lock),
-                    layout: Layout::Result {
+                    TableRef::new(None, String::new()),
+                    Arc::from([]),
+                    Some(lock),
+                    Layout::Result {
                         read,
                         rows: held.clone(),
                     },
-                })
+                )
             };
             if session.read_only() {
                 return Ok(locked(session, tasks, read, EditLock::ReadOnlyConnection));
@@ -260,16 +318,48 @@ impl TableEditor {
                     },
                 )
                 .collect();
-            Ok(Arc::new(Self {
+            Ok(Self::build(
                 session,
                 tasks,
-                table: target.table,
+                target.table,
                 columns,
-                lock: None,
-                layout: Layout::Result { read, rows: held },
-            }))
+                None,
+                Layout::Result { read, rows: held },
+            ))
         })
         .await
+    }
+
+    fn build(
+        session: Arc<Session>,
+        tasks: Tasks,
+        table: TableRef,
+        columns: Arc<[ColumnInfo]>,
+        lock: Option<EditLock>,
+        layout: Layout,
+    ) -> Arc<Self> {
+        let identity = pk_identity(&columns);
+        let mut tracker = TabChangeTracker::default();
+        if lock.is_none() {
+            let _ = tracker.set_target(tablepro_core::edits::SaveTarget {
+                table: table.clone(),
+                columns: columns.to_vec(),
+            });
+        }
+        Arc::new(Self {
+            session,
+            tasks,
+            table,
+            columns,
+            identity,
+            lock,
+            layout,
+            tracker: Mutex::new(tracker),
+        })
+    }
+
+    fn tracker(&self) -> MutexGuard<'_, TabChangeTracker> {
+        self.tracker.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     fn column(&self, column: u32) -> Result<&ColumnInfo, CoreError> {
@@ -331,6 +421,13 @@ impl TableEditor {
         Ok(key)
     }
 
+    // The stable key of a data row, read from its primary key so the edit survives a later sort, filter or page.
+    fn row_key(&self, rows: &ResultSet, read: &[ResultColumn], row: u64) -> Result<RowKey, CoreError> {
+        let key = self.key(rows, read, row)?;
+        RowKey::from_pk_values(&key)
+            .ok_or_else(|| CoreError::failed("edit.no_primary_key", "the table has no primary key"))
+    }
+
     fn unreadable_key(&self, rows: &ResultSet, read: &[ResultColumn], row: u64) -> Option<String> {
         self.columns
             .iter()
@@ -354,56 +451,6 @@ impl TableEditor {
             CellEdit::Default => CellInput::Default,
         };
         Ok(input)
-    }
-
-    // In the host's order, which is the order the changes were made, as the Linux tracker keeps it, so a new parent
-    // row saves before the child pointed at it. A row is written once: a deleted row's updates go, one row's updates
-    // merge, later cells winning.
-    fn change_set(
-        &self,
-        dialect: &dyn SqlDialect,
-        rows: &ResultSet,
-        edits: &[RowEdit],
-    ) -> Result<(ChangeSet, Vec<u32>), CoreError> {
-        let read = rows.result_columns();
-        let reads_rows = edits.iter().any(|edit| !matches!(edit, RowEdit::Insert { .. }));
-        if reads_rows {
-            self.check_layout(rows, &read)?;
-        }
-        let deleted: HashSet<u64> = edits
-            .iter()
-            .filter_map(|edit| match edit {
-                RowEdit::Delete { row } => Some(*row),
-                _ => None,
-            })
-            .collect();
-        let mut updates: HashMap<u64, Vec<CellChange>> = HashMap::new();
-        for edit in edits {
-            if let RowEdit::Update { row, cells } = edit {
-                updates.entry(*row).or_default().extend(cells.iter().cloned());
-            }
-        }
-        let mut written = HashSet::new();
-        let mut changes = Vec::with_capacity(edits.len());
-        let mut origins = Vec::with_capacity(edits.len());
-        for (index, edit) in edits.iter().enumerate() {
-            let change = match edit {
-                RowEdit::Delete { row } if written.insert(*row) => Some(RowChange::Delete {
-                    key: self.key(rows, &read, *row)?,
-                }),
-                RowEdit::Update { row, .. } if !deleted.contains(row) && written.insert(*row) => {
-                    let cells = updates.get(row).map(Vec::as_slice).unwrap_or_default();
-                    self.update(dialect, rows, &read, *row, cells)?
-                }
-                RowEdit::Insert { cells } => Some(self.insert(cells)?),
-                RowEdit::Delete { .. } | RowEdit::Update { .. } => None,
-            };
-            if let Some(change) = change {
-                changes.push(change);
-                origins.push(u32::try_from(index).unwrap_or(u32::MAX));
-            }
-        }
-        Ok((ChangeSet { changes }, origins))
     }
 
     fn check_cell(
@@ -436,80 +483,144 @@ impl TableEditor {
         self.input(column, edit, context, read)
     }
 
-    fn update(
-        &self,
-        dialect: &dyn SqlDialect,
-        rows: &ResultSet,
-        read: &[ResultColumn],
-        row: u64,
-        cells: &[CellChange],
-    ) -> Result<Option<RowChange>, CoreError> {
-        let mut assignments: Vec<(usize, CellInput)> = Vec::with_capacity(cells.len());
-        let mut originals: Vec<(usize, Value)> = Vec::with_capacity(cells.len());
-        for cell in cells {
-            let column = self.column(cell.column)?;
-            let index = cell.column as usize;
-            let original = rows
-                .stored_value(row, index)
-                .and_then(|value| value_for_column(&value, &read[index].column_type, &column.column_type));
-            let input = self.check_cell(Some(dialect), column, &cell.edit, false, original.as_ref())?;
-            let unchanged = match (&input, &original) {
-                (CellInput::Value(edited), Some(original)) => is_unchanged(original, edited, &column.column_type),
-                _ => false,
-            };
-            // A later edit of the same cell is the one that counts, also when it puts the value back.
-            assignments.retain(|(position, _)| *position != index);
-            if !unchanged {
-                assignments.push((index, input));
-            }
-            if let Some(original) = original {
-                originals.retain(|(position, _)| *position != index);
-                originals.push((index, original));
-            }
-        }
-        if assignments.is_empty() {
-            return Ok(None);
-        }
-        // A document engine saves an edited number in the type it was read as, which the store keeps.
-        originals.retain(|(position, _)| assignments.iter().any(|(assigned, _)| assigned == position));
-        Ok(Some(RowChange::Update(RowUpdate {
-            key: self.key(rows, read, row)?,
-            assignments,
-            read: originals,
-        })))
+    // The value the row holds in `column` now, read as the catalog's type where the server text is exact.
+    fn stored(&self, rows: &ResultSet, read: &[ResultColumn], row: u64, column: usize) -> Option<Value> {
+        let info = self.columns.get(column)?;
+        rows.stored_value(row, column)
+            .and_then(|value| value_for_column(&value, &read.get(column)?.column_type, &info.column_type))
     }
 
-    fn insert(&self, cells: &[CellEdit]) -> Result<RowChange, CoreError> {
-        if cells.len() != self.columns.len() {
-            return Err(CoreError::failed(
-                "edit.columns_changed",
-                format!(
-                    "a new row has {} cells and the table {} columns",
-                    cells.len(),
-                    self.columns.len()
-                ),
-            ));
+    // The cells a new draft starts with: the server's value where it fills the column, else what a draft holds.
+    fn new_draft(&self) -> Vec<CellInput> {
+        self.columns.iter().map(new_draft_cell).collect()
+    }
+
+    // A copy of `row`: its key and the columns the server computes start as a new row's; the rest copy its value or
+    // its pending edit.
+    fn duplicate_cells(&self, rows: &ResultSet, read: &[ResultColumn], key: &RowKey) -> Vec<CellInput> {
+        let tracker = self.tracker();
+        let row = self.position_of(rows, read, key);
+        self.columns
+            .iter()
+            .enumerate()
+            .map(|(index, column)| {
+                if column.primary_key || !editable_in_new_row(column) {
+                    return new_draft_cell(column);
+                }
+                if let Some(input) = tracker.pending_input(key, index) {
+                    return input;
+                }
+                match row.and_then(|row| self.stored(rows, read, row, index)) {
+                    Some(value) => CellInput::Value(value),
+                    None => new_draft_cell(column),
+                }
+            })
+            .collect()
+    }
+
+    // Where `key` sits in `rows`, by reading each row's primary key; `None` when it is off this page.
+    fn position_of(&self, rows: &ResultSet, read: &[ResultColumn], key: &RowKey) -> Option<u64> {
+        if !matches!(key, RowKey::Persisted(_)) {
+            return None;
         }
-        let mut inputs = Vec::with_capacity(cells.len());
-        for (column, edit) in self.columns.iter().zip(cells) {
-            // SQL Server IDENTITY and PostgreSQL GENERATED ALWAYS refuse a value, so the server fills them.
-            if column.is_auto_increment || column.is_generated {
-                inputs.push(CellInput::Default);
-                continue;
+        (0..rows.row_count()).find(|row| self.row_key(rows, read, *row).is_ok_and(|found| &found == key))
+    }
+
+    fn summary(&self, tracker: &TabChangeTracker) -> PendingSummary {
+        let state = tracker.pending_state();
+        PendingSummary {
+            pending_count: tracker.pending_count() as u64,
+            added_rows: tracker.drafts().len() as u64,
+            has_changes: tracker.pending_count() > 0,
+            can_undo: tracker.can_undo(),
+            can_redo: tracker.can_redo(),
+            outcome_unknown: matches!(state, tablepro_core::edits::PendingState::OutcomeUnknown(_)),
+            saving: matches!(state, tablepro_core::edits::PendingState::Saving),
+        }
+    }
+
+    // The core outcome to settle on, plus the statement the engine stopped at, so the app can focus its row.
+    fn classify(
+        &self,
+        written: Result<WriteReport, OperationError>,
+        resolution: Option<Result<CommitResolution, OperationError>>,
+    ) -> (SaveOutcome, Option<CoreError>, Option<usize>) {
+        let error = match written {
+            Ok(report) => {
+                return (
+                    SaveOutcome::Committed {
+                        rows: report.total_rows(),
+                    },
+                    None,
+                    None,
+                );
             }
-            // A column with no text to type, such as a blob, still takes NULL or the server's value in a new row.
-            let input = match edit {
-                CellEdit::Text { .. } => self.check_cell(None, column, edit, true, None)?,
-                CellEdit::Null | CellEdit::Default => self.input(column, edit, EditContext::InsertDraft, None)?,
-            };
-            inputs.push(input);
+            Err(error) => error,
+        };
+        let info = CoreError::from(&error);
+        let (outcome, step) = match &error {
+            OperationError::Driver(driver) => match driver {
+                DriverError::RolledBack { statement_index, .. }
+                | DriverError::RowGuardFailed { statement_index, .. }
+                | DriverError::GuardUnsupported { statement_index } => {
+                    (SaveOutcome::RolledBack, Some(*statement_index))
+                }
+                DriverError::ReadOnly(_) => (SaveOutcome::RolledBack, None),
+                DriverError::CommitOutcomeUnknown { token, .. } => match resolution {
+                    Some(Ok(CommitResolution::Applied)) => (SaveOutcome::Committed { rows: None }, None),
+                    Some(Ok(CommitResolution::NotApplied)) => (SaveOutcome::RolledBack, None),
+                    _ => (
+                        SaveOutcome::Unknown(UnknownCause::CommitAckLost { token: token.clone() }),
+                        None,
+                    ),
+                },
+                DriverError::PartiallyApplied { statement_index, .. } => (
+                    SaveOutcome::Unknown(UnknownCause::PartiallyApplied),
+                    Some(*statement_index),
+                ),
+                other => match other.category() {
+                    ErrorCategory::Interrupted | ErrorCategory::Timeout | ErrorCategory::ConnectionLost => {
+                        (SaveOutcome::Unknown(UnknownCause::Interrupted), None)
+                    }
+                    _ => (SaveOutcome::RolledBack, None),
+                },
+            },
+            OperationError::Sql(_) | OperationError::Build(_) | OperationError::Browse(_) => {
+                (SaveOutcome::RolledBack, None)
+            }
+            OperationError::Cancelled => (SaveOutcome::Unknown(UnknownCause::Interrupted), None),
+            OperationError::Panicked(_) => (SaveOutcome::Unknown(UnknownCause::Panicked), None),
+            OperationError::Closed => (SaveOutcome::Unknown(UnknownCause::Closed), None),
+        };
+        (outcome, Some(info), step)
+    }
+
+    // The grid place of the statement the save stopped at, from the change's source row.
+    fn failed_row(
+        &self,
+        rows: &ResultSet,
+        read: &[ResultColumn],
+        plan: &SavePlan,
+        changes: &TrackedChanges,
+        statement_index: Option<usize>,
+    ) -> Option<u64> {
+        let change = plan.origin(statement_index?)?;
+        match changes.source(change)? {
+            StatementSource::Insert { draft_id } => {
+                let tracker = self.tracker();
+                let index = tracker.drafts().keys().position(|id| *id == draft_id)?;
+                Some(rows.row_count() + index as u64)
+            }
+            StatementSource::Update { row_key } | StatementSource::Delete { row_key } => {
+                self.position_of(rows, read, &row_key)
+            }
         }
-        Ok(RowChange::Insert { cells: inputs })
     }
 }
 
 #[uniffi::export]
 impl TableEditor {
+    // Read again on each call, since a reconnect can make the connection read-only.
     pub fn lock(&self) -> Option<EditLock> {
         match &self.lock {
             None if self.session.read_only() => Some(EditLock::ReadOnlyConnection),
@@ -617,101 +728,317 @@ impl TableEditor {
             .map(|_| ())
     }
 
-    // The statements the edits save as, at the session's Safe Mode level now. `rows` is the result set the rows were
-    // read into; a cell edited back to its value is left out.
-    pub fn plan(&self, rows: Arc<ResultSet>, edits: Vec<RowEdit>) -> Result<Arc<RowSave>, CoreError> {
+    pub fn pending(&self) -> PendingSummary {
+        let tracker = self.tracker();
+        self.summary(&tracker)
+    }
+
+    // The pending edits laid over `rows`, by place: the grid draws them without a key of its own.
+    pub fn overlay(&self, rows: Arc<ResultSet>) -> GridOverlay {
+        let tracker = self.tracker();
+        let drafts = tracker
+            .drafts()
+            .values()
+            .map(|draft| OverlayRow {
+                cells: draft.cells.iter().map(pending_cell).collect(),
+            })
+            .collect();
+        let read = rows.result_columns();
+        let mut cells = Vec::new();
+        let mut modified_rows = Vec::new();
+        let mut deleted_rows = Vec::new();
+        // Off-page edits have no place here; a column change locks the page, so it shows no overlay but its drafts.
+        if tracker.pending_count() > tracker.drafts().len() && self.check_layout(&rows, &read).is_ok() {
+            let width = self.columns.len();
+            for row in 0..rows.row_count() {
+                let Ok(key) = self.row_key(&rows, &read, row) else {
+                    continue;
+                };
+                if tracker.row_state(&key) == RowState::PendingDelete {
+                    deleted_rows.push(row);
+                    continue;
+                }
+                let pending = tracker.pending_inputs(&key, width);
+                if pending.is_empty() {
+                    continue;
+                }
+                modified_rows.push(row);
+                for (column, input) in pending {
+                    cells.push(OverlayCell {
+                        row,
+                        column: column as u32,
+                        cell: pending_cell(&input),
+                    });
+                }
+            }
+        }
+        GridOverlay {
+            cells,
+            modified_rows,
+            deleted_rows,
+            drafts,
+        }
+    }
+
+    // Records a cell the user committed. A data row is named by its primary key; a new row by its place after the data.
+    pub fn set_cell(
+        &self,
+        rows: Arc<ResultSet>,
+        row: u64,
+        column: u32,
+        edit: CellEdit,
+    ) -> Result<PendingSummary, CoreError> {
+        self.require_unlocked()?;
+        let info = self.column(column)?;
+        let index = column as usize;
+        let read = rows.result_columns();
+        let data_rows = rows.row_count();
+        let dialect = self.session.current_dialect();
+        let tracker_edit = if row < data_rows {
+            self.check_layout(&rows, &read)?;
+            let original = self.stored(&rows, &read, row, index);
+            let value = self.check_cell(dialect.as_deref(), info, &edit, false, original.as_ref())?;
+            let row_key = self.row_key(&rows, &read, row)?;
+            TrackerEdit::Cell {
+                row_key,
+                col: index,
+                original: original.unwrap_or(Value::Null),
+                value,
+            }
+        } else {
+            let draft_id = self
+                .tracker()
+                .drafts()
+                .get_index((row - data_rows) as usize)
+                .map(|(id, _)| *id)
+                .ok_or_else(|| CoreError::failed("edit.out_of_range", format!("no new row at {row}")))?;
+            let input = self.check_cell(dialect.as_deref(), info, &edit, true, None)?;
+            TrackerEdit::DraftCell {
+                draft_id,
+                col: index,
+                input,
+            }
+        };
+        let mut tracker = self.tracker();
+        let _ = tracker.apply(tracker_edit);
+        Ok(self.summary(&tracker))
+    }
+
+    // A new row after the data rows, holding the server's value where it fills the column, else NULL.
+    pub fn insert_row(&self) -> Result<PendingSummary, CoreError> {
+        self.require_unlocked()?;
+        let cells = self.new_draft();
+        let mut tracker = self.tracker();
+        let _ = tracker.apply(TrackerEdit::InsertDrafts { rows: vec![cells] });
+        Ok(self.summary(&tracker))
+    }
+
+    // Each row copied once, in the order given; a data row copies only where its value reads back exactly.
+    pub fn duplicate_rows(&self, rows: Arc<ResultSet>, places: Vec<u64>) -> Result<PendingSummary, CoreError> {
+        self.require_unlocked()?;
+        let read = rows.result_columns();
+        let data_rows = rows.row_count();
+        let mut drafts = Vec::new();
+        for place in places {
+            let key = if place < data_rows {
+                self.check_layout(&rows, &read)?;
+                self.row_key(&rows, &read, place)?
+            } else {
+                match self.tracker().drafts().get_index((place - data_rows) as usize) {
+                    Some((id, _)) => RowKey::Draft(*id),
+                    None => continue,
+                }
+            };
+            drafts.push(self.duplicate_cells(&rows, &read, &key));
+        }
+        let mut tracker = self.tracker();
+        let _ = tracker.apply(TrackerEdit::InsertDrafts { rows: drafts });
+        Ok(self.summary(&tracker))
+    }
+
+    // A new row is dropped; a data row is marked for the save to delete, with its edits.
+    pub fn delete_rows(&self, rows: Arc<ResultSet>, places: Vec<u64>) -> Result<PendingSummary, CoreError> {
+        self.require_unlocked()?;
+        let read = rows.result_columns();
+        let data_rows = rows.row_count();
+        let mut persisted = Vec::new();
+        let mut drafts = Vec::new();
+        let mut checked = false;
+        for place in places {
+            if place < data_rows {
+                if !checked {
+                    self.check_layout(&rows, &read)?;
+                    checked = true;
+                }
+                let key = self.row_key(&rows, &read, place)?;
+                let original = (0..self.columns.len())
+                    .map(|index| rows.stored_value(place, index).unwrap_or(Value::Null))
+                    .collect::<Vec<_>>();
+                persisted.push((key, Arc::from(original)));
+            } else if let Some((id, _)) = self.tracker().drafts().get_index((place - data_rows) as usize) {
+                drafts.push(*id);
+            }
+        }
+        let mut tracker = self.tracker();
+        let _ = tracker.apply(TrackerEdit::DeleteRows { persisted, drafts });
+        Ok(self.summary(&tracker))
+    }
+
+    // Un-delete data rows marked for deletion.
+    pub fn restore_rows(&self, rows: Arc<ResultSet>, places: Vec<u64>) -> Result<PendingSummary, CoreError> {
+        self.require_unlocked()?;
+        let read = rows.result_columns();
+        let data_rows = rows.row_count();
+        let mut keys = Vec::new();
+        for place in places.into_iter().filter(|place| *place < data_rows) {
+            if let Ok(key) = self.row_key(&rows, &read, place) {
+                keys.push(key);
+            }
+        }
+        let mut tracker = self.tracker();
+        let _ = tracker.restore_rows(keys);
+        Ok(self.summary(&tracker))
+    }
+
+    pub fn undo(&self) -> PendingSummary {
+        let mut tracker = self.tracker();
+        let _ = tracker.undo();
+        self.summary(&tracker)
+    }
+
+    pub fn redo(&self) -> PendingSummary {
+        let mut tracker = self.tracker();
+        let _ = tracker.redo();
+        self.summary(&tracker)
+    }
+
+    pub fn discard(&self) -> PendingSummary {
+        let mut tracker = self.tracker();
+        let _ = tracker.discard();
+        self.summary(&tracker)
+    }
+
+    // The statements the save would run now, the Safe Mode gate and how many rows it deletes.
+    pub fn preview(&self) -> Result<SavePreview, CoreError> {
         self.require_unlocked()?;
         let dialect = self
             .session
             .current_dialect()
             .ok_or_else(|| CoreError::failed("ffi.not_connected", "the session has no connection"))?;
-        let (changes, origins) = self.change_set(&*dialect, &rows, &edits)?;
-        let identity = pk_identity(&self.columns);
-        let plan = plan_save(&*dialect, &self.table, &self.columns, &identity, &changes).map_err(build_error)?;
-        let level = self.session.safe_mode();
-        Ok(Arc::new(RowSave {
-            session: self.session.clone(),
-            tasks: self.tasks.clone(),
-            table: self.table.clone(),
-            columns: self.columns.clone(),
-            identity,
-            changes,
-            origins,
-            plan,
-            level,
-            started: AtomicBool::new(false),
-        }))
-    }
-}
-
-// One save, which runs only the statements it was planned with.
-#[derive(uniffi::Object)]
-pub struct RowSave {
-    session: Arc<Session>,
-    tasks: Tasks,
-    table: TableRef,
-    columns: Arc<[ColumnInfo]>,
-    identity: RowIdentity,
-    changes: ChangeSet,
-    origins: Vec<u32>,
-    plan: SavePlan,
-    level: SafeModeLevel,
-    started: AtomicBool,
-}
-
-#[uniffi::export]
-impl RowSave {
-    pub fn statements(&self) -> Vec<PlannedStatement> {
-        self.plan
-            .batch
-            .steps
+        let gate = save_gate(self.session.safe_mode());
+        let tracker = self.tracker();
+        let Some((_, changes)) = tracker.preview_save().map_err(rejection_error)? else {
+            return Ok(SavePreview {
+                statements: Vec::new(),
+                gate,
+                deletes: 0,
+                is_empty: true,
+            });
+        };
+        let deletes = changes
+            .changes
+            .changes
             .iter()
-            .map(|step| planned(&step.statement))
-            .collect()
+            .filter(|change| matches!(change, tablepro_core::save::RowChange::Delete { .. }))
+            .count() as u64;
+        let plan =
+            plan_save(&*dialect, &self.table, &self.columns, &self.identity, &changes.changes).map_err(build_error)?;
+        let statements = plan.batch.steps.iter().map(|step| planned(&step.statement)).collect();
+        Ok(SavePreview {
+            statements,
+            gate,
+            deletes,
+            is_empty: plan.batch.steps.is_empty(),
+        })
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.plan.batch.steps.is_empty()
-    }
-
-    // Row changes are writes, so Off saves, Confirm writes asks first and Read only refuses.
-    pub fn gate(&self) -> SaveGate {
-        save_gate(self.level)
-    }
-
-    // Runs the statements shown, planned again on the connection that writes them. `confirmed` says the user answered
-    // Safe Mode's question. Another level than the one planned at, or another plan, refuses before anything is sent.
-    pub async fn run(&self, confirmed: bool, cancel: Option<Arc<CancelToken>>) -> Result<RowSaveOutcome, CoreError> {
-        let planned_gate = self.gate();
+    // Saves the pending changes. `confirmed` answers Safe Mode's question; the tracker settles on the outcome, so a
+    // commit drops the saved rows, a rollback keeps them, and an unknown outcome refuses the next save.
+    pub async fn save(
+        &self,
+        rows: Arc<ResultSet>,
+        confirmed: bool,
+        cancel: Option<Arc<CancelToken>>,
+    ) -> Result<RowSaveOutcome, CoreError> {
+        self.require_unlocked()?;
+        let planned_gate = save_gate(self.session.safe_mode());
+        if planned_gate == SaveGate::Refuse {
+            return Err(lock_error(&EditLock::ReadOnlyConnection));
+        }
         if planned_gate == SaveGate::Confirm && !confirmed {
             return Err(CoreError::failed(
                 "edit.not_confirmed",
                 "Safe Mode asks before this save and it was not answered",
             ));
         }
-        let now = save_gate(self.session.safe_mode());
-        if now == SaveGate::Refuse {
-            return Err(lock_error(&EditLock::ReadOnlyConnection));
-        }
-        if now != planned_gate {
-            return Err(safe_mode_changed());
-        }
-        if self.is_empty() {
-            return Ok(RowSaveOutcome::Saved { rows: Some(0) });
-        }
-        // A second run would write the same rows twice.
-        if self.started.swap(true, Ordering::AcqRel) {
-            return Err(CoreError::failed("edit.already_saved", "this save already ran"));
-        }
+        let dialect = self
+            .session
+            .current_dialect()
+            .ok_or_else(|| CoreError::failed("ffi.not_connected", "the session has no connection"))?;
+        let batch = match self.tracker().begin_save() {
+            Ok(Some(batch)) => batch,
+            Ok(None) => return Ok(RowSaveOutcome::Saved { rows: Some(0) }),
+            Err(rejection) => return Err(rejection_error(rejection)),
+        };
+        let plan = match plan_save(
+            &*dialect,
+            &batch.table,
+            &batch.columns,
+            &self.identity,
+            &batch.changes.changes,
+        ) {
+            Ok(plan) => plan,
+            Err(error) => {
+                // Nothing was sent, so the changes stay as they were.
+                let _ = self.tracker().settle_save(&SaveOutcome::RolledBack, batch.snapshot);
+                return Err(build_error(error));
+            }
+        };
+        let run = self
+            .run_batch(
+                &plan,
+                &batch.table,
+                &batch.columns,
+                &batch.changes.changes,
+                planned_gate,
+                cancel,
+            )
+            .await;
+        let (written, resolution) = match run {
+            Ok(pair) => pair,
+            Err(refused) => {
+                let _ = self.tracker().settle_save(&SaveOutcome::RolledBack, batch.snapshot);
+                return Err(refused);
+            }
+        };
+        Ok(self.finish_save(&rows, written, resolution, &plan, &batch.changes, batch.snapshot))
+    }
+}
+
+type RanBatch = (
+    Result<WriteReport, OperationError>,
+    Option<Result<CommitResolution, OperationError>>,
+);
+
+impl TableEditor {
+    // Runs the plan on the writing lease, planning it again there so a connection replaced since cannot save other SQL
+    // than the user was shown. An `Err` here was refused before anything was sent.
+    async fn run_batch(
+        &self,
+        plan: &SavePlan,
+        table: &TableRef,
+        columns: &[ColumnInfo],
+        change_set: &ChangeSet,
+        planned_gate: SaveGate,
+        cancel: Option<Arc<CancelToken>>,
+    ) -> Result<RanBatch, CoreError> {
         let session = self.session.clone();
         let cancel = token(cancel);
-        let table = self.table.clone();
-        let columns = self.columns.clone();
+        let shown = plan.clone();
         let identity = self.identity.clone();
-        let changes = self.changes.clone();
-        let shown = self.plan.clone();
-        let planned = self.plan.clone();
-        let origins = self.origins.clone();
+        let table = table.clone();
+        let columns = columns.to_vec();
+        let change_set = change_set.clone();
         on_runtime(&self.tasks, async move {
             let gated = session.clone();
             let written = session
@@ -719,21 +1046,19 @@ impl RowSave {
                     OperationKind::Save(WriteKind::RowChanges),
                     &cancel,
                     move |lease, options| {
-                        let (table, columns, identity, changes, shown, gated) = (
+                        let (table, columns, identity, change_set, shown, gated) = (
                             table.clone(),
                             columns.clone(),
                             identity.clone(),
-                            changes.clone(),
+                            change_set.clone(),
                             shown.clone(),
                             gated.clone(),
                         );
                         async move {
-                            // Checked again on the lease, so a level saved while the save waited for it holds.
                             if save_gate(gated.safe_mode()) != planned_gate {
                                 return Ok(Err(safe_mode_changed()));
                             }
-                            let plan = plan_save(&*lease.dialect(), &table, &columns, &identity, &changes)?;
-                            // A connection replaced since the plan can write other SQL than the user was shown.
+                            let plan = plan_save(&*lease.dialect(), &table, &columns, &identity, &change_set)?;
                             if !same_plan(&plan, &shown) {
                                 return Ok(Err(CoreError::failed(
                                     "edit.not_as_planned",
@@ -745,15 +1070,53 @@ impl RowSave {
                     },
                 )
                 .await;
-            let written = match written {
+            let written: Result<WriteReport, OperationError> = match written {
                 Ok(Err(refused)) => return Err(refused),
                 Ok(Ok(report)) => Ok(report),
                 Err(error) => Err(error),
             };
             let resolution = resolve_commit(&session, &written).await;
-            Ok(outcome(written, resolution, &planned, &origins))
+            Ok((written, resolution))
         })
         .await
+    }
+
+    // Settles the tracker on what the save left in the database and words the outcome for the app, with the place of
+    // the row the save stopped at so the grid can scroll to it.
+    fn finish_save(
+        &self,
+        rows: &ResultSet,
+        written: Result<WriteReport, OperationError>,
+        resolution: Option<Result<CommitResolution, OperationError>>,
+        plan: &SavePlan,
+        changes: &TrackedChanges,
+        snapshot: SaveSnapshot,
+    ) -> RowSaveOutcome {
+        let read = rows.result_columns();
+        let (outcome, error, step) = self.classify(written, resolution);
+        let failed = self.failed_row(rows, &read, plan, changes, step);
+        let _ = self.tracker().settle_save(&outcome, snapshot);
+        if let Some(row) = failed
+            && !matches!(outcome, SaveOutcome::Committed { .. })
+            && let Ok(key) = self.row_key(rows, &read, row)
+        {
+            let _ = self.tracker().mark_error_row(key);
+        }
+        match outcome {
+            SaveOutcome::Committed { rows } => RowSaveOutcome::Saved { rows },
+            SaveOutcome::RolledBack => RowSaveOutcome::RolledBack {
+                error: error
+                    .unwrap_or_else(|| CoreError::failed("edit.rolled_back", "the save rolled back"))
+                    .into_info(),
+                row: failed,
+            },
+            SaveOutcome::Unknown(_) => RowSaveOutcome::Unknown {
+                error: error
+                    .unwrap_or_else(|| CoreError::failed("edit.outcome_unknown", "the save outcome is unknown"))
+                    .into_info(),
+                row: failed,
+            },
+        }
     }
 }
 
@@ -762,6 +1125,23 @@ pub(crate) fn save_gate(level: SafeModeLevel) -> SaveGate {
         WriteGate::Run => SaveGate::Run,
         WriteGate::Confirm => SaveGate::Confirm,
         WriteGate::Refuse => SaveGate::Refuse,
+    }
+}
+
+fn pending_cell(input: &CellInput) -> PendingCell {
+    match input {
+        CellInput::Value(Value::Null) => PendingCell {
+            kind: PendingKind::Null,
+            text: String::new(),
+        },
+        CellInput::Value(value) => PendingCell {
+            kind: PendingKind::Value,
+            text: value_to_text(value).unwrap_or_default(),
+        },
+        CellInput::Default | CellInput::Expression(_) => PendingCell {
+            kind: PendingKind::Default,
+            text: String::new(),
+        },
     }
 }
 
@@ -791,17 +1171,6 @@ fn unwritable(index: usize, column: &ResultColumn) -> ColumnInfo {
         partition_scoped: false,
         default: ColumnDefault::None,
         comment: None,
-    }
-}
-
-// The primary key columns in the editor's order, the order a key is read in.
-fn pk_identity(columns: &[ColumnInfo]) -> RowIdentity {
-    RowIdentity::UniqueKey {
-        columns: columns
-            .iter()
-            .filter(|column| column.primary_key)
-            .map(|column| column.name.clone())
-            .collect(),
     }
 }
 
@@ -899,74 +1268,6 @@ pub(crate) async fn resolve_commit(
     Some(resolved)
 }
 
-// As the Linux app reads a save's result: what is in the database now decides.
-fn outcome(
-    written: Result<WriteReport, OperationError>,
-    resolution: Option<Result<CommitResolution, OperationError>>,
-    plan: &SavePlan,
-    origins: &[u32],
-) -> RowSaveOutcome {
-    let error = match written {
-        Ok(report) => {
-            return RowSaveOutcome::Saved {
-                rows: report.total_rows(),
-            };
-        }
-        Err(error) => error,
-    };
-    let info = || CoreError::from(&error).into_info();
-    let edit = |step: usize| plan.origin(step).and_then(|change| origins.get(change).copied());
-    match &error {
-        OperationError::Driver(driver) => match driver {
-            DriverError::RolledBack { statement_index, .. }
-            | DriverError::RowGuardFailed { statement_index, .. }
-            | DriverError::GuardUnsupported { statement_index } => RowSaveOutcome::RolledBack {
-                error: info(),
-                edit: edit(*statement_index),
-            },
-            DriverError::ReadOnly(_) => RowSaveOutcome::RolledBack {
-                error: info(),
-                edit: None,
-            },
-            DriverError::CommitOutcomeUnknown { .. } => match resolution {
-                Some(Ok(CommitResolution::Applied)) => RowSaveOutcome::Saved { rows: None },
-                Some(Ok(CommitResolution::NotApplied)) => RowSaveOutcome::RolledBack {
-                    error: info(),
-                    edit: None,
-                },
-                _ => RowSaveOutcome::Unknown {
-                    error: info(),
-                    edit: None,
-                },
-            },
-            DriverError::PartiallyApplied { statement_index, .. } => RowSaveOutcome::Unknown {
-                error: info(),
-                edit: edit(*statement_index),
-            },
-            other => match other.category() {
-                ErrorCategory::Interrupted | ErrorCategory::Timeout | ErrorCategory::ConnectionLost => {
-                    RowSaveOutcome::Unknown {
-                        error: info(),
-                        edit: None,
-                    }
-                }
-                _ => RowSaveOutcome::RolledBack {
-                    error: info(),
-                    edit: None,
-                },
-            },
-        },
-        OperationError::Sql(_) | OperationError::Build(_) | OperationError::Browse(_) => RowSaveOutcome::RolledBack {
-            error: info(),
-            edit: None,
-        },
-        OperationError::Cancelled | OperationError::Panicked(_) | OperationError::Closed => RowSaveOutcome::Unknown {
-            error: info(),
-            edit: None,
-        },
-    }
-}
-
 fn lock_error(lock: &EditLock) -> CoreError {
     match lock {
         EditLock::ReadOnlyConnection => CoreError::failed("edit.read_only_connection", "the connection is read-only"),
@@ -999,7 +1300,7 @@ fn parse_error(error: EditParseError) -> CoreError {
     CoreError::failed(error.code(), error.to_string())
 }
 
-fn build_error(error: BuildSqlError) -> CoreError {
+fn build_error(error: tablepro_core::dml::BuildSqlError) -> CoreError {
     CoreError::failed(error.code(), error.to_string())
 }
 
@@ -1028,6 +1329,15 @@ mod tests {
             default: ColumnDefault::None,
             comment: None,
         }
+    }
+
+    #[test]
+    fn pending_cell_keeps_default_and_null_apart() {
+        assert_eq!(pending_cell(&CellInput::Value(Value::Null)).kind, PendingKind::Null);
+        assert_eq!(pending_cell(&CellInput::Default).kind, PendingKind::Default);
+        let value = pending_cell(&CellInput::Value(Value::Int(7)));
+        assert_eq!(value.kind, PendingKind::Value);
+        assert_eq!(value.text, "7");
     }
 
     #[test]

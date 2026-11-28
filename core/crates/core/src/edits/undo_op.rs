@@ -44,7 +44,8 @@ pub enum UndoOp {
 pub struct DeleteStep {
     pub row_key: RowKey,
     pub before: Option<DeleteMark>,
-    pub after: DeleteMark,
+    /// `None` for a restore step, which drops the mark its `before` holds.
+    pub after: Option<DeleteMark>,
 }
 
 impl UndoOp {
@@ -114,7 +115,7 @@ impl UndoOp {
                         Some(DeleteStep {
                             row_key: step.row_key.clone(),
                             before: step.before.as_ref().map(delete_mark),
-                            after: delete_mark(&step.after),
+                            after: step.after.as_ref().map(delete_mark),
                         })
                     })
                     .collect::<Option<_>>()?,
