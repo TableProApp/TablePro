@@ -9,22 +9,20 @@ import TableProFFI
 import TableProPluginKit
 import TableProSSHConfig
 
-// What the Mac knows about the values a pulled record names: its profiles, its AI providers and each driver's fields.
+// What the Mac knows about the values a pulled record names: its profiles, its AI providers, each driver's traits as
+// the connection form reads them, and this Mac's copy of a connection.
 internal struct SyncApprovalLookup {
-    struct DriverField: Equatable {
-        let label: String
-        let isSecure: Bool
-    }
-
     var profileName: @MainActor (_ kind: String, _ id: String) -> String?
     var aiProviderName: @MainActor (_ id: String) -> String?
-    // The connection's driver from the record's own type when it carries one, else from this Mac's copy.
-    var driverField: @MainActor (_ recordID: String, _ type: String?, _ fieldID: String) -> DriverField?
+    // Nil for a driver this Mac has no metadata for.
+    var traits: @MainActor (_ type: String) -> ConnectionTypeTraits?
+    var connection: @MainActor (_ recordID: String) -> SyncApprovalConnectionState?
 
     static let none = SyncApprovalLookup(
         profileName: { _, _ in nil },
         aiProviderName: { _ in nil },
-        driverField: { _, _, _ in nil }
+        traits: { _ in nil },
+        connection: { _ in nil }
     )
 
     @MainActor static var live: SyncApprovalLookup {
@@ -41,15 +39,16 @@ internal struct SyncApprovalLookup {
                 AppSettingsManager.shared.ai.providers.first { $0.id.uuidString.caseInsensitiveCompare(id) == .orderedSame }?
                     .displayName
             },
-            driverField: { recordID, type, fieldID in
-                let driver = type ?? UUID(uuidString: recordID).flatMap { id in
-                    ConnectionStorage.shared.loadConnections().first { $0.id == id }?.type.rawValue
-                }
-                guard let driver,
-                      let field = PluginMetadataRegistry.shared.snapshot(for: DatabaseType(rawValue: driver))?
-                      .connection.additionalConnectionFields.first(where: { $0.id == fieldID })
+            traits: { type in
+                let databaseType = DatabaseType(rawValue: type)
+                guard PluginMetadataRegistry.shared.snapshot(for: databaseType) != nil else { return nil }
+                return ConnectionTypeTraits.live(for: databaseType, pluginManager: .shared)
+            },
+            connection: { recordID in
+                guard let id = UUID(uuidString: recordID),
+                      let connection = ConnectionStorage.shared.loadConnections().first(where: { $0.id == id })
                 else { return nil }
-                return DriverField(label: field.label, isSecure: field.isSecure)
+                return SyncApprovalConnectionState(connection)
             }
         )
     }
@@ -98,30 +97,46 @@ internal enum SyncApprovalPresentation {
         among records: [RecordApprovalInfo] = []
     ) -> SyncApprovalItem {
         let kind = record.record.kind
-        let type = record.fields.first { path(of: $0.field, kind: kind) == ["type"] }
-            .flatMap { $0.pulled ?? $0.current }
-            .flatMap { parse($0) as? String }
+        let isConnection = kind == "connection" || kind == "library_connection"
+        // This Mac's copy of a personal connection, with every value the pull brings laid over it. A new record has
+        // only the pulled values; a team copy is the Team Library's, which this lookup does not read.
+        var state = kind == "connection" && !record.newRecord
+            ? lookup.connection(record.record.recordId) ?? SyncApprovalConnectionState()
+            : SyncApprovalConnectionState()
+        for field in record.fields {
+            state.apply(path(of: field.field, kind: kind), field.pulled.flatMap(parse))
+        }
+        var traits: ConnectionTypeTraits?
+        if isConnection, let type = state.type {
+            traits = lookup.traits(type)
+        }
+        let sshProfileResolves = state.sshProfileId.map { lookup.profileName("ssh_profile", $0) != nil } ?? false
         let context = Context(
             kind: kind,
-            recordID: record.record.recordId,
-            type: type,
+            state: state,
+            traits: traits,
             lookup: lookup,
             pendingNames: Dictionary(
                 records.compactMap { other in other.name.map { (other.record.recordId.lowercased(), $0) } },
                 uniquingKeysWith: { first, _ in first }
             )
         )
-        let rows = record.fields
-            .filter { !record.newRecord || setsSomething($0.pulled) }
-            .map { field in
-                let parts = Self.path(of: field.field, kind: kind)
-                return SyncApprovalItem.Row(
-                    id: field.field,
-                    label: label(of: parts, context: context),
-                    from: record.newRecord ? nil : value(field.current, at: parts, context: context),
-                    to: value(field.pulled, at: parts, context: context)
-                )
+        let rows = record.fields.compactMap { field -> SyncApprovalItem.Row? in
+            let parts = Self.path(of: field.field, kind: kind)
+            if record.newRecord, !setsSomething(field.pulled, at: parts, context: context) {
+                return nil
             }
+            if isConnection,
+               !SyncApprovalVisibility.shows(parts, state: state, traits: traits, sshProfileResolves: sshProfileResolves) {
+                return nil
+            }
+            return SyncApprovalItem.Row(
+                id: field.field,
+                label: label(of: parts, context: context),
+                from: record.newRecord ? nil : value(field.current, at: parts, context: context),
+                to: value(field.pulled, at: parts, context: context)
+            )
+        }
         return SyncApprovalItem(
             id: record.record,
             record: record,
@@ -130,7 +145,7 @@ internal enum SyncApprovalPresentation {
             symbolName: symbolName(of: record),
             isNew: record.newRecord,
             isTeam: record.record.scope.hasPrefix("team"),
-            rows: order(rows, kind: kind)
+            rows: distinctLabels(order(rows, kind: kind), kind: kind)
         )
     }
 
@@ -182,8 +197,8 @@ internal enum SyncApprovalPresentation {
 
     private struct Context {
         let kind: String
-        let recordID: String
-        let type: String?
+        let state: SyncApprovalConnectionState
+        let traits: ConnectionTypeTraits?
         let lookup: SyncApprovalLookup
         // Names of the records waiting beside this one, so a profile that arrives with its connection reads by name.
         let pendingNames: [String: String]
@@ -240,7 +255,9 @@ internal enum SyncApprovalPresentation {
         case "type": return String(localized: "Type")
         case "host": return String(localized: "Host")
         case "port": return String(localized: "Port")
-        case "database": return String(localized: "Database")
+        // A file driver keeps its path there, which its form calls File Path.
+        case "database":
+            return context.traits?.connectionMode == .fileBased ? String(localized: "File Path") : String(localized: "Database")
         case "username": return String(localized: "Username")
         case "safe_mode_level": return String(localized: "Safe Mode")
         case "ai_policy": return String(localized: "AI Policy")
@@ -288,7 +305,7 @@ internal enum SyncApprovalPresentation {
             }
         case "additional_fields":
             guard let id = sub else { return verbatim(path) }
-            return context.lookup.driverField(context.recordID, context.type, id)?.label ?? visible(id)
+            return context.traits?.field(id)?.label ?? visible(id)
         default:
             return verbatim(path)
         }
@@ -329,6 +346,21 @@ internal enum SyncApprovalPresentation {
         }
     }
 
+    // Two rows of a record never read alike: a label that repeats also names each row's member, a technical name.
+    private static func distinctLabels(_ rows: [SyncApprovalItem.Row], kind: String) -> [SyncApprovalItem.Row] {
+        let counts = Dictionary(rows.map { ($0.label, 1) }, uniquingKeysWith: +)
+        return rows.map { row in
+            guard counts[row.label, default: 0] > 1 else { return row }
+            let member = visible(path(of: row.id, kind: kind).last ?? row.id)
+            return SyncApprovalItem.Row(
+                id: row.id,
+                label: String(format: String(localized: "%1$@ (%2$@)"), row.label, member),
+                from: row.from,
+                to: row.to
+            )
+        }
+    }
+
     // A key the Mac has no words for came from the pull, so it shows every character it holds, as a value does.
     private static func verbatim(_ path: [String]) -> String {
         visible(path.joined(separator: "."))
@@ -354,7 +386,18 @@ internal enum SyncApprovalPresentation {
 
     // MARK: - Values
 
-    // Nothing to show for a new record: no value, an empty one, or a switch left off.
+    // Nothing to show for a new record: no value, an empty one, or a switch left off. A driver field reads by its value.
+    private static func setsSomething(_ json: String?, at path: [String], context: Context) -> Bool {
+        if path.first == "additional_fields", path.count == 2 {
+            guard let text = SyncApprovalVisibility.entryValue(json.flatMap(parse)), !text.isEmpty else { return false }
+            if case .toggle? = context.traits?.field(path[1])?.fieldType {
+                return text == "true"
+            }
+            return true
+        }
+        return setsSomething(json)
+    }
+
     static func setsSomething(_ json: String?) -> Bool {
         guard let json, let value = parse(json) else { return false }
         switch value {
@@ -376,8 +419,8 @@ internal enum SyncApprovalPresentation {
     }
 
     private static func value(_ json: String?, at path: [String], context: Context) -> SyncApprovalItem.Value {
-        if path.first == "additional_fields", let id = path.dropFirst().first, isSecret(id, json: json, context: context) {
-            return .hidden
+        if path.first == "additional_fields", path.count == 2 {
+            return driverValue(json, id: path[1], context: context)
         }
         guard let json, let parsed = parse(json), !(parsed is NSNull) else { return .notSet }
         let key = isSettings(context.kind) ? path.last ?? "" : path.joined(separator: "/")
@@ -395,15 +438,29 @@ internal enum SyncApprovalPresentation {
         }
     }
 
-    private static func isSecret(_ id: String, json: String?, context: Context) -> Bool {
-        if ConnectionFieldCatalog.trust(of: id) == .secret {
-            return true
+    // In the words the form shows it in: a choice by its label, a switch On or Off, and a field left unset at the
+    // driver's default, which is what the form shows and the connection uses.
+    private static func driverValue(_ json: String?, id: String, context: Context) -> SyncApprovalItem.Value {
+        let field = context.traits?.field(id)
+        let given = SyncApprovalVisibility.entryValue(json.flatMap(parse)).flatMap { $0.isEmpty ? nil : $0 }
+        if isSecret(id, value: given ?? "", field: field) {
+            return .hidden
         }
-        let text = json.flatMap(parse) as? String ?? ""
-        if ConnectionSecretOptions.isSecret(key: id, value: text) {
-            return true
+        guard let text = given ?? field?.defaultValue, !text.isEmpty else { return .notSet }
+        switch field?.fieldType {
+        case .dropdown(let options)?:
+            return .text(visible(options.first { $0.value == text }?.label ?? text))
+        case .toggle?:
+            return .text(text == "true" ? String(localized: "On") : String(localized: "Off"))
+        default:
+            return .text(visible(text))
         }
-        return context.lookup.driverField(context.recordID, context.type, id)?.isSecure == true
+    }
+
+    private static func isSecret(_ id: String, value: String, field: ConnectionField?) -> Bool {
+        ConnectionFieldCatalog.trust(of: id) == .secret
+            || ConnectionSecretOptions.isSecret(key: id, value: value)
+            || field?.isSecure == true
     }
 
     private static func textValue(_ text: String, key: String, context: Context) -> SyncApprovalItem.Value {
