@@ -692,7 +692,11 @@ struct EverySecret(Arc<Mutex<HashMap<(String, String), SecretString>>>);
 impl HostSyncedSecrets for EverySecret {
     fn kinds(&self, parent: SyncedSecretParentTag) -> Vec<String> {
         match parent {
-            SyncedSecretParentTag::Connection => vec!["password".to_owned(), "ssl_key_passphrase".to_owned()],
+            SyncedSecretParentTag::Connection => vec![
+                "password".to_owned(),
+                "ssl_key_passphrase".to_owned(),
+                "password".to_owned(),
+            ],
             SyncedSecretParentTag::SshProfile | SyncedSecretParentTag::CredentialProfile => Vec::new(),
         }
     }

@@ -101,11 +101,18 @@ impl HostKept {
         let kinds = PARENTS
             .iter()
             .map(|(parent, tag)| {
-                let kinds = host
+                // A kind named twice would list its envelope twice, and the server refuses a push that names a
+                // record twice.
+                let mut kinds: Vec<SecretKind> = Vec::new();
+                for secret in host
                     .kinds(*tag)
                     .iter()
                     .filter_map(|name| SecretKind::parse(*parent, name))
-                    .collect();
+                {
+                    if !kinds.contains(&secret) {
+                        kinds.push(secret);
+                    }
+                }
                 (*parent, kinds)
             })
             .collect();
