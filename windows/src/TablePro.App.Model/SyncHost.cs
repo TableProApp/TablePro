@@ -745,4 +745,3 @@ public sealed class SyncHost : IDisposable
         Changed?.Invoke(this, EventArgs.Empty);
     }
 }
-

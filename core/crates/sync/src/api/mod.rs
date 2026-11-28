@@ -9,6 +9,7 @@ pub mod ids;
 pub mod key_flows;
 pub mod legacy;
 pub mod scopes;
+pub mod secrets;
 pub mod state;
 pub mod team_library;
 pub mod transport;
@@ -31,6 +32,7 @@ pub use key_flows::{
 };
 pub use legacy::{LegacyMetadata, LegacyMirror};
 pub use scopes::{ScopeInfo, ScopesAnswer, ScopesBody};
+pub use secrets::{DeviceSecrets, SecretRef};
 pub use state::{Row, RowKey, RowRange, StateFiles, StateStore, StateTxn, Table};
 pub use team_library::{
     FacadeBase, ImportedEdit, SignInGuard, TeamConnection, TeamFolder, TeamItem, TeamItemRef, TeamLibraryControl,

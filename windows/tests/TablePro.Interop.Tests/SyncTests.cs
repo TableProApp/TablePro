@@ -18,7 +18,15 @@ public sealed class SyncTests : IDisposable
     public void Dispose()
     {
         _core.Dispose();
-        Directory.Delete(_directory, recursive: true);
+        try
+        {
+            Directory.Delete(_directory, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Sync opens the history and saved queries' databases, which close on the core's own threads and can
+            // still hold them here on Windows, as HistoryTests finds.
+        }
     }
 
     [Fact]

@@ -10,7 +10,7 @@ use tablepro_sync::adapters::library::{DriverNames, StoreStanding};
 use tablepro_sync::adapters::settings::ConnectionStanding;
 use tablepro_sync::adapters::store_journal::{Listening, StoreJournal};
 use tablepro_sync::api::control::SyncCategories;
-use tablepro_sync::api::{self as sync, StateFiles, TransportError};
+use tablepro_sync::api::{self as sync, DeviceSecrets, StateFiles, TransportError};
 use tablepro_sync::cloudkit::LegacyMarks;
 use tablepro_sync::engine::{JournalObserver, SystemClock};
 use tablepro_sync::service::ServiceMode;
@@ -24,6 +24,7 @@ use super::events::{Signals, forward};
 use super::host::{HostDeviceStore, HostDeviceStoreBridge, HostSettings, HostSettingsBridge};
 use super::legacy::{HostLegacyMirror, LegacyMirrorBridge};
 use super::moves::{PolicyFenced, allowed, hold_to_policy, resume_open_move};
+use super::secrets::{CoreSecrets, HostSyncedSecrets};
 use super::service::{SyncConfig, SyncListener, SyncPlatformTag, SyncService};
 use super::service_records::categories_arg;
 use super::team_library::TeamLibraryHost;
@@ -55,6 +56,8 @@ pub(crate) struct OpenParts {
     pub(crate) session: Option<String>,
     pub(crate) listener: Arc<dyn SyncListener>,
     pub(crate) team_library: Option<TeamLibraryHost>,
+    // The device's secrets as TablePro Sync seals them; None on a Core opened without storage.
+    pub(crate) secrets: Option<Arc<dyn DeviceSecrets>>,
 }
 
 #[uniffi::export]
@@ -64,7 +67,9 @@ impl Core {
     // iCloud runs (core ADR 0054, Providers). TablePro Sync stays bound to the sign-in the account holds at open, so
     // after a sign-in, a sign-out or a switch the app opens it again. The Apple apps pass their CloudKit transport and device store, and the
     // Mac its legacy mirror while the previous stable runs the Swift engine. Windows passes none: the core reaches
-    // Credential Manager itself. Async, since opening a state file reads its anchor from the device store.
+    // Credential Manager itself. `synced_secrets` keeps the secrets of synced records that `HostSecrets` does not
+    // reach, as the Mac's profiles' secrets; with none, only the connections' secrets this Core keeps sync. Async,
+    // since opening a state file reads its anchor from the device store.
     #[expect(
         clippy::too_many_arguments,
         reason = "a UniFFI record cannot carry callback interfaces, so each host service is its own argument"
@@ -77,6 +82,7 @@ impl Core {
         settings: Option<Arc<dyn HostSettings>>,
         device_store: Option<Box<dyn HostDeviceStore>>,
         legacy_mirror: Option<Box<dyn HostLegacyMirror>>,
+        synced_secrets: Option<Box<dyn HostSyncedSecrets>>,
         listener: Box<dyn SyncListener>,
     ) -> Result<Arc<SyncService>, CoreError> {
         let tasks = self.tasks.clone();
@@ -102,6 +108,16 @@ impl Core {
             .clone()
             .zip(account.clone())
             .map(|(paths, account)| TeamLibraryHost { paths, account });
+        let synced_secrets: Option<Arc<dyn HostSyncedSecrets>> = synced_secrets.map(Arc::from);
+        let secrets = self.store.clone().map(|store| {
+            Arc::new(CoreSecrets::new(
+                self.vault(),
+                store,
+                self.writes(),
+                synced_secrets,
+                tasks.clone(),
+            )) as Arc<dyn DeviceSecrets>
+        });
         let mut parts = OpenParts {
             config,
             account,
@@ -123,6 +139,7 @@ impl Core {
             session: None,
             listener: Arc::from(listener),
             team_library,
+            secrets,
         };
         let opener = tasks.clone();
         on_runtime(&opener, async move {
@@ -244,6 +261,7 @@ impl OpenParts {
             standing,
             store_journal,
             team_library: self.team_library.take(),
+            secrets: self.secrets.take(),
         })
     }
 }
