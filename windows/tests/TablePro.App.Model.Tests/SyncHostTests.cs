@@ -286,7 +286,7 @@ public sealed class SyncHostTests
         await host.GetEngineAsync();
         await host.ApplyCategoriesAsync();
 
-        Assert.Contains("categories saved_query,saved_query_folder passwords False", engine.Calls);
+        Assert.Contains("categories saved_query,saved_query_folder passwords True", engine.Calls);
     }
 
     [Fact]

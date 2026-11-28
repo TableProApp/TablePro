@@ -10,8 +10,10 @@ public sealed record SyncSettings
 
     public bool Connections { get; set; } = true;
 
-    // Passwords ride on connection records, so turning Connections off turns them off in the same write.
-    public bool Passwords { get; set; }
+    // Passwords ride on connection records, so turning Connections off turns them off in the same write. On until the
+    // person turns it off, as TablePro Sync seals them end to end by default (core ADR 0044); a server's policy can
+    // still hold them back.
+    public bool Passwords { get; set; } = true;
 
     public bool GroupsAndTags { get; set; } = true;
 
