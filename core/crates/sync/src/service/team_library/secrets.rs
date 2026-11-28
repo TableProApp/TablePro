@@ -50,23 +50,17 @@ impl EnvelopeWrites {
     }
 }
 
-// Whether the copy uses the secret at all: the SSH ones only through a tunnel that is on, the key passphrases only for a
-// key file the copy names, and the TOTP secret only when it asks for a code. A driver's own fields have no store here.
+// Whether the copy uses the secret at all: the SSH ones only through a tunnel that is on, and the TOTP secret only when
+// it asks for a code. A key passphrase never: it opens a key file on the device that published, which a team copy does
+// not name. A driver's own fields have no store here.
 fn applies(kind: &SecretKind, fields: &Value) -> bool {
     let ssh = fields
         .get("sshConfig")
         .filter(|ssh| ssh.get("enabled") == Some(&Value::Bool(true)));
-    let names = |within: Option<&Value>, member: &str| {
-        within
-            .and_then(|within| within.get(member))
-            .and_then(Value::as_str)
-            .is_some_and(|text| !text.trim().is_empty())
-    };
     match kind {
         SecretKind::Password => true,
-        SecretKind::SslKeyPassphrase => names(fields.get("sslConfig"), "clientKeyPath"),
         SecretKind::SshPassword => ssh.is_some(),
-        SecretKind::SshKeyPassphrase => names(ssh, "privateKeyPath"),
+        SecretKind::SslKeyPassphrase | SecretKind::SshKeyPassphrase => false,
         SecretKind::SshTotpSecret => ssh
             .and_then(|ssh| ssh.get("totpMode"))
             .and_then(Value::as_str)
@@ -461,7 +455,11 @@ impl ServiceSync {
             let Some((parent, kind)) = parent_of(envelope) else {
                 continue;
             };
-            if !library_ids_match(parent, &copy.id) || secrets.iter().any(|secret| secret.kind == kind) {
+            // An older build's key passphrase is never opened, as none goes up (`applies`).
+            if !library_ids_match(parent, &copy.id)
+                || secrets.iter().any(|secret| secret.kind == kind)
+                || matches!(kind, SecretKind::SshKeyPassphrase | SecretKind::SslKeyPassphrase)
+            {
                 continue;
             }
             let Ok(id) = EnvelopeId::parse(&envelope.id) else {
@@ -498,7 +496,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_secret_goes_up_only_when_the_copy_uses_it() {
+    fn a_secret_goes_up_only_when_the_copy_uses_it_and_a_key_passphrase_never() {
         let plain = json!({"host": "db"});
         let tunnel = json!({"host": "db", "sshConfig": {"enabled": true, "host": "bastion", "privateKeyPath": "",
             "totpMode": "none"}});
@@ -511,9 +509,9 @@ mod tests {
         assert!(applies(&SecretKind::SshPassword, &tunnel));
         assert!(!applies(&SecretKind::SshKeyPassphrase, &tunnel));
         assert!(!applies(&SecretKind::SshTotpSecret, &tunnel));
-        assert!(applies(&SecretKind::SshKeyPassphrase, &keyed));
+        assert!(!applies(&SecretKind::SshKeyPassphrase, &keyed));
         assert!(applies(&SecretKind::SshTotpSecret, &keyed));
-        assert!(applies(&SecretKind::SslKeyPassphrase, &keyed));
+        assert!(!applies(&SecretKind::SslKeyPassphrase, &keyed));
         assert!(!applies(&SecretKind::SslKeyPassphrase, &plain));
         assert!(!applies(&SecretKind::SshKeyPassphrase, &off));
         assert!(!applies(&SecretKind::Plugin("token".to_owned()), &plain));
