@@ -266,11 +266,11 @@ async fn a_personal_approval_rests_unlisted_and_undecided_while_teams_only() {
         .put(&id(1), json!({"name": "Prod", "host": "db.example.com"}));
     mac.sync().await;
     mini.sync().await;
-    let waiting = mini.sync.approvals().await.unwrap();
+    let waiting = mini.waiting().await;
     let key = RecordKey::new(ScopeName::Personal, Kind::Connection, id(1));
 
     mini.sync.set_mode(ServiceMode::TeamsOnly).await;
-    let resting = mini.sync.approvals().await.unwrap();
+    let resting = mini.waiting().await;
     let seen = waiting.first().map_or([0; 32], |approval| approval.digest);
     let decided = mini
         .sync
@@ -286,7 +286,7 @@ async fn a_personal_approval_rests_unlisted_and_undecided_while_teams_only() {
     assert_eq!(decided.unwrap_err().code(), "sync.not_allowed");
     assert!(held.is_empty(), "{held:?}");
     assert_eq!((status.waiting_approvals, status.held), (0, 0));
-    assert_eq!(mini.sync.approvals().await.unwrap(), waiting);
+    assert_eq!(mini.waiting().await, waiting);
     assert_eq!(mini.connections.get(&id(1)), None);
     assert!(
         mini.rows(RowRange::ScopeKind(

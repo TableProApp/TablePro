@@ -219,13 +219,18 @@ impl SessionRecord {
         Ok(words)
     }
 
-    pub fn confirm(&mut self) -> Result<(), KeysError> {
+    // True when this confirm took the step. A live session already confirmed takes the same confirm again, so a person
+    // who retries after a step that failed past it resumes the session instead of meeting `keys.session`.
+    pub fn confirm(&mut self) -> Result<bool, KeysError> {
         self.require_live()?;
-        if self.state != SessionState::Compared {
-            return Err(KeysError::Session);
+        match self.state {
+            SessionState::Compared => {
+                self.state = SessionState::Confirmed;
+                Ok(true)
+            }
+            SessionState::Confirmed => Ok(false),
+            _ => Err(KeysError::Session),
         }
-        self.state = SessionState::Confirmed;
-        Ok(())
     }
 
     // The person says the words differ: `keys.sas_mismatch`, and the session ends with a `mismatch` cancel.
@@ -702,6 +707,22 @@ mod tests {
         assert_eq!(pair.n.words_differ().code(), "keys.session");
         assert_eq!(pair.n.confirm().unwrap_err().code(), "keys.session");
         assert!(pair.n.live());
+    }
+
+    #[test]
+    fn a_confirm_taken_again_keeps_a_live_session_confirmed_and_an_ended_one_refuses_it() {
+        let mut pair = pair();
+        through_reveal(&mut pair);
+        pair.a.words(&origin(), account()).unwrap();
+
+        let first = pair.a.confirm().unwrap();
+        let again = pair.a.confirm().unwrap();
+        pair.a.approved();
+
+        assert!(first);
+        assert!(!again);
+        assert_eq!(pair.a.state, SessionState::Confirmed);
+        assert_eq!(pair.a.confirm().unwrap_err().code(), "keys.session");
     }
 
     #[test]

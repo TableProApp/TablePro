@@ -26,7 +26,7 @@ use crate::error::{BoxedErrorInfo, CoreError};
 use crate::filter::{self, FilterChoices, TableFilterArg};
 use crate::key_read::KeyReader;
 use crate::library::SafeModeTag;
-use crate::results::ResultSet;
+use crate::results::{GridCopy, ResultSet, copy_as_insert, copy_as_values, copy_in_clause};
 use crate::row_edits::TableEditor;
 use crate::run::{QueryRun, RunListener, RunOutcome, RunSink, RunState, TransactionStateTag};
 use crate::runtime::on_runtime;
@@ -538,6 +538,41 @@ impl DatabaseSession {
     // `caret` and the span count UTF-16 units. Split by the grammar `gate_run` and the driver read the text with.
     pub fn statement_at(&self, sql: String, caret: u32) -> Option<StatementSpan> {
         statement_at::statement_at(&sql, caret, self.session.grammar())
+    }
+
+    // `rows` of `result` under `columns` as INSERT statements for the connected engine, into `schema`.`table`.
+    pub fn copy_result_as_insert(
+        &self,
+        result: Arc<ResultSet>,
+        rows: Vec<u64>,
+        columns: Vec<u32>,
+        schema: Option<String>,
+        table: String,
+    ) -> Result<GridCopy, CoreError> {
+        let dialect = self.session.current_dialect().ok_or_else(not_connected)?;
+        copy_as_insert(&result, &rows, &columns, dialect, schema, &table)
+    }
+
+    // One column's values of `rows` as an IN list in the connected engine's spelling.
+    pub fn copy_result_in_clause(
+        &self,
+        result: Arc<ResultSet>,
+        rows: Vec<u64>,
+        column: u32,
+    ) -> Result<GridCopy, CoreError> {
+        let dialect = self.session.current_dialect().ok_or_else(not_connected)?;
+        copy_in_clause(&result, &rows, column, dialect)
+    }
+
+    // Every value of `rows` under `columns` as one list of the connected engine's literals.
+    pub fn copy_result_as_values(
+        &self,
+        result: Arc<ResultSet>,
+        rows: Vec<u64>,
+        columns: Vec<u32>,
+    ) -> Result<GridCopy, CoreError> {
+        let dialect = self.session.current_dialect().ok_or_else(not_connected)?;
+        copy_as_values(&result, &rows, &columns, dialect)
     }
 
     // What completes at `caret`, in UTF-16 units of `text`, for an editor in `database` (None for the connection's).

@@ -14,6 +14,7 @@ use tablepro_session::runtime::Tasks;
 use tablepro_storage::ConnectionStore;
 use tablepro_sync::SyncError;
 use tablepro_sync::api::ScopeName;
+use tablepro_sync::api::control::{PassReason, SyncControl};
 use tablepro_sync::api::key_flows::{
     Acceptance, AccountFlows, ApprovalFlows, CancelWith, DeviceFlows, LockCause, RemovalReview, ResetFlows,
     ReviewedMember, TeamFlows, TeamKeys,
@@ -606,9 +607,17 @@ impl SyncService {
     }
 
     pub async fn approval_requests(&self) -> Result<Vec<ApprovalRequestInfo>, CoreError> {
-        self.on_keys(move |keys| async move {
-            let requests = keys.approval_requests().await?;
-            Ok(requests.into_iter().map(ApprovalRequestInfo::from).collect())
+        let account = self.names_account();
+        self.on_engine(move |engine| async move {
+            let requests = engine.keys.approval_requests().await?;
+            if requests.is_empty() {
+                return Ok(Vec::new());
+            }
+            let rows = DeviceRows::read(account.as_ref(), engine.binding.as_ref()).await;
+            Ok(requests
+                .into_iter()
+                .map(|request| ApprovalRequestInfo::from(rows.name_request(request)))
+                .collect())
         })
         .await
     }
@@ -640,6 +649,13 @@ impl SyncService {
     pub async fn cancel_approval_session(&self, request: String) -> Result<(), CoreError> {
         let request = request_arg(&request)?;
         self.on_keys(move |keys| async move { keys.cancel_session(request).await })
+            .await
+    }
+
+    // A pass of the engine that holds the account's keys, with no iCloud pass: a key screen asks for one as it opens,
+    // so it shows a device another one approved or removed since this one's last pass (E2E F21).
+    pub async fn sync_keys_now(&self) -> Result<(), CoreError> {
+        self.on_engine(move |engine| async move { engine.sync.sync_now(PassReason::Person).await })
             .await
     }
 

@@ -42,29 +42,38 @@ public sealed record SavedEdits
             return null;
         }
 
-        var planned = edits.ToRowEdits();
+        var overlay = edits.Overlay();
         List<(int Row, SavedRowEdit Edit)> rows = [];
-        for (var index = 0; index < planned.Edits.Count; index++)
+
+        // Modified rows, then deletes, then new rows, each in row order so the file reads the same every time.
+        foreach (var group in overlay.Cells.GroupBy(cell => cell.Row).OrderBy(group => group.Key))
         {
-            var saved = planned.Edits[index] switch
+            if (KeyOf(columns, key, checked((int)group.Key), stored) is { } named)
             {
-                RowEdit.Insert insert => new SavedRowEdit
+                rows.Add((checked((int)group.Key), new SavedRowEdit
                 {
-                    Cells = Named(columns, insert.Cells.Select((cell, column) => new CellChange(column, cell))),
+                    Key = named,
+                    Cells = Named(columns, group.Select(cell => (cell.Column, Edit(cell.Cell)))),
                     Uncertain = uncertain,
-                },
-                RowEdit.Delete delete => KeyOf(columns, key, (int)delete.Row, stored) is { } named
-                    ? new SavedRowEdit { Key = named, Deleted = true, Uncertain = uncertain }
-                    : null,
-                RowEdit.Update update => KeyOf(columns, key, (int)update.Row, stored) is { } named
-                    ? new SavedRowEdit { Key = named, Cells = Named(columns, update.Cells), Uncertain = uncertain }
-                    : null,
-                _ => null,
-            };
-            if (saved is not null)
-            {
-                rows.Add((planned.Rows[index], saved));
+                }));
             }
+        }
+
+        foreach (var deleted in overlay.DeletedRows.OrderBy(row => row))
+        {
+            if (KeyOf(columns, key, checked((int)deleted), stored) is { } named)
+            {
+                rows.Add((checked((int)deleted), new SavedRowEdit { Key = named, Deleted = true, Uncertain = uncertain }));
+            }
+        }
+
+        for (var index = 0; index < overlay.Drafts.Count; index++)
+        {
+            rows.Add((edits.DataRows + index, new SavedRowEdit
+            {
+                Cells = Named(columns, overlay.Drafts[index].Select((cell, column) => (column, Edit(cell)))),
+                Uncertain = uncertain,
+            }));
         }
 
         if (open is not null && Drafted(columns, key, stored, edits, rows, open, uncertain) is { } drafted)
@@ -198,16 +207,24 @@ public sealed record SavedEdits
     private static List<int> KeyColumns(IReadOnlyList<EditColumn> columns) =>
         [.. Enumerable.Range(0, columns.Count).Where(column => columns[column].PrimaryKey)];
 
-    private static Dictionary<string, SavedCell> Named(IReadOnlyList<EditColumn> columns, IEnumerable<CellChange> cells)
+    private static Dictionary<string, SavedCell> Named(
+        IReadOnlyList<EditColumn> columns, IEnumerable<(int Column, CellEdit Edit)> cells)
     {
         var named = new Dictionary<string, SavedCell>(StringComparer.Ordinal);
-        foreach (var cell in cells)
+        foreach (var (column, edit) in cells)
         {
-            named.TryAdd(columns[cell.Column].Name, SavedCell.From(cell.Edit));
+            named.TryAdd(columns[column].Name, SavedCell.From(edit));
         }
 
         return named;
     }
+
+    private static CellEdit Edit(PendingCell cell) => cell.Kind switch
+    {
+        PendingKind.Null => CellEdit.Null.Instance,
+        PendingKind.Default => CellEdit.ServerDefault.Instance,
+        _ => new CellEdit.Text(cell.Text),
+    };
 
     private static Dictionary<string, SavedKeyPart>? KeyOf(
         IReadOnlyList<EditColumn> columns, List<int> key, int row, StoredValueReader stored)

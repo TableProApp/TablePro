@@ -340,13 +340,14 @@ const STANDINGS: [(Standing, &str); 3] = [
     (Standing::Unknown, "unknown"),
 ];
 
-const HELD_REASONS: [(HeldReason, &str); 6] = [
+const HELD_REASONS: [(HeldReason, &str); 7] = [
     (HeldReason::Unreadable, "unreadable"),
     (HeldReason::UnknownKind, "unknown_kind"),
     (HeldReason::AwaitingApproval, "awaiting_approval"),
     (HeldReason::AwaitingDeviceApproval, "awaiting_device_approval"),
     (HeldReason::RefusedInRefill, "refused_in_refill"),
     (HeldReason::Collides, "collides"),
+    (HeldReason::AwaitingStore, "awaiting_store"),
 ];
 
 const VERSION_STATES: [(KeyVersionState, &str); 3] = [
@@ -369,6 +370,11 @@ const COMPARISON_ROLES: [(ComparisonRole, &str); 2] = [
     (ComparisonRole::NewDevice, "new_device"),
     (ComparisonRole::Approver, "approver"),
 ];
+
+// The name the state file keeps a held reason under, which the pass's log names it by too.
+pub(crate) fn held_reason_name(reason: HeldReason) -> &'static str {
+    name_of(&HELD_REASONS, reason)
+}
 
 fn name_of<T: PartialEq + Copy>(table: &[(T, &'static str)], value: T) -> &'static str {
     table

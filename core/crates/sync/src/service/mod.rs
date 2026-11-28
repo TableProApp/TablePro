@@ -21,25 +21,25 @@ use async_trait::async_trait;
 use tablepro_keys::encoding::KeyPurpose;
 use tablepro_records::Kind;
 
-use crate::adapters::approval::Queue;
+use crate::adapters::approval::{self, Queue};
 use crate::adapters::categories::DeviceCategories;
 use crate::adapters::conflict::Conflicts;
 use crate::api::adapter::StoreStamp;
 use crate::api::control::{
     ConflictChoice, HeldRecord, HeldRecordReason, MovePlan, NewIdentityChoice, NewIdentityPlan, PassReason,
-    PendingApproval, SyncCategories, SyncControl, SyncPhase, SyncStatus, TeamConflict,
+    RecordApproval, SyncCategories, SyncControl, SyncPhase, SyncStatus, TeamConflict,
 };
 use crate::api::error::SyncError;
 use crate::api::ids::{EpochId, KindName, RecordKey, ScopeName};
 use crate::api::key_flows::{KeyFlows, KeyState, LockCause};
 use crate::api::scopes::{LineageEpoch, ScopeInfo, ScopesBody};
 use crate::api::state::{
-    ApprovalDecision, KeyVersionState, MovePhase, MoveRow, Provider, Row, RowKey, RowRange, Standing, StateIdentity,
-    StateStore, StateTxn, StoppedCause, StoreRow, StoresKindRow, Table,
+    KeyVersionState, MovePhase, MoveRow, Provider, Row, RowKey, RowRange, Standing, StateIdentity, StateStore,
+    StateTxn, StoppedCause, StoreRow, StoresKindRow, Table,
 };
 use crate::api::transport::{ServiceTransport, TransportError};
 use crate::engine::{
-    Adapters, Clock, EngineEvents, EngineHooks, Fence, Journal, JournalEntry, JournalIds, Pass, StopSignal,
+    Adapters, Clock, EngineEvents, EngineHooks, Fence, Journal, JournalEntry, JournalIds, Pass, StopSignal, Waiting,
 };
 use crate::moves::{Arrival, MoveFence};
 
@@ -102,6 +102,9 @@ pub struct ServiceSync {
     // One pass at a time per state file (0054, Scheduling).
     session: tokio::sync::Mutex<Session>,
     status: Mutex<SyncStatus>,
+    // The values waiting as the app was last told of them, and what the log last said was held or waiting.
+    approvals_mark: Mutex<[u8; 32]>,
+    waiting_logged: Mutex<Waiting>,
     categories: Mutex<DeviceCategories>,
     // The history entries this device keeps, its retention, which a snapshot takes newest first; None takes all.
     history_window: Mutex<Option<u32>>,
@@ -282,12 +285,15 @@ impl ServiceSync {
                 provider: Some(Provider::Service),
                 phase: SyncPhase::Idle,
                 last_pass_ms: None,
+                last_synced_ms: None,
                 problem: None,
                 waiting_approvals: 0,
                 conflicts: 0,
                 held: 0,
                 queued_changes: 0,
             }),
+            approvals_mark: Mutex::new(approval::tally(std::iter::empty()).mark),
+            waiting_logged: Mutex::default(),
             categories: Mutex::new(DeviceCategories::from(&parts.categories)),
             history_window: Mutex::new(None),
             scopes_seen: Mutex::new(Vec::new()),
@@ -460,6 +466,17 @@ impl ServiceSync {
 
     fn status_lock(&self) -> MutexGuard<'_, SyncStatus> {
         self.status.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    // What the state file kept of the last pass that got through, for the status before this run's first one does.
+    pub async fn read_last_synced(&self) {
+        match self.state.last_synced_ms().await {
+            Ok(kept) => {
+                let mut status = self.status_lock();
+                status.last_synced_ms = status.last_synced_ms.max(kept);
+            }
+            Err(error) => tracing::warn!(code = error.code(), "the last sync time was not read"),
+        }
     }
 
     fn set_phase(&self, phase: SyncPhase) {
@@ -653,7 +670,12 @@ impl ServiceSync {
         };
         for adapter in self.adapters.in_scope(ScopeName::Personal) {
             let kind = adapter.kind();
-            for record in adapter.records(ScopeName::Personal).await?.records {
+            let local = adapter.records(ScopeName::Personal).await?;
+            // Before the keys exist nothing is sealed yet, so the secrets the move will seal read as held.
+            if kind == Kind::SecretEnvelope && categories.syncs(kind) {
+                plan.secrets_to_seal += u64::try_from(local.unreadable.len()).unwrap_or(u64::MAX);
+            }
+            for record in local.records {
                 let goes = record.standing == Standing::Syncs && categories.syncs(kind);
                 match (goes, kind) {
                     (true, Kind::SecretEnvelope) => plan.secrets_to_seal += 1,
@@ -759,6 +781,10 @@ impl ServiceSync {
         self.after_team_pass(session, &outcome).await;
         if let Ok(keys) = self.keys.key_state().await {
             self.hooks.read_keys(keys);
+        }
+        if let Ok(devices) = self.keys.account_devices().await {
+            self.hooks
+                .read_roster(devices.into_iter().map(|device| device.key_device).collect());
         }
         if outcome.is_err() {
             self.journal.give_back(taken);
@@ -979,7 +1005,7 @@ impl ServiceSync {
                     }),
                     _ => None,
                 };
-                let marked = stored.is_none_or(|stored| start.needs_refill(stored));
+                let marked = adapter.refills() && stored.is_none_or(|stored| start.needs_refill(stored));
                 if marked {
                     for kind in kinds.get(&store).into_iter().flatten() {
                         if stored.is_none() && carried_over(txn.as_mut(), &store, *kind, &known).await? {
@@ -1159,10 +1185,17 @@ impl ServiceSync {
                 .clone_from(&report.queued_in);
         }
         let queued = self.queued_shown();
+        let now = self.clock.now_ms();
+        if outcome.is_ok()
+            && let Err(error) = self.state.set_last_synced_ms(now).await
+        {
+            tracing::warn!(code = error.code(), "the last sync time was not kept");
+        }
         let mut status = self.status_lock();
-        status.last_pass_ms = Some(self.clock.now_ms());
+        status.last_pass_ms = Some(now);
         match outcome {
             Ok(report) => {
+                status.last_synced_ms = Some(now);
                 // A record the store refused is held, never dropped silently: the pass that held it says so.
                 status.problem = (!report.store_refused.is_empty()).then_some(crate::api::error::UNREADABLE);
                 if !journal_only {
@@ -1189,44 +1222,81 @@ impl ServiceSync {
                 };
             }
         }
-        if let Ok((held, conflicts, approvals)) = counts {
-            status.held = held;
-            status.conflicts = conflicts;
-            status.waiting_approvals = approvals;
-        }
         drop(status);
+        if let Ok(counts) = counts {
+            let mut logged = self.waiting_logged.lock().unwrap_or_else(PoisonError::into_inner);
+            counts.waiting.log(&logged);
+            *logged = counts.waiting.clone();
+            drop(logged);
+            self.take_counts(&counts);
+        }
         if let Some(events) = &self.events {
             events.status_changed();
         }
     }
 
-    async fn counts(&self) -> Result<(u32, u32, u32), SyncError> {
+    async fn counts(&self) -> Result<Counts, SyncError> {
         let mut txn = begin(&self.state).await?;
-        let count = |rows: Vec<Row>| {
-            rows.iter()
+        let shown = |rows: Vec<Row>| -> Vec<Row> {
+            rows.into_iter()
                 .filter(|row| match row {
                     Row::Held(row) => self.shows(&row.key),
                     Row::Conflict(row) => self.shows(&row.key),
-                    Row::Approval(row) => row.decision == ApprovalDecision::Waiting && self.shows(&row.key),
+                    Row::Approval(row) => self.shows(&row.key),
                     _ => false,
                 })
-                .count()
+                .collect()
         };
-        let held = count(txn.scan(&RowRange::Table(Table::Held)).await?);
-        let conflicts = count(txn.scan(&RowRange::Table(Table::Conflicts)).await?);
-        let approvals = count(txn.scan(&RowRange::Table(Table::Approvals)).await?);
+        let held = shown(txn.scan(&RowRange::Table(Table::Held)).await?);
+        let conflicts = shown(txn.scan(&RowRange::Table(Table::Conflicts)).await?);
+        let approvals = shown(txn.scan(&RowRange::Table(Table::Approvals)).await?);
+        drop(txn);
         let counted = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
-        Ok((counted(held), counted(conflicts), counted(approvals)))
+        Ok(Counts {
+            held: counted(held.len()),
+            conflicts: counted(conflicts.len()),
+            approvals: approval::tally(approvals.iter().filter_map(|row| match row {
+                Row::Approval(row) => Some(row),
+                _ => None,
+            })),
+            waiting: Waiting::of(held.iter().chain(&approvals)),
+        })
+    }
+
+    // Into the status; the app hears of a change to the values waiting, whatever their count.
+    fn take_counts(&self, counts: &Counts) {
+        {
+            let mut status = self.status_lock();
+            status.held = counts.held;
+            status.conflicts = counts.conflicts;
+            status.waiting_approvals = counts.approvals.records;
+        }
+        let changed = {
+            let mut mark = self.approvals_mark.lock().unwrap_or_else(PoisonError::into_inner);
+            std::mem::replace(&mut *mark, counts.approvals.mark) != counts.approvals.mark
+        };
+        if let (true, Some(events)) = (changed, &self.events) {
+            events.approvals_changed();
+        }
+    }
+
+    // The status counts from the state file as it opens, before the first pass ends.
+    pub async fn read_counts(&self) {
+        self.refresh_counts().await;
     }
 
     async fn refresh_counts(&self) {
-        if let Ok((held, conflicts, approvals)) = self.counts().await {
-            let mut status = self.status_lock();
-            status.held = held;
-            status.conflicts = conflicts;
-            status.waiting_approvals = approvals;
+        if let Ok(counts) = self.counts().await {
+            self.take_counts(&counts);
         }
     }
+}
+
+struct Counts {
+    held: u32,
+    conflicts: u32,
+    approvals: approval::Tally,
+    waiting: Waiting,
 }
 
 impl Fence for ServiceSync {
@@ -1260,7 +1330,7 @@ impl Pass for ServiceSync {
 #[async_trait]
 impl SyncControl for ServiceSync {
     fn status(&self) -> SyncStatus {
-        self.status_lock().clone()
+        self.status_lock().clone().shown()
     }
 
     async fn sync_now(&self, why: PassReason) -> Result<(), SyncError> {
@@ -1291,7 +1361,7 @@ impl SyncControl for ServiceSync {
         Ok(())
     }
 
-    async fn approvals(&self) -> Result<Vec<PendingApproval>, SyncError> {
+    async fn approvals(&self) -> Result<Vec<RecordApproval>, SyncError> {
         let _session = self.session.lock().await;
         let mut waiting = self.queue().waiting().await?;
         waiting.retain(|approval| self.shows(&approval.key));
@@ -1321,6 +1391,20 @@ impl SyncControl for ServiceSync {
             });
         }
         self.queue().decide(&key, &field, seen, approve).await?;
+        drop(session);
+        self.refresh_counts().await;
+        self.decided(&key);
+        Ok(())
+    }
+
+    async fn decide_record_approval(&self, key: RecordKey, seen: [u8; 32], approve: bool) -> Result<(), SyncError> {
+        let session = self.session.lock().await;
+        if !self.shows(&key) {
+            return Err(SyncError::NotAllowed {
+                what: "decide on personal data while TablePro Sync is not the personal provider",
+            });
+        }
+        self.queue().decide_record(&key, seen, approve).await?;
         drop(session);
         self.refresh_counts().await;
         self.decided(&key);

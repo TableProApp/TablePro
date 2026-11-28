@@ -30,6 +30,7 @@ use crate::runtime;
 struct Listener {
     status: AtomicUsize,
     keys: AtomicUsize,
+    approvals: AtomicUsize,
     returned: AtomicUsize,
     held: Mutex<Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>>,
 }
@@ -47,6 +48,10 @@ impl SyncListener for Listener {
 
     fn keys_changed(&self) {
         self.keys.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn approvals_changed(&self) {
+        self.approvals.fetch_add(1, Ordering::SeqCst);
     }
 }
 
@@ -86,6 +91,7 @@ async fn open(tasks: &Tasks, parts: impl FnOnce(OpenParts) -> OpenParts) -> Open
         session: None,
         listener: Arc::new(Listener::default()),
         team_library: None,
+        secrets: None,
     });
     let opener = tasks.clone();
     let service = tasks
@@ -227,6 +233,36 @@ async fn with_sync_off_a_sign_in_still_syncs_teams_and_its_keys() {
     );
 }
 
+// A key screen's pass runs the engine that holds the keys whatever the personal provider is, and reads the server.
+#[tokio::test]
+async fn a_key_screen_s_pass_reads_the_server_with_sync_off() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let account = AccountId(Uuid::new_v4());
+    let team = TeamId(Uuid::new_v4());
+    server.add_team(team, &[(account, Role::Owner)]);
+    let opened = open(&tasks, |parts| OpenParts {
+        link: Ok(link(&server, account)),
+        ..parts
+    })
+    .await;
+
+    opened.service.sync_keys_now().await.unwrap();
+    let scopes = opened.service.scope_statuses();
+    for _ in 0..20 {
+        server.fail_next(tablepro_sync::api::TransportError::Network {
+            detail: "connection timed out".to_owned(),
+        });
+    }
+    let offline = opened.service.sync_keys_now().await.unwrap_err();
+
+    assert!(
+        scopes.iter().any(|scope| scope.scope == ScopeName::Team(team).wire()),
+        "{scopes:?}"
+    );
+    assert_eq!(code(&offline), "sync.network");
+}
+
 // A team with no key yet never holds back the personal pass or the service, and lists its member (core ADR 0056).
 #[tokio::test]
 async fn an_owner_whose_team_has_no_key_yet_still_syncs_personal_data() {
@@ -343,6 +379,63 @@ async fn the_service_opened_after_a_first_upload_starts_once_the_one_before_clos
         "{:?}",
         conflicts.map_err(|error| code(&error).to_owned())
     );
+}
+
+// E2E F21: relaunched while its server was out of reach, a Mac said "Sync Is Unavailable" and "Last synced: Never".
+// Its engine starts and its pass fails as the network does, and it shows when it last synced.
+#[tokio::test]
+async fn a_relaunch_with_the_server_out_of_reach_keeps_the_last_sync() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let account = AccountId(Uuid::new_v4());
+    server.add_team(TeamId(Uuid::new_v4()), &[(account, Role::Owner)]);
+    let dir = tempfile::tempdir().unwrap();
+    let device_store = Arc::new(FakeDeviceStore::new());
+    let files: Arc<dyn StateFiles> = Arc::new(SqliteStateFiles::at(dir.path().join("sync"), device_store.clone()));
+    let off = open(
+        &tasks,
+        on_one_mac(&files, &device_store, link(&server, account), SyncProviderTag::Off),
+    )
+    .await;
+    first_upload(&off.service).await;
+    drop(off);
+    let synced = open(
+        &tasks,
+        on_one_mac(
+            &files,
+            &device_store,
+            link(&server, account),
+            SyncProviderTag::TableproSync,
+        ),
+    )
+    .await;
+    synced.service.sync_now(PassReasonTag::Person).await.unwrap();
+    let last = synced.service.status().last_synced_ms;
+    drop(synced);
+
+    for _ in 0..20 {
+        server.fail_next(tablepro_sync::api::TransportError::Network {
+            detail: "connection timed out".to_owned(),
+        });
+    }
+    let relaunched = open(
+        &tasks,
+        on_one_mac(
+            &files,
+            &device_store,
+            link(&server, account),
+            SyncProviderTag::TableproSync,
+        ),
+    )
+    .await;
+    let failed = relaunched.service.sync_now(PassReasonTag::Person).await.unwrap_err();
+    let status = relaunched.service.status();
+
+    assert!(last.is_some());
+    assert_eq!(code(&failed), "sync.network");
+    assert_eq!(status.problem.as_deref(), Some("sync.network"), "{status:?}");
+    assert_ne!(status.phase, SyncPhaseTag::Unavailable, "{status:?}");
+    assert_eq!(status.last_synced_ms, last);
 }
 
 // The move's first pass, asked for while the Off service is still closing, waits for it instead of failing.
@@ -464,6 +557,43 @@ fn a_key_device_takes_the_name_platform_and_row_of_the_row_that_holds_it() {
     assert_eq!(approved.device, Some(DeviceRowId("dev_b".to_owned())));
     assert_eq!(approved.name.as_deref(), Some("Lab (b)"));
     assert_eq!((removed.device, removed.name), (None, None));
+}
+
+// A new device's request is named by the row that wrote it, as the server serves it beside the request; its key device
+// is on no row yet. A request served with no row stays unnamed.
+#[test]
+fn an_approval_request_takes_the_name_and_platform_of_the_row_that_wrote_it() {
+    use tablepro_keys::encoding::RequestId;
+    use tablepro_sync::api::key_flows::ApprovalRequest;
+
+    let rows = super::names::DeviceRows::of(vec![tablepro_account::Device {
+        id: "dev_n".to_owned(),
+        machine_id: "0".repeat(64),
+        platform: "macos".to_owned(),
+        name: "Lab (n)".to_owned(),
+        app_version: "1.0.0".to_owned(),
+        os_version: "26.1".to_owned(),
+        last_seen_at: chrono::DateTime::from_timestamp(1_800_000_000, 0).unwrap(),
+        licensed_at: None,
+        offline_until: None,
+        key_device: None,
+    }]);
+    let request = |device: Option<&str>| ApprovalRequest {
+        request: RequestId(Uuid::from_u128(7)),
+        device: device.map(|id| DeviceRowId(id.to_owned())),
+        device_name: None,
+        platform: None,
+        requested_at_us: 0,
+    };
+
+    let named = rows.name_request(request(Some("dev_n")));
+    let unknown = rows.name_request(request(Some("dev_gone")));
+    let unwritten = rows.name_request(request(None));
+
+    assert_eq!(named.device_name.as_deref(), Some("Lab (n)"));
+    assert_eq!(named.platform.as_deref(), Some("macos"));
+    assert_eq!((unknown.device_name, unknown.platform), (None, None));
+    assert_eq!((unwritten.device_name, unwritten.platform), (None, None));
 }
 
 // The same account on another device row, as a second Mac signed in to it.
@@ -1130,4 +1260,122 @@ async fn another_account_on_tablepro_sync_waits_for_move_my_data_or_start_empty(
     // Until the person chooses, the app keeps the sign-in the new one follows, so every open asks again.
     assert_eq!(kept_while_waiting, Some(kept.clone()));
     assert_ne!(kept_after, Some(kept));
+}
+
+fn status(provider: SyncProviderTag, phase: SyncPhaseTag, waiting: u32) -> super::service::SyncStatusInfo {
+    super::service::SyncStatusInfo {
+        provider: Some(provider),
+        phase,
+        last_pass_ms: None,
+        last_synced_ms: None,
+        problem: None,
+        waiting_approvals: waiting,
+        conflicts: 0,
+        held: 0,
+        queued_changes: 0,
+    }
+}
+
+fn teams(waiting: u32, conflicts: u32, held: u32) -> tablepro_sync::api::control::SyncStatus {
+    tablepro_sync::api::control::SyncStatus {
+        waiting_approvals: waiting,
+        conflicts,
+        held,
+        ..tablepro_sync::api::control::SyncStatus::UNAVAILABLE
+    }
+}
+
+// E2E F14: the status said Up to Date while values waited. What waits in a team counts on a device whose personal data
+// is on iCloud or nowhere, and any value waiting shows in place of a resting phase.
+#[test]
+fn values_waiting_anywhere_show_as_needing_approval_in_place_of_a_resting_phase() {
+    use super::service::with_teams;
+
+    let off = with_teams(
+        status(SyncProviderTag::Off, SyncPhaseTag::Off, 0),
+        Some(&teams(1, 2, 3)),
+    );
+    let icloud = with_teams(
+        status(SyncProviderTag::Icloud, SyncPhaseTag::Idle, 1),
+        Some(&teams(2, 0, 0)),
+    );
+    let nothing = with_teams(
+        status(SyncProviderTag::Off, SyncPhaseTag::Off, 0),
+        Some(&teams(0, 0, 0)),
+    );
+    let syncing = with_teams(status(SyncProviderTag::TableproSync, SyncPhaseTag::Syncing, 4), None);
+
+    assert_eq!(
+        (off.phase, off.waiting_approvals, off.conflicts, off.held),
+        (SyncPhaseTag::NeedsApproval, 1, 2, 3)
+    );
+    assert_eq!(
+        (icloud.phase, icloud.waiting_approvals),
+        (SyncPhaseTag::NeedsApproval, 3)
+    );
+    assert_eq!(nothing.phase, SyncPhaseTag::Off);
+    assert_eq!(syncing.phase, SyncPhaseTag::Syncing);
+}
+
+#[test]
+fn a_waiting_record_crosses_with_its_values_as_json_text_and_a_removal_as_none() {
+    use serde_json::json;
+    use tablepro_records::Kind;
+    use tablepro_sync::api::RecordKey;
+    use tablepro_sync::api::control::{PendingApproval, RecordApproval};
+
+    let record = RecordApproval {
+        key: RecordKey::new(ScopeName::Personal, Kind::Connection, "C1"),
+        name: Some("Prod".to_owned()),
+        new_record: false,
+        digest: [0xab; 32],
+        fields: vec![
+            PendingApproval {
+                field: "/host".to_owned(),
+                pulled: json!("db2.example.com"),
+                digest: [1; 32],
+                current: Some(json!("db.example.com")),
+            },
+            PendingApproval {
+                field: "/startup_commands".to_owned(),
+                pulled: serde_json::Value::Null,
+                digest: [2; 32],
+                current: Some(json!("SET a = 1")),
+            },
+        ],
+    };
+
+    let info = super::service::RecordApprovalInfo::from(record);
+
+    assert_eq!(info.record.kind, "connection");
+    assert_eq!(info.digest, "ab".repeat(32));
+    assert_eq!(info.fields[0].pulled.as_deref(), Some("\"db2.example.com\""));
+    assert_eq!(info.fields[0].current.as_deref(), Some("\"db.example.com\""));
+    assert_eq!(info.fields[1].pulled, None);
+    assert_eq!(info.fields[1].digest, "02".repeat(32));
+}
+
+#[tokio::test]
+async fn the_app_hears_a_change_to_the_values_waiting_on_its_own_call() {
+    use tablepro_sync::engine::EngineEvents;
+
+    let tasks = runtime::tasks().unwrap();
+    let listener = Arc::new(Listener::default());
+    let signals = Arc::new(super::events::Signals::default());
+    let _forwarding = super::events::forward(
+        Arc::clone(&signals),
+        Arc::clone(&listener) as Arc<dyn SyncListener>,
+        &tasks,
+    );
+
+    signals.approvals_changed();
+    for _ in 0..200 {
+        if listener.approvals.load(Ordering::SeqCst) > 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    assert_eq!(listener.approvals.load(Ordering::SeqCst), 1);
+    assert_eq!(listener.status.load(Ordering::SeqCst), 0);
 }

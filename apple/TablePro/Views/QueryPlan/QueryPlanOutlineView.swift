@@ -88,6 +88,10 @@ struct QueryPlanOutlineView: NSViewRepresentable {
 final class QueryPlanOutline: NSOutlineView {
     weak var coordinator: QueryPlanOutlineCoordinator?
 
+    override func accessibilityPerformShowMenu() -> Bool {
+        showContextMenuForSelectedRow() || super.accessibilityPerformShowMenu()
+    }
+
     @objc func copy(_ sender: Any?) {
         guard let node = coordinator?.clickedNode else { return }
         ClipboardService.shared.writeText(QueryPlanNodeSummary.text(for: node))

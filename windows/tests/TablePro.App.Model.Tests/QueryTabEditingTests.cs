@@ -37,7 +37,7 @@ public sealed class QueryTabEditingTests
         var save = Assert.Single(Editor.Saves);
         Assert.Equal(1, save.Runs);
         Assert.True(save.Confirmed);
-        Assert.IsType<RowEdit.Update>(Assert.Single(Assert.Single(Editor.Plans)));
+        Assert.Equal("UPDATE", Assert.Single(Assert.Single(Editor.Previews).Statements).Sql);
         Assert.Equal<string>(["select * from Artist", "select * from Artist"], Assert.Single(_session.Editors).Runs);
         Assert.Equal(2, _session.ResultEditorOpens.Count);
         Assert.Single(_history.Runs);
@@ -226,7 +226,7 @@ public sealed class QueryTabEditingTests
         Assert.Equal(2, Assert.Single(_edits.DeletesAsked));
         Assert.Equal<string>(["DELETE", "DELETE"], Assert.Single(_edits.SavesAsked).Select(statement => statement.Sql));
         Assert.Contains("save cancelled", _edits.Shown);
-        Assert.Equal(0, Assert.Single(Editor.Saves).Runs);
+        Assert.Empty(Editor.Saves);
         Assert.True(_tab.HasUnsavedChanges);
     }
 

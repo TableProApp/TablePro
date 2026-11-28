@@ -1,6 +1,6 @@
 # 0068: The pending-edit tracker and undo move to the core, keyed by primary key
 
-- **Status**: Proposed; implementation tracked in #4647. Supersedes [0019](0019-row-edits-through-the-ffi.md) and the result-editing part of [0033](0033-foreign-import-and-result-editing-through-the-ffi.md) for where the tracker, undo and key identity live.
+- **Status**: Accepted; implemented in #4647. Supersedes [0019](0019-row-edits-through-the-ffi.md) and the result-editing part of [0033](0033-foreign-import-and-result-editing-through-the-ffi.md) for where the tracker, undo and key identity live.
 - **Date**: 2026-11-27
 
 ## Context
@@ -9,7 +9,7 @@
 
 The Linux app does not work that way. Its `TabChangeTracker` (`linux/crates/app/src/services/change_tracker.rs`) is the pending edits, keyed by primary key: a saved row by its primary key tuple, a draft by a tracker-assigned local id. An edit survives sort, filter and paging because it names a row, not a place. The tracker owns undo and redo, orders the save by when each row was last touched, relayouts its edits when the columns are read again, and reports a per-change delta the grid redraws from. 0019 rejected moving that tracker to the core: "an app on the FFI needs only typed text per row, which it already holds."
 
-That left two consequences. 0019 §32: an edit names a row by its place, so the app blocks sort, page and refresh while edits are pending, as macOS does. And the tracker exists twice: a PK-keyed Rust tracker for Linux, and, on Windows, `UndoHistory.cs` plus the app's own position-keyed edit list feeding the stateless `TableEditor`. The macOS app moves onto the core in slices ([0010](0010-macos-on-the-core.md), [0063](0063-the-macos-app-holds-its-results-in-the-core-before-its-engines-move.md)) and would otherwise need a third copy.
+That left two consequences. 0019 §32: an edit names a row by its place, so the app blocks sort, page and refresh while edits are pending, as macOS does. And the tracker exists twice: a PK-keyed Rust tracker for Linux, and, on Windows, the app's own position-keyed edit list (`TablePro.App.Model/TableEdits.cs`) feeding the stateless `TableEditor`, with no row-edit undo at all. The macOS app moves onto the core in slices ([0010](0010-macos-on-the-core.md), [0063](0063-the-macos-app-holds-its-results-in-the-core-before-its-engines-move.md)) and would otherwise need a third copy.
 
 The tracker is core logic: it depends only on `tablepro-core` value, column, edit and save types, not on GTK. The maintainer approved reversing 0019 so one tracker serves every app.
 
@@ -22,7 +22,7 @@ The pending-edit tracker and its undo move into `tablepro-core`, in an `edits` m
 - The tracker returns coded outcomes, never worded ones. The save's rejection, its result and the cause of an unknown outcome carry a `code()` and typed fields; each app words them, as 0019 and the core's error rule (`core/AGENTS.md`, Principle 5) already require. The app's rejection and outcome types, which the row and structure saves share, wrap the core's coded types and add the sentence.
 - The FFI's `TableEditor` becomes stateful and PK-keyed. It holds the tracker for one tab's or one result's edits. When a cell is first edited it reads the row's primary key from the result set, through `value_for_column`, and keeps it, so a later sort or page does not change which row the edit names. A key it cannot name exactly (a float, PostgreSQL's server text for a date) locks the row as 0019 and 0033 already describe. The editor exposes the tracker's commands, its overlays and marks, its pending count, undo and redo, and the save.
 - The position-keyed `RowEdit` / `plan` / `RowSave` surface of 0019 is replaced. This is a breaking change to the generated bindings; the C# bindings are regenerated and committed, and the Windows interop and editor model are rewritten against the new surface.
-- The Windows app drops `TablePro.Editor.Model/UndoHistory.cs`. Undo and redo are the core tracker's, reached through the FFI.
+- The Windows table grid gains row-edit undo and redo from the core tracker, reached through the FFI; it had none before. (The SQL text editor's own `TablePro.Editor.Model/UndoHistory.cs` is unrelated text-buffer undo and is untouched.)
 
 The save itself is unchanged. `plan_save` over the traced table, the Safe Mode gate at `SafeModeLevel::gate(Write)`, planning again on the writing lease, and the saved / rolled back / unknown result all stay as 0019 and 0033 set them; they now run from the core tracker's change set.
 

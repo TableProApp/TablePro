@@ -7,7 +7,7 @@ pub(crate) mod token_target;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 
-pub(crate) use app_bridge::HistoryAccess;
+pub(crate) use app_bridge::{ActiveProject, AppBridge, HistoryAccess};
 pub use app_bridge::{McpAppHost, McpWriteRequest};
 pub(crate) use mcp_service::StoredTokens;
 pub use mcp_service::{McpListener, McpService, McpStatusTag, SeenClientInfo};

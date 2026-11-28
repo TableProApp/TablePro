@@ -14,9 +14,31 @@ struct ConnectionTagTokenFieldTests {
         }
     }
 
+    // Counts the size changes AppKit makes while it lays the field out, and drops them: passed on, a regression would
+    // loop until AppKit raises and take the test host down with it.
+    private final class LayoutRecordingTokenField: NSTokenField {
+        private(set) var resizesDuringLayout = 0
+        private var isLayingOut = false
+
+        override func layout() {
+            isLayingOut = true
+            defer { isLayingOut = false }
+            super.layout()
+        }
+
+        override func invalidateIntrinsicContentSize() {
+            if isLayingOut {
+                resizesDuringLayout += 1
+                return
+            }
+            super.invalidateIntrinsicContentSize()
+        }
+    }
+
     private func makeField(
         committed: [String] = [],
-        recorder: Recorder
+        recorder: Recorder,
+        field: NSTokenField = NSTokenField(frame: NSRect(x: 0, y: 0, width: 240, height: 22))
     ) -> (window: NSWindow, field: NSTokenField, coordinator: ConnectionTagTokenField.Coordinator) {
         let representable = ConnectionTagTokenField(
             tokens: committed,
@@ -27,7 +49,6 @@ struct ConnectionTagTokenFieldTests {
             }
         )
         let coordinator = representable.makeCoordinator()
-        let field = NSTokenField(frame: NSRect(x: 0, y: 0, width: 240, height: 22))
         field.delegate = coordinator
         field.objectValue = committed.map(TagToken.init(name:))
         let window = NSWindow(
@@ -127,6 +148,52 @@ struct ConnectionTagTokenFieldTests {
 
             #expect(coordinator.committed == ["production"])
             #expect(ConnectionTagTokenField.Coordinator.names(in: field) == ["production"])
+        }
+    }
+
+    @Test("Reading a field mid-edit twice gives equal values, so nothing changes until the text does")
+    func readingTypedTextKeepsTheValue() throws {
+        let recorder = Recorder()
+        let (window, field, coordinator) = makeField(committed: ["production"], recorder: recorder)
+        defer { window.orderOut(nil) }
+        try withExtendedLifetime(coordinator) {
+            #expect(window.makeFirstResponder(field))
+            let editor = try #require(field.currentEditor() as? NSTextView)
+            editor.moveToEndOfDocument(nil)
+            editor.insertText("billing", replacementRange: NSRange(location: NSNotFound, length: 0))
+
+            let first = try #require(field.objectValue as? NSArray)
+            let second = try #require(field.objectValue as? NSArray)
+
+            #expect(first.isEqual(second))
+        }
+    }
+
+    @Test("Laying out a field mid-edit leaves its size alone, so the window's layout settles")
+    func layoutDuringEditingDoesNotResize() throws {
+        let recorder = Recorder()
+        let probe = LayoutRecordingTokenField(frame: .zero)
+        let (window, field, coordinator) = makeField(committed: ["production"], recorder: recorder, field: probe)
+        defer { window.orderOut(nil) }
+        try withExtendedLifetime(coordinator) {
+            let content = try #require(window.contentView)
+            field.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                field.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 10),
+                field.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -10),
+                field.topAnchor.constraint(equalTo: content.topAnchor, constant: 10),
+            ])
+            #expect(window.makeFirstResponder(field))
+            let editor = try #require(field.currentEditor() as? NSTextView)
+            editor.moveToEndOfDocument(nil)
+            editor.insertText("billing", replacementRange: NSRange(location: NSNotFound, length: 0))
+            window.layoutIfNeeded()
+            let settled = probe.resizesDuringLayout
+
+            field.needsLayout = true
+            window.layoutIfNeeded()
+
+            #expect(probe.resizesDuringLayout == settled)
         }
     }
 

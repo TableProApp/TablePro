@@ -18,6 +18,10 @@ internal class SidebarOutlineView: NSOutlineView {
         super.keyDown(with: event)
     }
 
+    override internal func accessibilityPerformShowMenu() -> Bool {
+        showContextMenuForSelectedRow() || super.accessibilityPerformShowMenu()
+    }
+
     // NSTableView stops observing the window's first responder for the whole of its move into a window, so focus
     // taken in here leaves every row unemphasized (grey) until the window's key state next changes.
     override internal func viewDidMoveToWindow() {

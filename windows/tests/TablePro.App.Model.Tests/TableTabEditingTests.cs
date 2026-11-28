@@ -357,7 +357,6 @@ public sealed class TableTabEditingTests
         var save = Assert.Single(Editor.Saves);
         Assert.Equal(1, save.Runs);
         Assert.True(save.Confirmed);
-        Assert.Equal(1, save.Disposals);
         Assert.Equal<string>(["saving", "saved"], _view.Shown);
         Assert.False(_tab.IsSaving);
     }
@@ -372,7 +371,7 @@ public sealed class TableTabEditingTests
         Assert.False(await _tab.SaveAsync());
 
         Assert.Equal(("Artist", 2), Assert.Single(_view.DeletesAsked));
-        Assert.Equal(0, Assert.Single(Editor.Saves).Runs);
+        Assert.Empty(Editor.Saves);
         Assert.True(_tab.HasUnsavedChanges);
     }
 
@@ -389,7 +388,7 @@ public sealed class TableTabEditingTests
         Assert.Single(_view.DeletesAsked);
         Assert.Equal("DELETE", Assert.Single(Assert.Single(_view.SavesAsked)).Sql);
         Assert.Equal(1, _view.SavesCancelled);
-        Assert.Equal(0, Assert.Single(Editor.Saves).Runs);
+        Assert.Empty(Editor.Saves);
 
         _view.ConfirmsSave = true;
 
@@ -408,7 +407,7 @@ public sealed class TableTabEditingTests
         Assert.False(await _tab.SaveAsync());
 
         Assert.Equal(new EditRefusal.TableLocked(EditLock.ReadOnlyConnection), Assert.Single(_view.Refusals));
-        Assert.Equal(0, Assert.Single(Editor.Saves).Runs);
+        Assert.Empty(Editor.Saves);
         Assert.True(_tab.HasUnsavedChanges);
     }
 
@@ -422,14 +421,14 @@ public sealed class TableTabEditingTests
         Assert.True(await _tab.SaveAsync());
 
         Assert.False(_tab.HasUnsavedChanges);
-        Assert.Equal(0, Assert.Single(Editor.Saves).Runs);
+        Assert.Empty(Editor.Saves);
         Assert.Single(_session.Queries);
     }
 
     [Fact]
     public async Task ARolledBackSaveKeepsEveryChangeAndShowsTheRowItStoppedAt()
     {
-        Editor.Outcome = () => new RowSaveOutcome.RolledBack(Errors.Of("driver.row_guard_failed"), 1);
+        Editor.Outcome = () => new RowSaveOutcome.RolledBack(Errors.Of("driver.row_guard_failed"), 2);
         await _tab.RunAsync();
         _tab.DeleteRows([0]);
         _tab.CommitEdit(2, 1, "changed");
@@ -527,7 +526,7 @@ public sealed class TableTabEditingTests
 
         Assert.False(_view.HasOpenEdit);
         Assert.Equal(1, Assert.Single(Editor.Saves).Runs);
-        Assert.IsType<RowEdit.Update>(Assert.Single(Assert.Single(Editor.Plans)));
+        Assert.Equal("UPDATE", Assert.Single(Assert.Single(Editor.Previews).Statements).Sql);
     }
 
     [Fact]
@@ -572,7 +571,7 @@ public sealed class TableTabEditingTests
         Assert.False(await _tab.ConfirmCloseAsync(offerSave: false));
 
         Assert.False(_view.OffersSave);
-        Assert.Empty(Editor.Plans);
+        Assert.Empty(Editor.Saves);
 
         _view.CloseAnswer = SaveBeforeClose.DontSave;
 
@@ -588,7 +587,7 @@ public sealed class TableTabEditingTests
 
         Assert.False(await _tab.SaveAsync());
 
-        Assert.Empty(Editor.Plans);
+        Assert.Empty(Editor.Saves);
     }
 
     [Fact]

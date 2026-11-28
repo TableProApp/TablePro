@@ -140,6 +140,17 @@ impl ResultStore {
         }
     }
 
+    // A script run's set ended; `cut` says rows it held were dropped, by the driver or the run's budget.
+    pub(crate) fn finish_cut(&self, total_rows: Option<u64>, cut: bool) {
+        let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
+        state.finished = true;
+        state.total = total_rows;
+        state.cut = cut;
+        if let Some(chunk) = state.chunks.last_mut() {
+            chunk.columns.iter_mut().for_each(ColumnCells::shrink);
+        }
+    }
+
     // The run ended, as a cancel or an error ends it, before the set said it was finished: rows may follow.
     pub(crate) fn finish_with_run(&self) {
         let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
@@ -196,6 +207,16 @@ impl ResultStore {
 
     pub(crate) fn cell_len(&self, row: u64, column: usize) -> Option<usize> {
         Some(self.read().cell(row, column)?.bytes.len())
+    }
+
+    // The value a copy renders: `cell_value` reads back the text the grid
+    // showed, so a copy writes what the user saw. Null for a cell past the
+    // held rows.
+    pub(crate) fn copy_value(&self, row: u64, column: usize) -> Value {
+        match self.read().cell(row, column) {
+            Some(cell) => cell_value(cell),
+            None => Value::Null,
+        }
     }
 
     // The kind of the value in a cell, `None` for null; a dynamically typed column can hold any.

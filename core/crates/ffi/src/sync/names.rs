@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use tablepro_account::{Account, Device};
 use tablepro_keys::encoding::{AccountId, KeyDeviceId, TeamId};
 use tablepro_sync::api::ids::parse_typeid;
-use tablepro_sync::api::key_flows::{AccountDevice, ReviewedDevice};
+use tablepro_sync::api::key_flows::{AccountDevice, ApprovalRequest, ReviewedDevice};
 use tablepro_sync::api::{DeviceRowId, ScopeName};
 use tablepro_sync::http::{Binding, SignIn};
 
@@ -17,7 +17,7 @@ pub(crate) struct Person {
 }
 
 async fn still_bound(account: &Account, binding: &Binding) -> bool {
-    SignIn::signed_in(account)
+    SignIn::signed_in_as(account)
         .await
         .is_ok_and(|signed_in| binding.holds(&signed_in))
 }
@@ -146,6 +146,20 @@ impl DeviceRows {
             device.platform.get_or_insert_with(|| row.platform.clone());
         }
         device
+    }
+
+    // A new device's key device is on no row until its approval applies, so its request is named by the row that
+    // wrote it.
+    pub(crate) fn name_request(&self, mut request: ApprovalRequest) -> ApprovalRequest {
+        let row = request
+            .device
+            .as_ref()
+            .and_then(|device| self.0.iter().find(|row| row.id == device.0));
+        if let Some(row) = row {
+            request.device_name.get_or_insert_with(|| row.name.clone());
+            request.platform.get_or_insert_with(|| row.platform.clone());
+        }
+        request
     }
 
     pub(crate) fn name_reviewed(&self, reviewed: ReviewedDevice) -> ReviewedDevice {

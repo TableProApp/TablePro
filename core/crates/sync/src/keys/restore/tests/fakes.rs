@@ -1,9 +1,10 @@
 // Just enough of a `KeyService`'s parts for the restore and stop flows: a state file in memory whose transactions
-// commit whole, a service transport that answers the scopes body and records stop reports and withdrawals, and hooks
+// commit whole, one at a time as the real file's one connection takes them, a service transport that answers the scopes body and records stop reports and withdrawals, and hooks
 // that record each call. `tablepro-sync-testing` has fuller fakes, which a unit test of this crate cannot link.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use tablepro_keys::encoding::{AccountId, Origin, TeamId, Version};
@@ -35,11 +36,13 @@ type Rows = BTreeMap<(Table, Vec<u8>), Row>;
 pub(crate) struct MemoryState {
     identity: StateIdentity,
     rows: Arc<Mutex<Rows>>,
+    writer: Arc<tokio::sync::Semaphore>,
 }
 
 struct MemoryTxn {
     committed: Arc<Mutex<Rows>>,
     rows: Rows,
+    _writer: tokio::sync::OwnedSemaphorePermit,
 }
 
 fn slot(key: &RowKey) -> (Table, Vec<u8>) {
@@ -56,10 +59,16 @@ impl StateStore for MemoryState {
         &Opened::FRESH
     }
 
+    // A begin still waiting after this long waits on a transaction its own caller holds.
     async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError> {
+        let writer = tokio::time::timeout(Duration::from_secs(2), Arc::clone(&self.writer).acquire_owned())
+            .await
+            .expect("a state transaction began while its caller held one open")
+            .expect("the writer is never closed");
         Ok(Box::new(MemoryTxn {
             rows: lock(&self.rows).clone(),
             committed: Arc::clone(&self.rows),
+            _writer: writer,
         }))
     }
 }
@@ -264,6 +273,7 @@ impl Rig {
                 device_row: device_row.clone(),
             },
             rows,
+            writer: Arc::new(tokio::sync::Semaphore::new(1)),
         });
         let transport = Arc::new(Service::default());
         let hooks = Arc::new(Hooks::default());
