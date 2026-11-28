@@ -14,7 +14,16 @@ public sealed record CoreError(
 
     // What an ai.* error is about: its host, status and provider.
     public AiFailure? Ai { get; init; }
+
+    // What a refused sync.* call carries beyond its code.
+    public SyncFailure? Sync { get; init; }
+
+    // RFC 9470's challenge of account.step_up_required or sync.step_up_required, which TableProAccount.StepUpAsync takes.
+    public StepUpChallenge? StepUp { get; init; }
 }
+
+// The methods the sign-in page asks for and the most age the sign-in may have.
+public sealed record StepUpChallenge(IReadOnlyList<string> AcrValues, TimeSpan? MaxAge);
 
 public sealed record HostKeyFailure(
     string Host,

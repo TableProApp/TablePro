@@ -15,6 +15,7 @@ namespace TablePro.App.Views;
 public sealed partial class SavedQueriesPane : UserControl
 {
     private readonly SavedQueries? _store;
+    private readonly Workbench? _workbench;
     private readonly Guid _connectionId;
     private readonly Func<string> _connectionName;
 
@@ -28,13 +29,16 @@ public sealed partial class SavedQueriesPane : UserControl
     // Clearing the rows reports them collapsed, which is not the user's doing.
     private bool _rebuilding;
 
-    // Null store: the saved queries' database could not open, so nothing is kept or shown.
-    internal SavedQueriesPane(SavedQueries? store, Guid connectionId, Func<string> connectionName)
+    // Null store: the saved queries' database could not open, so nothing is kept or shown. Null workbench: no Team
+    // Library section.
+    internal SavedQueriesPane(SavedQueries? store, Guid connectionId, Func<string> connectionName, Workbench? workbench)
     {
         InitializeComponent();
         _store = store;
+        _workbench = workbench;
         _connectionId = connectionId;
         _connectionName = connectionName;
+        FollowTeamLibrary();
         if (store is null)
         {
             NewFolderButton.IsEnabled = false;

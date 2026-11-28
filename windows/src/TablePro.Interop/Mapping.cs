@@ -26,6 +26,12 @@ internal static partial class Mapping
     {
         TlsFailure = info.TlsFailure is { } failure ? TlsFailureKind(failure) : null,
         Ai = info.Ai is { } ai ? Failure(ai) : null,
+        Sync = Failure(info.Sync),
+        StepUp = info.StepUp is { } challenge
+            ? new StepUpChallenge(
+                [.. challenge.AcrValues],
+                challenge.MaxAgeSecs is { } age ? TimeSpan.FromSeconds(checked((long)age)) : null)
+            : null,
     };
 
     private static TlsFailure TlsFailureKind(Native.TlsFailureTag failure) => failure switch

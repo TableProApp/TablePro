@@ -7,6 +7,7 @@ public sealed record PlanFeature(string Code, bool OnWindows);
 public static class PlanFeatures
 {
     public const string ICloudSync = "icloud_sync";
+    public const string ServiceSync = "service_sync";
     public const string EncryptedExport = "encrypted_export";
     public const string EnvVarReferences = "env_var_references";
     public const string LinkedFolders = "linked_folders";
@@ -23,6 +24,7 @@ public static class PlanFeatures
     public static IReadOnlyList<PlanFeature> All { get; } =
     [
         new(ICloudSync, false),
+        new(ServiceSync, true),
         new(EncryptedExport, false),
         new(EnvVarReferences, false),
         new(LinkedFolders, false),
@@ -31,7 +33,7 @@ public static class PlanFeatures
         new(CompareSync, false),
         new(DataRewind, false),
         new(TeamCatalog, false),
-        new(TeamLibrary, false),
+        new(TeamLibrary, true),
         new(SharedLinks, true),
     ];
 

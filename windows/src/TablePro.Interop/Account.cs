@@ -64,6 +64,9 @@ public sealed record AccountStatus(
 {
     public static AccountStatus SignedOut { get; } =
         new(AccountState.SignedOut, null, null, null, [], [], null, null, false);
+
+    // One sign-in of the account, new after each sign-in; TablePro Sync stays bound to the one it opened under.
+    public string? SessionId { get; init; }
 }
 
 public abstract record EntitlementProblem
@@ -133,6 +136,9 @@ public sealed class TableProAccount : IDisposable
     // A snapshot; cheap enough to read on the UI thread.
     public AccountStatus Status => Mapping.Status(_service.Status());
 
+    // Sync opens over the sign-in this holds.
+    internal Native.AccountService Handle => _service;
+
     // From the entitlement's feature codes only: the app knows no plan or tier.
     public FeatureAccess Access(string feature)
     {
@@ -159,6 +165,17 @@ public sealed class TableProAccount : IDisposable
     // The cancel ends only the wait for the browser: once it has come back, the sign-in is kept.
     public Task SignInAsync(CancellationToken cancellationToken = default) =>
         CoreCall.RunAsync(token => _service.SignIn(token), cancellationToken);
+
+    // After a call failed with a StepUp challenge: the sign-in page opens for it, and once this returns the caller runs
+    // its call again. The cancel ends only the wait for the browser.
+    public Task StepUpAsync(StepUpChallenge challenge, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(challenge);
+        var native = new Native.StepUpChallengeInfo(
+            [.. challenge.AcrValues],
+            challenge.MaxAge is { } age ? (ulong)age.TotalSeconds : null);
+        return CoreCall.RunAsync(token => _service.StepUp(native, token), cancellationToken);
+    }
 
     // Signs out here even when the server could not be told, which the error then says.
     public Task SignOutAsync() => CoreCall.RunAsync(() => _service.SignOut());

@@ -43,7 +43,14 @@ public sealed partial class SettingsView : UserControl
             _workbench.McpChanged += OnMcpChanged;
             _workbench.Updates.Changed -= OnUpdatesChanged;
             _workbench.Updates.Changed += OnUpdatesChanged;
+            _workbench.SyncChanged -= OnSyncChanged;
+            _workbench.SyncChanged += OnSyncChanged;
+            _workbench.TeamLibraryChanged -= OnSyncChanged;
+            _workbench.TeamLibraryChanged += OnSyncChanged;
+            // The Team keys card shows once the teams are read.
+            _workbench.RefreshTeamLibrary();
             ShowAccount();
+            ShowSync();
             ShowMcp();
             ShowUpdateState();
             ShowGuideChoices();
@@ -53,6 +60,8 @@ public sealed partial class SettingsView : UserControl
             _workbench.AccountChanged -= OnAccountChanged;
             _workbench.McpChanged -= OnMcpChanged;
             _workbench.Updates.Changed -= OnUpdatesChanged;
+            _workbench.SyncChanged -= OnSyncChanged;
+            _workbench.TeamLibraryChanged -= OnSyncChanged;
         };
     }
 
@@ -125,6 +134,7 @@ public sealed partial class SettingsView : UserControl
         LoadAssistant();
         LoadMcp();
         LoadUpdates();
+        LoadSync();
         _loading = false;
     }
 
@@ -490,7 +500,12 @@ public sealed partial class SettingsView : UserControl
         }
     }
 
-    private void OnAccountChanged(object? sender, EventArgs e) => ShowAccount();
+    // The plan's answer for TablePro Sync follows the account.
+    private void OnAccountChanged(object? sender, EventArgs e)
+    {
+        ShowAccount();
+        ShowSync();
+    }
 
     // One card names the account and holds its one action; the notice above it says what needs doing.
     private void ShowAccount()
@@ -607,11 +622,70 @@ public sealed partial class SettingsView : UserControl
                 _workbench.CancelSignIn();
                 break;
             case AccountStage.SignedIn:
-                await RunAccountAsync(account => account.SignOutAsync());
+                await SignOutAsync();
                 break;
             default:
                 await StartSignInAsync();
                 break;
+        }
+    }
+
+    // Team Library edits not uploaded are settled first, then this computer's keys are erased before the sign-in is
+    // revoked; when they could not be, the person decides (core ADR 0056, Sign Out). The account's Team Library data
+    // goes once it signed out, through the service of the sign-in that ended (TeamSignOutFlow).
+    private async Task SignOutAsync()
+    {
+        if (_accountBusy)
+        {
+            return;
+        }
+
+        var session = _workbench.SignInSession;
+        _accountBusy = true;
+        ShowAccount();
+        // A lapsed or unverified plan may still hold edits this computer cannot list without the service.
+        var hadTeamLibrary = _workbench.TeamLibrary.Teams.Count > 0
+            || _workbench.TeamLibrary.Unsent.Count > 0
+            || _workbench.Gate(PlanFeatures.TeamLibrary) is not { Kind: LicenseNoticeKind.NeedsPlan };
+        using var flow = new TeamSignOutFlow(
+            _workbench.Sync.LeaseAsync,
+            _workbench.Sync.GetKeyFlowsAsync,
+            () => _workbench.SignInSession == session,
+            hadTeamLibrary,
+            question => TeamDialogs.SignOutUnsentAsync(this, question),
+            reason =>
+            {
+                CrashLog.Note("keys sign out", reason.Code);
+                return KeyDialogs.SignOutFailedAsync(this, reason);
+            });
+        try
+        {
+            bool erased;
+            try
+            {
+                erased = await flow.BeforeSignOutAsync();
+            }
+            finally
+            {
+                _accountBusy = false;
+            }
+
+            // Another sign-in meanwhile was not the one asked to end, and its keys were not erased.
+            if (!erased || _workbench.SignInSession != session)
+            {
+                return;
+            }
+
+            await RunAccountAsync(account => account.SignOutAsync());
+            if (_workbench.SignInSession != session && await flow.AfterSignOutAsync() is { } failure)
+            {
+                CrashLog.Note("team library delete", failure.Code);
+                _accountError ??= failure;
+            }
+        }
+        finally
+        {
+            ShowAccount();
         }
     }
 

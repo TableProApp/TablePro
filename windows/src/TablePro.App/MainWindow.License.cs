@@ -83,6 +83,12 @@ public sealed partial class MainWindow
             return;
         }
 
+        // The app came to the front: TablePro Sync looks for what changed elsewhere meanwhile.
+        if (_windowInUse is null)
+        {
+            _ = _workbench.Sync.NudgeAsync(Interop.SyncPassReason.Foreground);
+        }
+
         _windowInUse = window;
         if (_launchedAt is not null)
         {
@@ -180,6 +186,8 @@ public sealed partial class MainWindow
 
         return false;
     }
+
+    Task<bool> Views.IShell.RequirePlanAsync(string feature) => RequirePlanAsync(feature);
 
     // As the macOS app's notice actions: the account's own steps run in Settings, where their outcome shows.
     private async Task PerformLicenseActionAsync(LicenseAction action, string referrer)

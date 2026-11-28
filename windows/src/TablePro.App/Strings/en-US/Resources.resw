@@ -6739,4 +6739,1547 @@ New fingerprint: {2}</value>
   <data name="PaletteSection_Command" xml:space="preserve">
     <value>Commands</value>
   </data>
+  <data name="SyncHeader.Text" xml:space="preserve">
+    <value>Sync</value>
+  </data>
+  <data name="SyncProviderCard.Header" xml:space="preserve">
+    <value>Sync this computer with</value>
+  </data>
+  <data name="SyncProviderBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sync this computer with</value>
+  </data>
+  <data name="SyncProviderOff.Content" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="SyncProviderTableProSync.Content" xml:space="preserve">
+    <value>TablePro Sync</value>
+  </data>
+  <data name="SyncNowButton.Content" xml:space="preserve">
+    <value>Sync now</value>
+  </data>
+  <data name="SyncCategoriesExpander.Header" xml:space="preserve">
+    <value>What syncs</value>
+  </data>
+  <data name="SyncCategoriesExpander.Description" xml:space="preserve">
+    <value>What this computer sends to TablePro Sync and takes from it</value>
+  </data>
+  <data name="SyncConnectionsCard.Header" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="SyncConnectionsCard.Description" xml:space="preserve">
+    <value>Connections set to Local only are left out.</value>
+  </data>
+  <data name="SyncConnectionsSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sync connections</value>
+  </data>
+  <data name="SyncPasswordsCard.Header" xml:space="preserve">
+    <value>Passwords</value>
+  </data>
+  <data name="SyncPasswordsSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sync passwords</value>
+  </data>
+  <data name="SyncGroupsCard.Header" xml:space="preserve">
+    <value>Groups and tags</value>
+  </data>
+  <data name="SyncGroupsSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sync groups and tags</value>
+  </data>
+  <data name="SyncSavedQueriesCard.Header" xml:space="preserve">
+    <value>Saved queries</value>
+  </data>
+  <data name="SyncSavedQueriesSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sync saved queries</value>
+  </data>
+  <data name="SyncTableFavoritesCard.Header" xml:space="preserve">
+    <value>Table favorites</value>
+  </data>
+  <data name="SyncTableFavoritesSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sync table favorites</value>
+  </data>
+  <data name="SyncDatabaseFavoritesCard.Header" xml:space="preserve">
+    <value>Database favorites</value>
+  </data>
+  <data name="SyncDatabaseFavoritesSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Sync database favorites</value>
+  </data>
+  <data name="SyncProviderOffSummary" xml:space="preserve">
+    <value>Your connections and saved queries stay on this computer.</value>
+  </data>
+  <data name="SyncProviderTableProSyncSummary" xml:space="preserve">
+    <value>Sync through your TablePro account with every device signed in to it. Passwords, other secrets and query history are end-to-end encrypted.</value>
+  </data>
+  <data name="SyncPasswordsEncrypted" xml:space="preserve">
+    <value>End-to-end encrypted with your account's keys. This computer also keeps its own copy of each password.</value>
+  </data>
+  <data name="SyncPasswordsOffOnServer" xml:space="preserve">
+    <value>Your server does not sync passwords. Each one stays on this computer.</value>
+  </data>
+  <data name="SyncStatusStarting" xml:space="preserve">
+    <value>Starting...</value>
+  </data>
+  <data name="SyncStatusUpToDate" xml:space="preserve">
+    <value>Up to date</value>
+  </data>
+  <data name="SyncStatusSyncing" xml:space="preserve">
+    <value>Syncing...</value>
+  </data>
+  <data name="SyncStatusWaiting" xml:space="preserve">
+    <value>Waiting to retry</value>
+  </data>
+  <data name="SyncStatusDownloadingOnly" xml:space="preserve">
+    <value>Downloading only</value>
+  </data>
+  <data name="SyncStatusNeedsApproval" xml:space="preserve">
+    <value>Waiting for approval</value>
+  </data>
+  <data name="SyncStatusChangesNeedApproval" xml:space="preserve">
+    <value>Changes need approval</value>
+  </data>
+  <data name="SyncChangesNeedApprovalDetail_one" xml:space="preserve">
+    <value>{0:N0} change needs approval before it syncs.</value>
+    <comment>{0} is the number of changes waiting for approval.</comment>
+  </data>
+  <data name="SyncChangesNeedApprovalDetail_other" xml:space="preserve">
+    <value>{0:N0} changes need approval before they sync.</value>
+    <comment>{0} is the number of changes waiting for approval.</comment>
+  </data>
+  <data name="SyncStatusNeedsRecoveryKey" xml:space="preserve">
+    <value>Recovery key needed</value>
+  </data>
+  <data name="SyncStatusLocked" xml:space="preserve">
+    <value>Locked</value>
+  </data>
+  <data name="SyncStatusOff" xml:space="preserve">
+    <value>Sync off</value>
+  </data>
+  <data name="SyncStatusUnavailable" xml:space="preserve">
+    <value>Sync is unavailable</value>
+  </data>
+  <data name="SyncNeedsApprovalDetail" xml:space="preserve">
+    <value>Approve this computer from another device signed in to your account, or use your recovery key.</value>
+  </data>
+  <data name="SyncNeedsRecoveryKeyDetail" xml:space="preserve">
+    <value>Set up a recovery key for your account before this computer syncs.</value>
+  </data>
+  <data name="SyncNeverSynced" xml:space="preserve">
+    <value>Not synced yet</value>
+  </data>
+  <data name="SyncLastSynced" xml:space="preserve">
+    <value>Last synced {0}</value>
+  </data>
+  <data name="SyncLockTitle_DeviceRemoved" xml:space="preserve">
+    <value>This computer was removed from your account</value>
+  </data>
+  <data name="SyncLockMessage_DeviceRemoved" xml:space="preserve">
+    <value>It keeps its keys, but nothing personal syncs here. Sign out, then sign in again and approve this computer from another device.</value>
+  </data>
+  <data name="SyncLockTitle_LeftOutOfRotation" xml:space="preserve">
+    <value>Your keys changed without this computer</value>
+  </data>
+  <data name="SyncLockMessage_LeftOutOfRotation" xml:space="preserve">
+    <value>Another device changed your keys and didn't keep this computer. Approve it again from a device that was kept, or use your recovery key.</value>
+  </data>
+  <data name="SyncLockTitle_OwnAccountReset" xml:space="preserve">
+    <value>Your account was reset on another device</value>
+  </data>
+  <data name="SyncLockMessage_OwnAccountReset" xml:space="preserve">
+    <value>Nothing personal syncs here until the device that reset your account approves this computer.</value>
+  </data>
+  <data name="SyncLockTitle_AccountEnded" xml:space="preserve">
+    <value>Your keys could not be restored</value>
+  </data>
+  <data name="SyncLockMessage_AccountEnded" xml:space="preserve">
+    <value>The server lost your keys after a restore. Sign out, then use your recovery key or reset your account.</value>
+  </data>
+  <data name="SyncLockTitle_Unanchored" xml:space="preserve">
+    <value>This computer's keys can't be checked</value>
+  </data>
+  <data name="SyncLockMessage_Unanchored" xml:space="preserve">
+    <value>Nothing personal syncs here until another device approves this computer or you use your recovery key.</value>
+  </data>
+  <data name="SyncLockTitle_PersonalStopped" xml:space="preserve">
+    <value>Your personal keys can't be checked</value>
+  </data>
+  <data name="SyncLockMessage_PersonalStopped" xml:space="preserve">
+    <value>The server showed keys this computer couldn't verify, so nothing personal syncs here. Approve it again or use your recovery key.</value>
+  </data>
+  <data name="SyncPolicy_PersonalSyncOff" xml:space="preserve">
+    <value>Your server does not keep personal data, so this computer keeps its own. Your account's keys go on syncing.</value>
+  </data>
+  <data name="SyncPolicy_PasswordsOff" xml:space="preserve">
+    <value>Your server does not sync passwords. Each one stays on this computer.</value>
+  </data>
+  <data name="SyncPolicy_HistoryOff" xml:space="preserve">
+    <value>Your server does not sync query history. It stays on this computer.</value>
+  </data>
+  <data name="SyncRefusal_Busy" xml:space="preserve">
+    <value>Another change to how this computer syncs is still running.</value>
+  </data>
+  <data name="SyncRefusal_SignInChanged" xml:space="preserve">
+    <value>Your TablePro account changed, so nothing was uploaded. Start again to see what this account gets.</value>
+  </data>
+  <data name="SyncRefusal_ServerRefusesPersonalSync" xml:space="preserve">
+    <value>Your server does not keep personal data, so this computer cannot sync it there.</value>
+  </data>
+  <data name="SyncUploadKeys_SetUpRecoveryKey" xml:space="preserve">
+    <value>Set up a recovery key for your account before this computer uploads, then check again.</value>
+  </data>
+  <data name="SyncUploadKeys_ApproveThisPc" xml:space="preserve">
+    <value>Approve this computer from another device signed in to your account, or use your recovery key, then check again.</value>
+  </data>
+  <data name="SyncUploadKeys_Locked" xml:space="preserve">
+    <value>This computer can no longer read your account's keys. Approve it again from another device, then check again.</value>
+  </data>
+  <data name="SyncUploadKeys_NoDeviceStore" xml:space="preserve">
+    <value>This computer has no place to keep its device keys, so it cannot use TablePro Sync.</value>
+  </data>
+  <data name="SyncUploadsPausedTitle" xml:space="preserve">
+    <value>Uploads paused</value>
+  </data>
+  <data name="SyncUploadsPausedMessage" xml:space="preserve">
+    <value>Your plan no longer includes TablePro Sync. This computer still downloads changes and keeps its own until you renew.</value>
+  </data>
+  <data name="SyncNewIdentityTitle" xml:space="preserve">
+    <value>Signed in to another account</value>
+  </data>
+  <data name="SyncNewIdentityMessage" xml:space="preserve">
+    <value>Move this computer's data into the account it now syncs with, or start empty with what that account already holds.</value>
+  </data>
+  <data name="SyncNewIdentityUnsent_one" xml:space="preserve">
+    <value>{0:N0} change here was never uploaded to the earlier account.</value>
+  </data>
+  <data name="SyncNewIdentityUnsent_other" xml:space="preserve">
+    <value>{0:N0} changes here were never uploaded to the earlier account.</value>
+  </data>
+  <data name="SyncStartEmpty" xml:space="preserve">
+    <value>Start empty</value>
+  </data>
+  <data name="SyncMoveMyData" xml:space="preserve">
+    <value>Move my data</value>
+  </data>
+  <data name="SyncUploadTitle" xml:space="preserve">
+    <value>Upload to TablePro Sync</value>
+  </data>
+  <data name="SyncUploadExplained" xml:space="preserve">
+    <value>This computer's data goes up to your TablePro account. Passwords, other secrets and query history are end-to-end encrypted; the server can read connections and saved queries.</value>
+  </data>
+  <data name="SyncUploadChecking" xml:space="preserve">
+    <value>Checking what this computer uploads...</value>
+  </data>
+  <data name="SyncUploadUploading" xml:space="preserve">
+    <value>Uploading to TablePro Sync...</value>
+  </data>
+  <data name="SyncUploadButton" xml:space="preserve">
+    <value>Upload</value>
+  </data>
+  <data name="SyncUploadCheckAgain" xml:space="preserve">
+    <value>Check again</value>
+  </data>
+  <data name="SyncUploadRecords_one" xml:space="preserve">
+    <value>{0:N0} item goes up.</value>
+  </data>
+  <data name="SyncUploadRecords_other" xml:space="preserve">
+    <value>{0:N0} items go up.</value>
+  </data>
+  <data name="SyncUploadSecrets_one" xml:space="preserve">
+    <value>{0:N0} password is encrypted for TablePro Sync, and this computer keeps its own copy.</value>
+  </data>
+  <data name="SyncUploadSecrets_other" xml:space="preserve">
+    <value>{0:N0} passwords are encrypted for TablePro Sync, and this computer keeps its own copy of each.</value>
+  </data>
+  <data name="SyncUploadStaying_one" xml:space="preserve">
+    <value>{0:N0} item stays on this computer: a Local only or sample connection, or a category you turned off.</value>
+  </data>
+  <data name="SyncUploadStaying_other" xml:space="preserve">
+    <value>{0:N0} items stay on this computer: Local only and sample connections, and categories you turned off.</value>
+  </data>
+  <data name="PlanFeature_service_sync" xml:space="preserve">
+    <value>TablePro Sync</value>
+  </data>
+  <data name="PlanFeatureDescription_service_sync" xml:space="preserve">
+    <value>Sync your connections, saved queries and favorites through your TablePro account. Passwords and other secrets are end-to-end encrypted.</value>
+  </data>
+  <data name="Error_sync_unimplemented" xml:space="preserve">
+    <value>This version of TablePro can't do this yet.</value>
+  </data>
+  <data name="Error_sync_malformed" xml:space="preserve">
+    <value>TablePro Sync could not read what it was given. Update TablePro, then try again.</value>
+  </data>
+  <data name="Error_sync_rejected" xml:space="preserve">
+    <value>The server refused the change. Try again in a moment.</value>
+  </data>
+  <data name="Error_sync_locked" xml:space="preserve">
+    <value>This computer can no longer read your account's keys. Approve it again from another device, or use your recovery key.</value>
+  </data>
+  <data name="Error_sync_typed_back_wrong" xml:space="preserve">
+    <value>Those groups don't match your recovery key. Check them and try again.</value>
+  </data>
+  <data name="Error_sync_unknown" xml:space="preserve">
+    <value>This step has ended. Start again.</value>
+  </data>
+  <data name="Error_sync_not_allowed" xml:space="preserve">
+    <value>This computer can't do this now. It may need approval from another device first.</value>
+  </data>
+  <data name="Error_sync_changed" xml:space="preserve">
+    <value>This changed while you were deciding. Look again, then choose.</value>
+  </data>
+  <data name="Error_sync_cancelled" xml:space="preserve">
+    <value>Cancelled.</value>
+  </data>
+  <data name="Error_sync_move_incomplete" xml:space="preserve">
+    <value>The upload stopped before everything went up. Try again to finish it.</value>
+  </data>
+  <data name="Error_sync_use_dpop_nonce" xml:space="preserve">
+    <value>TablePro Sync needs another try. Try again in a moment.</value>
+  </data>
+  <data name="Error_sync_feature_required" xml:space="preserve">
+    <value>Your plan doesn't include TablePro Sync. Your data stays on this computer.</value>
+  </data>
+  <data name="Error_sync_seat_required" xml:space="preserve">
+    <value>You have no seat on this team's plan. Ask an owner or admin for one.</value>
+  </data>
+  <data name="Error_sync_license_expired" xml:space="preserve">
+    <value>Your plan no longer includes TablePro Sync uploads. Your data stays on this computer.</value>
+  </data>
+  <data name="Error_sync_device_removed" xml:space="preserve">
+    <value>This computer was removed from your account. Sign out, then sign in again.</value>
+  </data>
+  <data name="Error_sync_step_up_required" xml:space="preserve">
+    <value>Confirm it's you, then try again.</value>
+  </data>
+  <data name="Error_sync_device_not_approved" xml:space="preserve">
+    <value>This computer isn't approved for your keys yet. Approve it from another device, or use your recovery key.</value>
+  </data>
+  <data name="Error_sync_interactive_sign_in_required" xml:space="preserve">
+    <value>Sign in to TablePro again, then try again.</value>
+  </data>
+  <data name="Error_sync_not_found" xml:space="preserve">
+    <value>TablePro Sync could not find this. Another device may have removed it.</value>
+  </data>
+  <data name="Error_sync_idempotency_in_progress" xml:space="preserve">
+    <value>The same change is still being sent. Try again in a moment.</value>
+  </data>
+  <data name="Error_sync_validation_failed" xml:space="preserve">
+    <value>The server refused this change as it stands.</value>
+  </data>
+  <data name="Error_sync_cursor_expired" xml:space="preserve">
+    <value>TablePro Sync has to read everything again, which it does on its next try.</value>
+  </data>
+  <data name="Error_sync_epoch_changed" xml:space="preserve">
+    <value>The server's sync data was reset, so this computer reads it again.</value>
+  </data>
+  <data name="Error_sync_idempotency_mismatch" xml:space="preserve">
+    <value>Another change was sent under the same request. Try again.</value>
+  </data>
+  <data name="Error_sync_rate_limited" xml:space="preserve">
+    <value>The server is busy. Try again in a moment.</value>
+  </data>
+  <data name="Error_sync_restore_check_unavailable" xml:space="preserve">
+    <value>The server is busy checking its data. Try again in a moment.</value>
+  </data>
+  <data name="Error_sync_server_too_old" xml:space="preserve">
+    <value>Your server is too old for TablePro Sync. Ask your administrator to update it.</value>
+  </data>
+  <data name="Error_sync_signed_out" xml:space="preserve">
+    <value>Sign in to your TablePro account, then try again.</value>
+  </data>
+  <data name="Error_sync_network" xml:space="preserve">
+    <value>TablePro Sync can't be reached. Your data stays on this computer, and it tries again once you're online.</value>
+  </data>
+  <data name="Error_sync_server" xml:space="preserve">
+    <value>The server could not finish. Try again later.</value>
+  </data>
+  <data name="Error_sync_device_store_unavailable" xml:space="preserve">
+    <value>Credential Manager could not be reached, so this computer can't keep its device keys.</value>
+  </data>
+  <data name="Error_sync_device_store_locked" xml:space="preserve">
+    <value>Credential Manager is locked. TablePro Sync tries again once it opens.</value>
+  </data>
+  <data name="Error_sync_device_store_failed" xml:space="preserve">
+    <value>Credential Manager could not keep this computer's keys. Try again.</value>
+  </data>
+  <data name="Error_sync_state_wrong_identity" xml:space="preserve">
+    <value>This computer's sync file belongs to another account, so TablePro Sync starts a new one.</value>
+  </data>
+  <data name="Error_sync_state_integrity" xml:space="preserve">
+    <value>This computer's sync file did not pass its check, so TablePro Sync reads everything again.</value>
+  </data>
+  <data name="Error_sync_state_anchor_unsettled" xml:space="preserve">
+    <value>TablePro Sync could not settle this computer's keys. Try again.</value>
+  </data>
+  <data name="Error_sync_state_busy" xml:space="preserve">
+    <value>Another TablePro window is syncing with this data folder. This one waits for it.</value>
+  </data>
+  <data name="Error_sync_state_io" xml:space="preserve">
+    <value>TablePro Sync could not write its file on this computer. Check that the disk has room, then try again.</value>
+  </data>
+  <data name="Error_sync_adapter_store" xml:space="preserve">
+    <value>TablePro Sync could not read or write this computer's data. Try again.</value>
+  </data>
+  <data name="Error_sync_adapter_unreadable" xml:space="preserve">
+    <value>This version can't read an item another device synced. It stays as it is until you update TablePro.</value>
+  </data>
+  <data name="Error_sync_adapter_host" xml:space="preserve">
+    <value>TablePro Sync could not apply a setting. Try again.</value>
+  </data>
+  <data name="Error_sync_team_library_other_owner" xml:space="preserve">
+    <value>This was meant for another TablePro account's Team Library, so nothing changed. Open Team Library again.</value>
+  </data>
+  <data name="Error_sync_team_library_signed_in_changed" xml:space="preserve">
+    <value>Your TablePro account changed. Open Team Library again.</value>
+  </data>
+  <data name="Error_sync_team_library_passwords_off" xml:space="preserve">
+    <value>The connections went to the team without their passwords, because password sync is off for this team or on this computer.</value>
+  </data>
+  <data name="Error_sync_team_library_not_confirmed" xml:space="preserve">
+    <value>The connections went to the team without their passwords, because this computer doesn't hold the team key yet. An owner or admin needs to confirm you.</value>
+  </data>
+  <data name="Error_sync_team_library_rotation_due" xml:space="preserve">
+    <value>The connections went to the team without their passwords, because the team key needs to be rotated first.</value>
+  </data>
+  <data name="Error_sync_team_library_passwords_role" xml:space="preserve">
+    <value>The connections went to the team without their passwords, because your role on this team doesn't share passwords.</value>
+  </data>
+  <data name="Error_sync_team_library_unknown_team" xml:space="preserve">
+    <value>This team is not on your account.</value>
+  </data>
+  <data name="Error_sync_team_library_not_writable" xml:space="preserve">
+    <value>You can't change this team's library.</value>
+  </data>
+  <data name="Error_sync_team_library_not_pulled" xml:space="preserve">
+    <value>Team Library has not loaded yet. Try again in a moment.</value>
+  </data>
+  <data name="Error_sync_team_library_pull_only" xml:space="preserve">
+    <value>Your team's plan no longer allows changes. Team Library still downloads.</value>
+  </data>
+  <data name="Error_sync_team_library_malformed" xml:space="preserve">
+    <value>Team Library holds an item this version can't read.</value>
+  </data>
+  <data name="Error_sync_team_library_delete_pending" xml:space="preserve">
+    <value>Team Library is still removing its data. Try again in a moment.</value>
+  </data>
+  <data name="Error_sync_team_library_delete_failed" xml:space="preserve">
+    <value>Team Library's data could not be removed. Try again.</value>
+  </data>
+  <data name="Error_sync_team_library_id_case_collision" xml:space="preserve">
+    <value>Two Team Library items have names that differ only in case. Rename one on another device.</value>
+  </data>
+  <data name="Error_keys_suite" xml:space="preserve">
+    <value>Your keys use a format this version can't read. Update TablePro.</value>
+  </data>
+  <data name="Error_keys_encoding" xml:space="preserve">
+    <value>Your keys could not be read. Try again.</value>
+  </data>
+  <data name="Error_keys_recovery_key" xml:space="preserve">
+    <value>That isn't your recovery key. Check each group and try again.</value>
+  </data>
+  <data name="Error_keys_signature" xml:space="preserve">
+    <value>A key did not verify, so it was refused.</value>
+  </data>
+  <data name="Error_keys_public_key" xml:space="preserve">
+    <value>A key was refused because it isn't valid.</value>
+  </data>
+  <data name="Error_keys_open" xml:space="preserve">
+    <value>Your keys could not be opened here. Approve this computer again, or use your recovery key.</value>
+  </data>
+  <data name="Error_keys_mismatch" xml:space="preserve">
+    <value>Your keys don't match what the server holds. Try again.</value>
+  </data>
+  <data name="Error_keys_kid" xml:space="preserve">
+    <value>A key doesn't match its version, so it was refused.</value>
+  </data>
+  <data name="Error_keys_ring" xml:space="preserve">
+    <value>Your account's older keys don't chain together, so they were refused.</value>
+  </data>
+  <data name="Error_keys_stale" xml:space="preserve">
+    <value>Your keys changed on another device. Try again in a moment.</value>
+  </data>
+  <data name="Error_keys_step" xml:space="preserve">
+    <value>Your keys changed on another device. Try again in a moment.</value>
+  </data>
+  <data name="Error_keys_retired_ik" xml:space="preserve">
+    <value>A device offered keys that were replaced, so they were refused.</value>
+  </data>
+  <data name="Error_keys_unendorsed" xml:space="preserve">
+    <value>Your account did not confirm a change to a device's keys, so it was refused.</value>
+  </data>
+  <data name="Error_keys_not_holder" xml:space="preserve">
+    <value>A device that doesn't hold your keys signed this, so it was refused.</value>
+  </data>
+  <data name="Error_keys_not_compared" xml:space="preserve">
+    <value>These keys were signed by a device you did not compare words with.</value>
+  </data>
+  <data name="Error_keys_commitment" xml:space="preserve">
+    <value>The approval did not match what the other device sent. Start again.</value>
+  </data>
+  <data name="Error_keys_sas_mismatch" xml:space="preserve">
+    <value>The words differ, so the approval stopped. Start again.</value>
+  </data>
+  <data name="Error_keys_session" xml:space="preserve">
+    <value>This approval has ended. Start again.</value>
+  </data>
+  <data name="Error_keys_conflict" xml:space="preserve">
+    <value>Another device changed your keys at the same time. Try again.</value>
+  </data>
+  <data name="Error_keys_destination" xml:space="preserve">
+    <value>These keys were sealed for somewhere else, so they were refused.</value>
+  </data>
+  <data name="Error_keys_random" xml:space="preserve">
+    <value>Windows could not give a secure random number. Try again.</value>
+  </data>
+  <data name="Error_keys_restart_held" xml:space="preserve">
+    <value>A team's keys restarted. Compare the owner's words before it goes on.</value>
+  </data>
+  <data name="Error_account_step_up_required" xml:space="preserve">
+    <value>Confirm it's you in the browser, then try again.</value>
+  </data>
+  <data name="Error_account_step_up_other_account" xml:space="preserve">
+    <value>You confirmed with another account. Confirm with the account signed in here.</value>
+  </data>
+  <data name="Error_account_server_invalid" xml:space="preserve">
+    <value>That isn't a valid server address.</value>
+  </data>
+  <data name="Error_account_server_insecure" xml:space="preserve">
+    <value>The server address must start with https.</value>
+  </data>
+  <data name="Error_account_server_not_tablepro" xml:space="preserve">
+    <value>That server isn't a TablePro server.</value>
+  </data>
+  <data name="Error_account_server_mismatch" xml:space="preserve">
+    <value>The server answered for another address.</value>
+  </data>
+  <data name="Error_account_server_managed" xml:space="preserve">
+    <value>Your organization manages which server TablePro signs in to.</value>
+  </data>
+  <data name="Error_account_server_unsupported" xml:space="preserve">
+    <value>Your company server doesn't support this.</value>
+  </data>
+  <data name="Error_account_license_not_installed" xml:space="preserve">
+    <value>Your server has no license installed. Ask your administrator.</value>
+  </data>
+  <data name="Error_account_license_other_server" xml:space="preserve">
+    <value>Your server's license is for another server.</value>
+  </data>
+  <data name="Error_account_license_not_yet_valid" xml:space="preserve">
+    <value>Your server's license isn't valid yet.</value>
+  </data>
+  <data name="Error_account_license_untrusted" xml:space="preserve">
+    <value>Your server's license wasn't issued by TablePro.</value>
+  </data>
+  <data name="Error_account_license_invalid" xml:space="preserve">
+    <value>Your server's license could not be read.</value>
+  </data>
+  <data name="Error_account_offline_file_unreadable" xml:space="preserve">
+    <value>The offline license file could not be read.</value>
+  </data>
+  <data name="Error_account_offline_file_too_large" xml:space="preserve">
+    <value>The offline license file is too large.</value>
+  </data>
+  <data name="SyncRefusal_AccountChoicePending" xml:space="preserve">
+    <value>Another account's data on this computer waits for your choice. Choose Move my data or Start empty in Settings first.</value>
+  </data>
+  <data name="AccountKeysTitle.Text" xml:space="preserve">
+    <value>End-to-end encryption</value>
+  </data>
+  <data name="AccountKeysIntro.Text" xml:space="preserve">
+    <value>Passwords, other secrets and query history are sealed on this computer with your account's keys before they sync. Each device holds the keys once another device approves it or you use your recovery key.</value>
+  </data>
+  <data name="KeysResetHeader.Text" xml:space="preserve">
+    <value>Reset</value>
+  </data>
+  <data name="SyncKeysCard.Header" xml:space="preserve">
+    <value>End-to-end encryption</value>
+  </data>
+  <data name="SyncKeysCard.Description" xml:space="preserve">
+    <value>Your account's keys on this computer, its devices and your recovery key</value>
+  </data>
+  <data name="SyncKeysOn" xml:space="preserve">
+    <value>This computer holds your account's keys.</value>
+  </data>
+  <data name="SyncKeysNotSetUp" xml:space="preserve">
+    <value>Not set up yet</value>
+  </data>
+  <data name="SyncKeysDescription" xml:space="preserve">
+    <value>Your account's keys on this computer, its devices and your recovery key</value>
+  </data>
+  <data name="SyncUploadKeysAction_SetUpRecoveryKey" xml:space="preserve">
+    <value>Set up recovery key...</value>
+  </data>
+  <data name="SyncUploadKeysAction_ApproveThisPc" xml:space="preserve">
+    <value>Approve this computer...</value>
+  </data>
+  <data name="SyncUploadKeysAction_Locked" xml:space="preserve">
+    <value>Open end-to-end encryption</value>
+  </data>
+  <data name="SyncUploadKeysAction_NoDeviceStore" xml:space="preserve">
+    <value>Upload</value>
+  </data>
+  <data name="KeysReadFailedTitle" xml:space="preserve">
+    <value>Your keys could not be read</value>
+  </data>
+  <data name="KeysChecking" xml:space="preserve">
+    <value>Checking your keys...</value>
+  </data>
+  <data name="KeysNoDeviceStoreTitle" xml:space="preserve">
+    <value>This computer can't keep keys</value>
+  </data>
+  <data name="KeysNoDeviceStoreMessage" xml:space="preserve">
+    <value>Without a place to keep keys, TablePro Sync carries only team records without their secrets here.</value>
+  </data>
+  <data name="KeysSetUpCardTitle" xml:space="preserve">
+    <value>Set up end-to-end encryption</value>
+  </data>
+  <data name="KeysSetUpCardMessage" xml:space="preserve">
+    <value>Your passwords, history and team secrets are sealed on this computer before they sync. A recovery key you keep lets you add and remove devices.</value>
+  </data>
+  <data name="KeysSetUpButton" xml:space="preserve">
+    <value>Set up...</value>
+  </data>
+  <data name="KeysNeedsApprovalTitle" xml:space="preserve">
+    <value>Approve this computer</value>
+  </data>
+  <data name="KeysNeedsApprovalMessage" xml:space="preserve">
+    <value>Approve it from another device signed in to your account, or use your recovery key when no other device is at hand.</value>
+  </data>
+  <data name="KeysAskForApproval" xml:space="preserve">
+    <value>Ask for approval...</value>
+  </data>
+  <data name="KeysUseRecoveryKeyButton" xml:space="preserve">
+    <value>Use recovery key...</value>
+  </data>
+  <data name="KeysRecoveryKeyTitle" xml:space="preserve">
+    <value>Recovery key</value>
+  </data>
+  <data name="KeysRecoveryKeyMessage" xml:space="preserve">
+    <value>Lets you approve a device and remove a lost one. Replace it if someone else may have seen it.</value>
+  </data>
+  <data name="KeysReplaceButton" xml:space="preserve">
+    <value>Replace...</value>
+  </data>
+  <data name="KeysRequestsHeader" xml:space="preserve">
+    <value>Waiting for approval</value>
+  </data>
+  <data name="KeysRequestsDescription" xml:space="preserve">
+    <value>Approve only a device you're signing in to right now.</value>
+  </data>
+  <data name="KeysApproveButton" xml:space="preserve">
+    <value>Approve...</value>
+  </data>
+  <data name="KeysApproveName" xml:space="preserve">
+    <value>Approve {0}</value>
+  </data>
+  <data name="KeysDevicesHeader" xml:space="preserve">
+    <value>Devices with your keys</value>
+  </data>
+  <data name="KeysDevicesDescription" xml:space="preserve">
+    <value>Each device that can read what TablePro Sync keeps for you</value>
+  </data>
+  <data name="KeysRemoveTitle" xml:space="preserve">
+    <value>Remove “{0}”?</value>
+  </data>
+  <data name="KeysRemoveMessage" xml:space="preserve">
+    <value>It's signed out and can't read anything new. First confirm it's you in your browser, then enter your recovery key so TablePro can change your keys.</value>
+  </data>
+  <data name="KeysRemoveFailedTitle" xml:space="preserve">
+    <value>Could not remove “{0}”</value>
+  </data>
+  <data name="KeysResetPendingTitle" xml:space="preserve">
+    <value>A key reset is waiting</value>
+  </data>
+  <data name="KeysResetCardTitle" xml:space="preserve">
+    <value>Reset end-to-end encryption</value>
+  </data>
+  <data name="KeysResetCard_KeepScopeKeys" xml:space="preserve">
+    <value>Use this when your recovery key is lost. Your account gets new keys and a new recovery key after a 7-day wait that any of your devices can cancel.</value>
+  </data>
+  <data name="KeysResetCard_StartEmpty" xml:space="preserve">
+    <value>Use this when no approved device and no recovery key is left. After a 7-day wait your account starts again with new keys, and what was sealed before can't be read.</value>
+  </data>
+  <data name="KeysResetButton" xml:space="preserve">
+    <value>Reset...</value>
+  </data>
+  <data name="KeysResetAskAgain" xml:space="preserve">
+    <value>Ask again</value>
+  </data>
+  <data name="KeysResetCancelButton" xml:space="preserve">
+    <value>Cancel reset</value>
+  </data>
+  <data name="KeysResetFinishButton" xml:space="preserve">
+    <value>Finish reset</value>
+  </data>
+  <data name="KeysResetCancelTitle" xml:space="preserve">
+    <value>Cancel the key reset?</value>
+  </data>
+  <data name="KeysResetCancelMessage" xml:space="preserve">
+    <value>Your keys stay as they are, and the device that asked for the reset can't finish it.</value>
+  </data>
+  <data name="KeysResetCancelWithKeyMessage" xml:space="preserve">
+    <value>Enter your recovery key to cancel the reset. Your keys stay as they are.</value>
+  </data>
+  <data name="KeysResetFinishTitle" xml:space="preserve">
+    <value>Finish the key reset?</value>
+  </data>
+  <data name="KeysResetFinishMessage" xml:space="preserve">
+    <value>Your account gets new keys. Every other device asks this computer for approval again.</value>
+  </data>
+  <data name="KeysResetMine" xml:space="preserve">
+    <value>This computer asked to reset your keys. You can finish the reset from {0:g}.</value>
+  </data>
+  <data name="KeysResetOther" xml:space="preserve">
+    <value>“{0}” asked to reset your keys. Cancel it if you didn't ask for it; otherwise it can finish from {1:g}.</value>
+  </data>
+  <data name="KeysResetWaitsForStepUp" xml:space="preserve">
+    <value>A server restore lost your key reset. Confirm it's you to ask for it again.</value>
+  </data>
+  <data name="KeysResetEnded_Pending" xml:space="preserve">
+    <value>A key reset is waiting.</value>
+  </data>
+  <data name="KeysResetEnded_Cancelled" xml:space="preserve">
+    <value>The key reset was cancelled.</value>
+  </data>
+  <data name="KeysResetEnded_Superseded" xml:space="preserve">
+    <value>The key reset ended without changing your keys.</value>
+  </data>
+  <data name="KeysResetEnded_Active" xml:space="preserve">
+    <value>Your keys were reset.</value>
+  </data>
+  <data name="KeysUnnamedDevice" xml:space="preserve">
+    <value>Unnamed device</value>
+  </data>
+  <data name="KeysDeviceAdded" xml:space="preserve">
+    <value>added {0:d}</value>
+  </data>
+  <data name="KeysCompared" xml:space="preserve">
+    <value>You compared words with it</value>
+  </data>
+  <data name="KeysAsksAgain" xml:space="preserve">
+    <value>Asks for approval again</value>
+  </data>
+  <data name="KeysYou" xml:space="preserve">
+    <value>You</value>
+  </data>
+  <data name="KeysUnnamedTeammate" xml:space="preserve">
+    <value>Unnamed teammate</value>
+  </data>
+  <data name="KeysUnnamedTeam" xml:space="preserve">
+    <value>Unnamed team</value>
+  </data>
+  <data name="KeysTypeBackGroups" xml:space="preserve">
+    <value>Type groups {0} and {1} of your recovery key.</value>
+  </data>
+  <data name="KeysTypeBack" xml:space="preserve">
+    <value>Type the groups of your recovery key it asks for.</value>
+  </data>
+  <data name="KeysGroup" xml:space="preserve">
+    <value>Group {0}</value>
+  </data>
+  <data name="KeysGroupLine" xml:space="preserve">
+    <value>{0,2}  {1}</value>
+  </data>
+  <data name="KeysApproveTitle" xml:space="preserve">
+    <value>Approve “{0}”?</value>
+  </data>
+  <data name="KeysAskingTitle" xml:space="preserve">
+    <value>Asking for approval</value>
+  </data>
+  <data name="KeysStartingTitle" xml:space="preserve">
+    <value>Starting the approval</value>
+  </data>
+  <data name="KeysWaitingTitle" xml:space="preserve">
+    <value>Approve this computer from another device</value>
+  </data>
+  <data name="KeysChosenTitle" xml:space="preserve">
+    <value>Another device is approving this computer</value>
+  </data>
+  <data name="KeysWaitingForTitle" xml:space="preserve">
+    <value>Waiting for “{0}”</value>
+  </data>
+  <data name="KeysCompareTitle" xml:space="preserve">
+    <value>Compare the words</value>
+  </data>
+  <data name="KeysConfirmedTitle" xml:space="preserve">
+    <value>Waiting for the other device</value>
+  </data>
+  <data name="KeysApprovedTitle" xml:space="preserve">
+    <value>This computer is approved</value>
+  </data>
+  <data name="KeysOtherApprovedTitle" xml:space="preserve">
+    <value>“{0}” is approved</value>
+  </data>
+  <data name="KeysTakenElsewhereTitle" xml:space="preserve">
+    <value>Another device is approving it</value>
+  </data>
+  <data name="KeysMismatchTitle" xml:space="preserve">
+    <value>The words didn't match</value>
+  </data>
+  <data name="KeysCommitmentTitle" xml:space="preserve">
+    <value>The request couldn't be checked</value>
+  </data>
+  <data name="KeysCancelledTitle" xml:space="preserve">
+    <value>Request cancelled</value>
+  </data>
+  <data name="KeysExpiredTitle" xml:space="preserve">
+    <value>Request expired</value>
+  </data>
+  <data name="KeysFailedTitle" xml:space="preserve">
+    <value>Approval didn't start</value>
+  </data>
+  <data name="KeysApproveMessage" xml:space="preserve">
+    <value>Approve only a device you're signing in to right now. It gets your keys and everything TablePro Sync keeps for you.</value>
+  </data>
+  <data name="KeysWaitingMessage" xml:space="preserve">
+    <value>On another device signed in to your account, open TablePro's settings, choose End-to-end encryption and approve this computer.</value>
+  </data>
+  <data name="KeysChosenMessage" xml:space="preserve">
+    <value>The five words to compare appear in a moment.</value>
+  </data>
+  <data name="KeysCompareMessage" xml:space="preserve">
+    <value>Check that the other device shows the same five words in the same order.</value>
+  </data>
+  <data name="KeysCompareOtherMessage" xml:space="preserve">
+    <value>Check that “{0}” shows the same five words in the same order.</value>
+  </data>
+  <data name="KeysConfirmedMessage" xml:space="preserve">
+    <value>Confirm the words on the other device too.</value>
+  </data>
+  <data name="KeysApprovedMessage" xml:space="preserve">
+    <value>It now has your keys, and TablePro Sync starts here.</value>
+  </data>
+  <data name="KeysOtherApprovedMessage" xml:space="preserve">
+    <value>It now has your keys.</value>
+  </data>
+  <data name="KeysTakenElsewhereMessage" xml:space="preserve">
+    <value>“{0}” is being approved on another of your devices.</value>
+  </data>
+  <data name="KeysMismatchMessage" xml:space="preserve">
+    <value>Nothing was approved. If you didn't start this request, someone may be trying to get your keys.</value>
+  </data>
+  <data name="KeysCommitmentMessage" xml:space="preserve">
+    <value>The other device's answer didn't match what this computer sent, so nothing was approved.</value>
+  </data>
+  <data name="KeysCancelledMessage" xml:space="preserve">
+    <value>Nothing was approved.</value>
+  </data>
+  <data name="KeysExpiredMessage" xml:space="preserve">
+    <value>A request lasts 10 minutes. Nothing was approved.</value>
+  </data>
+  <data name="KeysTimeLeft" xml:space="preserve">
+    <value>Time left: {0}</value>
+  </data>
+  <data name="KeysRequestDetail" xml:space="preserve">
+    <value>{0} · asked {1:t}</value>
+  </data>
+  <data name="KeysApprove" xml:space="preserve">
+    <value>Approve</value>
+  </data>
+  <data name="KeysWaitingForDevice" xml:space="preserve">
+    <value>Waiting for another device</value>
+  </data>
+  <data name="KeysWaitingForWords" xml:space="preserve">
+    <value>Waiting for the words</value>
+  </data>
+  <data name="KeysWaitingForConfirm" xml:space="preserve">
+    <value>Waiting for the other device to confirm</value>
+  </data>
+  <data name="KeysWordsMatch" xml:space="preserve">
+    <value>The words match</value>
+  </data>
+  <data name="KeysWordsDiffer" xml:space="preserve">
+    <value>They don't match</value>
+  </data>
+  <data name="KeysWordsName" xml:space="preserve">
+    <value>The words: {0}</value>
+  </data>
+  <data name="KeysAskAgain" xml:space="preserve">
+    <value>Ask again</value>
+  </data>
+  <data name="KeysReplaceTitle" xml:space="preserve">
+    <value>Replace recovery key</value>
+  </data>
+  <data name="KeysReplaceMessage" xml:space="preserve">
+    <value>Enter your current recovery key. You get a new one, and the current one stops working.</value>
+  </data>
+  <data name="KeysContinue" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="KeysKeepDevicesTitle" xml:space="preserve">
+    <value>Keep your devices?</value>
+  </data>
+  <data name="KeysKeepDevicesMessage" xml:space="preserve">
+    <value>Devices you compared words with can keep your keys. Every other device asks for approval again.</value>
+  </data>
+  <data name="KeysNewKeyTitle" xml:space="preserve">
+    <value>Your new recovery key</value>
+  </data>
+  <data name="KeysSetUpTitle" xml:space="preserve">
+    <value>Set up a recovery key</value>
+  </data>
+  <data name="KeysSaveKeyMessage" xml:space="preserve">
+    <value>Save it in a password manager or write it down. TablePro can't show it again or recover it. You need it to remove a lost device.</value>
+  </data>
+  <data name="KeysMakingKey" xml:space="preserve">
+    <value>Making your recovery key...</value>
+  </data>
+  <data name="KeysConfirmKeyTitle" xml:space="preserve">
+    <value>Confirm your recovery key</value>
+  </data>
+  <data name="KeysShowKeyAgain" xml:space="preserve">
+    <value>Show key again</value>
+  </data>
+  <data name="KeysReplace" xml:space="preserve">
+    <value>Replace</value>
+  </data>
+  <data name="KeysSetUp" xml:space="preserve">
+    <value>Set up</value>
+  </data>
+  <data name="KeysAnotherDeviceWonTitle" xml:space="preserve">
+    <value>Approve this computer instead</value>
+  </data>
+  <data name="KeysAnotherDeviceWonMessage" xml:space="preserve">
+    <value>Another device set up your keys first, so this key wasn't used. Ask that device to approve this computer.</value>
+  </data>
+  <data name="KeysAskAnotherDevice" xml:space="preserve">
+    <value>Ask another device...</value>
+  </data>
+  <data name="KeysClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="KeysReplacedTitle" xml:space="preserve">
+    <value>Recovery key replaced</value>
+  </data>
+  <data name="KeysReplacedMessage" xml:space="preserve">
+    <value>Your old recovery key no longer works. Devices you didn't keep ask for approval again.</value>
+  </data>
+  <data name="KeysSetUpDoneTitle" xml:space="preserve">
+    <value>Recovery key set up</value>
+  </data>
+  <data name="KeysSetUpDoneMessage" xml:space="preserve">
+    <value>Keep your recovery key somewhere safe. TablePro Sync now seals your secrets on this computer.</value>
+  </data>
+  <data name="KeysDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="KeysWorking" xml:space="preserve">
+    <value>Working...</value>
+  </data>
+  <data name="KeysRecoverTitle" xml:space="preserve">
+    <value>Use your recovery key</value>
+  </data>
+  <data name="KeysRecoverMessage" xml:space="preserve">
+    <value>Use it only when no other device of yours is at hand. This computer gets new keys, and your other devices ask it for approval again.</value>
+  </data>
+  <data name="KeysRecoveredMessage" xml:space="preserve">
+    <value>It has your keys again. Approve your other devices from this computer when they ask.</value>
+  </data>
+  <data name="KeysUseRecoveryKey" xml:space="preserve">
+    <value>Use recovery key</value>
+  </data>
+  <data name="KeysRecoveryKeyHeader" xml:space="preserve">
+    <value>Recovery key</value>
+  </data>
+  <data name="KeysRecoveryKeyPlaceholder" xml:space="preserve">
+    <value>XXXX-XXXX-XXXX-...</value>
+  </data>
+  <data name="KeysCopy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="KeysCopyName" xml:space="preserve">
+    <value>Copy recovery key</value>
+  </data>
+  <data name="KeysCopied" xml:space="preserve">
+    <value>Copied. It stays out of the clipboard history.</value>
+  </data>
+  <data name="KeysLater" xml:space="preserve">
+    <value>Later</value>
+  </data>
+  <data name="KeysRemovalTitle" xml:space="preserve">
+    <value>Finish removing “{0}”</value>
+  </data>
+  <data name="KeysRemovalMessage" xml:space="preserve">
+    <value>Enter your recovery key so TablePro can give your account new keys that the removed device doesn't have.</value>
+  </data>
+  <data name="KeysReviewTitle" xml:space="preserve">
+    <value>Review before changing your keys</value>
+  </data>
+  <data name="KeysReviewMessage" xml:space="preserve">
+    <value>Choose the devices that keep your keys, and check the teammates you confirmed while the removed device had them.</value>
+  </data>
+  <data name="KeysYourDevices" xml:space="preserve">
+    <value>Your devices</value>
+  </data>
+  <data name="KeysConfirmedWhile" xml:space="preserve">
+    <value>Confirmed while “{0}” had your keys. Clear anyone you didn't mean to confirm.</value>
+  </data>
+  <data name="KeysChangeKeys" xml:space="preserve">
+    <value>Change keys</value>
+  </data>
+  <data name="KeysSeatsTitle" xml:space="preserve">
+    <value>Remove their seats first</value>
+  </data>
+  <data name="KeysSeatsMessage" xml:space="preserve">
+    <value>Remove the seats of the teammates you cleared, then change your keys. The new team keys leave them out either way.</value>
+  </data>
+  <data name="KeysManageTeam" xml:space="preserve">
+    <value>Manage...</value>
+  </data>
+  <data name="KeysBack" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="KeysRemovedTitle" xml:space="preserve">
+    <value>“{0}” removed</value>
+  </data>
+  <data name="KeysRemovedMessage" xml:space="preserve">
+    <value>Your keys changed. Your other devices pick up the new keys the next time they sync.</value>
+  </data>
+  <data name="KeysRemovalTryAgain" xml:space="preserve">
+    <value>Enter your recovery key to try again.</value>
+  </data>
+  <data name="KeysResetTitle" xml:space="preserve">
+    <value>Reset end-to-end encryption</value>
+  </data>
+  <data name="KeysResetExplain_KeepScopeKeys" xml:space="preserve">
+    <value>Your account gets new keys and a new recovery key. The reset waits 7 days, and any of your approved devices or your current recovery key can cancel it. Every other device asks for approval again after.</value>
+  </data>
+  <data name="KeysResetExplain_StartEmpty" xml:space="preserve">
+    <value>Your account starts again with new keys and a new recovery key. The reset waits 7 days and needs you to confirm it's you. What was sealed before can't be read after.</value>
+  </data>
+  <data name="KeysAskToReset" xml:space="preserve">
+    <value>Ask to reset</value>
+  </data>
+  <data name="KeysResetAskedTitle" xml:space="preserve">
+    <value>Reset requested</value>
+  </data>
+  <data name="KeysResetAskedMessage" xml:space="preserve">
+    <value>The reset waits 7 days before you can finish it.</value>
+  </data>
+  <data name="KeysSignOutFailedTitle" xml:space="preserve">
+    <value>This computer's encryption keys weren't erased</value>
+  </data>
+  <data name="KeysSignOutFailedMessage" xml:space="preserve">
+    <value>{0} If you sign out anyway, the keys stay on this computer until another account signs in here.</value>
+  </data>
+  <data name="KeysSignOutAnyway" xml:space="preserve">
+    <value>Sign out anyway</value>
+  </data>
+  <data name="PlanFeature_team_library" xml:space="preserve">
+    <value>Team Library</value>
+  </data>
+  <data name="PlanFeatureDescription_team_library" xml:space="preserve">
+    <value>Share saved queries with your team, and confirm the members who hold the team's keys.</value>
+  </data>
+  <data name="SyncTeamKeysCard.Header" xml:space="preserve">
+    <value>Team keys</value>
+  </data>
+  <data name="SyncTeamKeysCard.Description" xml:space="preserve">
+    <value>Your words, and each team's key and members</value>
+  </data>
+  <data name="TeamKeysTitle.Text" xml:space="preserve">
+    <value>Team keys</value>
+  </data>
+  <data name="TeamKeysIntro.Text" xml:space="preserve">
+    <value>Each team shares its passwords end-to-end under a team key. An owner or admin confirms each member by comparing the member's words before the key goes to them.</value>
+  </data>
+  <data name="TeamOwnWordsCard.Header" xml:space="preserve">
+    <value>Your words</value>
+  </data>
+  <data name="TeamOwnWordsCard.Description" xml:space="preserve">
+    <value>The six words an owner or admin compares to confirm you. They are the same on every device of your account.</value>
+  </data>
+  <data name="TeamShowMyWords.Content" xml:space="preserve">
+    <value>Show my words...</value>
+  </data>
+  <data name="TeamShowMyWordsButton" xml:space="preserve">
+    <value>Show my words...</value>
+  </data>
+  <data name="TeamLibraryHeader.Text" xml:space="preserve">
+    <value>Team Library</value>
+  </data>
+  <data name="TeamPublishToTeamButton.Content" xml:space="preserve">
+    <value>Publish to team...</value>
+  </data>
+  <data name="TeamKeysUnavailable" xml:space="preserve">
+    <value>Team keys need a sign-in and a plan with Team Library.</value>
+  </data>
+  <data name="TeamKeysNoTeams" xml:space="preserve">
+    <value>Your account isn't on a team yet.</value>
+  </data>
+  <data name="TeamLibraryReadFailed" xml:space="preserve">
+    <value>Couldn't read your teams</value>
+  </data>
+  <data name="TeamLibraryReadFailedMessage" xml:space="preserve">
+    <value>Couldn't read the team library. {0}</value>
+    <comment>{0} is why.</comment>
+  </data>
+  <data name="TeamKeysFailedTitle" xml:space="preserve">
+    <value>Couldn't change the keys of {0}</value>
+    <comment>{0} is the team's name.</comment>
+  </data>
+  <data name="TeamKeysLoading" xml:space="preserve">
+    <value>Loading team keys</value>
+  </data>
+  <data name="TeamChangedByAt" xml:space="preserve">
+    <value>Changed by {0}, {1:d}</value>
+    <comment>{0} is who changed the item last, {1} when.</comment>
+  </data>
+  <data name="TeamChangedBy" xml:space="preserve">
+    <value>Changed by {0}</value>
+    <comment>{0} is who changed the item last.</comment>
+  </data>
+  <data name="TeamChangedAt" xml:space="preserve">
+    <value>Changed {0:d}</value>
+    <comment>{0} is when the item last changed.</comment>
+  </data>
+  <data name="TeamPublishing" xml:space="preserve">
+    <value>Publishing to the team library...</value>
+  </data>
+  <data name="TeamPublishUnchanged" xml:space="preserve">
+    <value>The team library already has these saved queries.</value>
+  </data>
+  <data name="TeamPublished_one" xml:space="preserve">
+    <value>Published {0:N0} change to the team library.</value>
+    <comment>{0} is the number of changes.</comment>
+  </data>
+  <data name="TeamPublished_other" xml:space="preserve">
+    <value>Published {0:N0} changes to the team library.</value>
+    <comment>{0} is the number of changes.</comment>
+  </data>
+  <data name="TeamPublishConflicts_one" xml:space="preserve">
+    <value>{0:N0} change conflicts with the team's version. Choose which one the team library keeps.</value>
+    <comment>{0} is the number of conflicts.</comment>
+  </data>
+  <data name="TeamPublishConflicts_other" xml:space="preserve">
+    <value>{0:N0} changes conflict with the team's version. Choose which one the team library keeps.</value>
+    <comment>{0} is the number of conflicts.</comment>
+  </data>
+  <data name="TeamPublishQueued" xml:space="preserve">
+    <value>Not published yet. TablePro publishes your changes once the team library answers again.</value>
+  </data>
+  <data name="TeamNotWritable" xml:space="preserve">
+    <value>Only the team's owner, admins and editors publish to its library.</value>
+  </data>
+  <data name="TeamSignedOut" xml:space="preserve">
+    <value>The sign-in changed before the publish went out, so nothing was sent.</value>
+  </data>
+  <data name="TeamUnsentConflict" xml:space="preserve">
+    <value>{0} (not sent: changed on the team since)</value>
+    <comment>{0} is the item's name.</comment>
+  </data>
+  <data name="TeamUnsentRefused" xml:space="preserve">
+    <value>{0} (not sent: {1})</value>
+    <comment>{0} is the item's name, {1} why the team library refused it.</comment>
+  </data>
+  <data name="TeamRefusedUnknown" xml:space="preserve">
+    <value>the team library refused it</value>
+  </data>
+  <data name="TeamConflictTitle_ChangedAfterYouDeleted" xml:space="preserve">
+    <value>“{0}” changed after you deleted it</value>
+    <comment>{0} is the item's name.</comment>
+  </data>
+  <data name="TeamConflictTitle_DeletedFromTeam" xml:space="preserve">
+    <value>“{0}” was deleted from the team library</value>
+    <comment>{0} is the item's name.</comment>
+  </data>
+  <data name="TeamConflictTitle_BothChanged" xml:space="preserve">
+    <value>“{0}” changed since you last synced</value>
+    <comment>{0} is the item's name.</comment>
+  </data>
+  <data name="TeamConflictMessage_ChangedAfterYouDeleted" xml:space="preserve">
+    <value>Someone in {0} changed this item after you deleted it. Keep mine deletes it, and Keep theirs keeps the team's version.</value>
+    <comment>{0} is the team's name.</comment>
+  </data>
+  <data name="TeamConflictMessage_DeletedFromTeam" xml:space="preserve">
+    <value>Someone in {0} deleted this item after you changed it. Keep mine puts it back with your changes, and Keep theirs leaves it deleted.</value>
+    <comment>{0} is the team's name.</comment>
+  </data>
+  <data name="TeamConflictMessage_BothChanged" xml:space="preserve">
+    <value>You and someone in {0} changed the same fields of this item. Choose the version the team library keeps.</value>
+    <comment>{0} is the team's name.</comment>
+  </data>
+  <data name="TeamField_name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="TeamField_query" xml:space="preserve">
+    <value>Query</value>
+  </data>
+  <data name="TeamField_keyword" xml:space="preserve">
+    <value>Keyword</value>
+  </data>
+  <data name="TeamField_folder_client_id" xml:space="preserve">
+    <value>Folder</value>
+  </data>
+  <data name="TeamField_parent_client_id" xml:space="preserve">
+    <value>Folder</value>
+  </data>
+  <data name="TeamField_connection_client_id" xml:space="preserve">
+    <value>Connection</value>
+  </data>
+  <data name="TeamField_sort_order" xml:space="preserve">
+    <value>Position</value>
+  </data>
+  <data name="TeamValueNone" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="TeamValueYes" xml:space="preserve">
+    <value>Yes</value>
+  </data>
+  <data name="TeamValueNo" xml:space="preserve">
+    <value>No</value>
+  </data>
+  <data name="TeamValueDeleted" xml:space="preserve">
+    <value>Deleted</value>
+  </data>
+  <data name="TeamConflictField" xml:space="preserve">
+    <value>Field</value>
+  </data>
+  <data name="TeamConflictMine" xml:space="preserve">
+    <value>Yours</value>
+  </data>
+  <data name="TeamConflictTheirs" xml:space="preserve">
+    <value>The team's</value>
+  </data>
+  <data name="TeamConflictsLeft_one" xml:space="preserve">
+    <value>{0:N0} more conflict after this one</value>
+    <comment>{0} is the number of conflicts left.</comment>
+  </data>
+  <data name="TeamConflictsLeft_other" xml:space="preserve">
+    <value>{0:N0} more conflicts after this one</value>
+    <comment>{0} is the number of conflicts left.</comment>
+  </data>
+  <data name="TeamKeepMine" xml:space="preserve">
+    <value>Keep mine</value>
+  </data>
+  <data name="TeamKeepTheirs" xml:space="preserve">
+    <value>Keep theirs</value>
+  </data>
+  <data name="TeamDecideLater" xml:space="preserve">
+    <value>Decide later</value>
+  </data>
+  <data name="TeamConflictsWaiting_one" xml:space="preserve">
+    <value>{0:N0} change conflicts with the team library.</value>
+    <comment>{0} is the number of conflicts.</comment>
+  </data>
+  <data name="TeamConflictsWaiting_other" xml:space="preserve">
+    <value>{0:N0} changes conflict with the team library.</value>
+    <comment>{0} is the number of conflicts.</comment>
+  </data>
+  <data name="TeamResolveButton" xml:space="preserve">
+    <value>Resolve...</value>
+  </data>
+  <data name="TeamUnsentNotice_one" xml:space="preserve">
+    <value>{0:N0} change isn't uploaded yet. It stays on this computer until the team library takes it, and signing out asks first.</value>
+    <comment>{0} is the number of changes.</comment>
+  </data>
+  <data name="TeamUnsentNotice_other" xml:space="preserve">
+    <value>{0:N0} changes aren't uploaded yet. They stay on this computer until the team library takes them, and signing out asks first.</value>
+    <comment>{0} is the number of changes.</comment>
+  </data>
+  <data name="TeamDiscardEllipsis" xml:space="preserve">
+    <value>Discard...</value>
+  </data>
+  <data name="TeamDiscardTitle" xml:space="preserve">
+    <value>Discard the changes not uploaded?</value>
+  </data>
+  <data name="TeamDiscardMessage" xml:space="preserve">
+    <value>These changes are lost if you discard them:</value>
+  </data>
+  <data name="TeamDiscardButton" xml:space="preserve">
+    <value>Discard</value>
+  </data>
+  <data name="TeamQueriesName" xml:space="preserve">
+    <value>Queries of {0}</value>
+    <comment>{0} is the team's name.</comment>
+  </data>
+  <data name="TeamNoQueries" xml:space="preserve">
+    <value>No saved queries in this team yet.</value>
+  </data>
+  <data name="TeamPublishTitle" xml:space="preserve">
+    <value>Publish to team</value>
+  </data>
+  <data name="TeamPublishButton" xml:space="preserve">
+    <value>Publish</value>
+  </data>
+  <data name="TeamPublishTeam" xml:space="preserve">
+    <value>Team</value>
+  </data>
+  <data name="TeamPublishMessage_one" xml:space="preserve">
+    <value>{0:N0} saved query and its folders on this computer go to {1}'s library, where everyone on the team can open them.</value>
+    <comment>{0} is the number of saved queries, {1} the team's name.</comment>
+  </data>
+  <data name="TeamPublishMessage_other" xml:space="preserve">
+    <value>{0:N0} saved queries and their folders on this computer go to {1}'s library, where everyone on the team can open them.</value>
+    <comment>{0} is the number of saved queries, {1} the team's name.</comment>
+  </data>
+  <data name="TeamPublishExplain" xml:space="preserve">
+    <value>Queries you published before and deleted since are removed from the team library. Team connections are not sent from this computer yet.</value>
+  </data>
+  <data name="TeamSignOutTitle" xml:space="preserve">
+    <value>Sign out of TablePro on this computer?</value>
+  </data>
+  <data name="TeamSignOutUploadFailed" xml:space="preserve">
+    <value>The upload did not finish. {0}</value>
+    <comment>{0} is why.</comment>
+  </data>
+  <data name="TeamSignOutUnsent" xml:space="preserve">
+    <value>These Team Library changes are not uploaded yet and are lost if you discard them: {0}.</value>
+    <comment>{0} is the list of changes.</comment>
+  </data>
+  <data name="TeamSignOutUnlisted" xml:space="preserve">
+    <value>TablePro couldn't list the Team Library changes not uploaded yet. Discarding loses any there are.</value>
+  </data>
+  <data name="TeamSignOutUpload" xml:space="preserve">
+    <value>Upload and sign out</value>
+  </data>
+  <data name="TeamSignOutDiscard" xml:space="preserve">
+    <value>Discard and sign out</value>
+  </data>
+  <data name="TeamOwnWordsTitle" xml:space="preserve">
+    <value>Your words</value>
+  </data>
+  <data name="TeamOwnWordsMessage" xml:space="preserve">
+    <value>Read these words to the owner or admin who confirms you. They are the same on every device of your account.</value>
+  </data>
+  <data name="TeamLoadingWords" xml:space="preserve">
+    <value>Loading the words</value>
+  </data>
+  <data name="TeamDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="TeamClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="TeamNotNow" xml:space="preserve">
+    <value>Not now</value>
+  </data>
+  <data name="TeamConfirmTitle" xml:space="preserve">
+    <value>Confirm {0}</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamConfirmMessage" xml:space="preserve">
+    <value>Ask {0} to read the six words under Settings &gt; Sync &gt; Team keys &gt; Show my words. Confirm only if they match these.</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamConfirmButton" xml:space="preserve">
+    <value>Confirm</value>
+  </data>
+  <data name="TeamConfirmEllipsis" xml:space="preserve">
+    <value>Confirm...</value>
+  </data>
+  <data name="TeamConfirmName" xml:space="preserve">
+    <value>Confirm {0}</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamWordsDontMatch" xml:space="preserve">
+    <value>Words don't match</value>
+  </data>
+  <data name="TeamMismatchTitle" xml:space="preserve">
+    <value>Don't confirm {0}</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamMismatchMessage" xml:space="preserve">
+    <value>The keys this computer has for them aren't the keys they hold, so someone may be standing in for them. Tell the person who runs your TablePro server.</value>
+  </data>
+  <data name="TeamKeyChangeTitle" xml:space="preserve">
+    <value>The keys of {0} changed</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamKeyChangeMessage" xml:space="preserve">
+    <value>Ask {0} to read their six words. Accept only if they match the new words.</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamKeyChangeSettled" xml:space="preserve">
+    <value>This key change was already settled on this computer.</value>
+  </data>
+  <data name="TeamKeyChangeShares" xml:space="preserve">
+    <value>Accepting also shares the team key with their new keys.</value>
+  </data>
+  <data name="TeamNewWords" xml:space="preserve">
+    <value>New words</value>
+  </data>
+  <data name="TeamPreviousWords" xml:space="preserve">
+    <value>Previous words</value>
+  </data>
+  <data name="TeamWordsMatch" xml:space="preserve">
+    <value>Words match</value>
+  </data>
+  <data name="TeamWordsMatchName" xml:space="preserve">
+    <value>The words of {0} match</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamAcceptWithoutComparing" xml:space="preserve">
+    <value>Accept without comparing</value>
+  </data>
+  <data name="TeamHeldRestartTitle" xml:space="preserve">
+    <value>The team key was started over</value>
+  </data>
+  <data name="TeamHeldRestartGone" xml:space="preserve">
+    <value>This computer no longer holds a restarted team key.</value>
+  </data>
+  <data name="TeamHeldRestartMessage" xml:space="preserve">
+    <value>Ask {0} to read their six words. Until the words match and you accept, this computer keeps the passwords it already has for {1} and saves no new ones there.</value>
+    <comment>{0} is who started the key over, {1} the team's name.</comment>
+  </data>
+  <data name="TeamTheOwner" xml:space="preserve">
+    <value>the owner</value>
+  </data>
+  <data name="TeamRestartTitle" xml:space="preserve">
+    <value>Start the team key over</value>
+  </data>
+  <data name="TeamRestartMessage" xml:space="preserve">
+    <value>No one on {0} holds the current team key, so it can't be passed on. Starting over makes a new key and shares it with the members you include. Passwords saved under the old key stay readable only where a device still has that key.</value>
+    <comment>{0} is the team's name.</comment>
+  </data>
+  <data name="TeamRestartNoCandidates" xml:space="preserve">
+    <value>No other member has set up their keys yet. You can start over now and confirm them later.</value>
+  </data>
+  <data name="TeamRestartCompare" xml:space="preserve">
+    <value>Compare each member's words with them. Only those whose words match get the new key.</value>
+  </data>
+  <data name="TeamRestartWaiting" xml:space="preserve">
+    <value>Left out until you compare their new keys on this page: {0}.</value>
+    <comment>{0} is the list of members.</comment>
+  </data>
+  <data name="TeamRestartButton" xml:space="preserve">
+    <value>Start over</value>
+  </data>
+  <data name="TeamStartOver" xml:space="preserve">
+    <value>Start over...</value>
+  </data>
+  <data name="TeamCreateKeys" xml:space="preserve">
+    <value>Create team keys</value>
+  </data>
+  <data name="TeamCompareWords" xml:space="preserve">
+    <value>Compare words...</value>
+  </data>
+  <data name="TeamCompare" xml:space="preserve">
+    <value>Compare...</value>
+  </data>
+  <data name="TeamCompareName" xml:space="preserve">
+    <value>Compare the words of {0}</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamDismiss" xml:space="preserve">
+    <value>Dismiss</value>
+  </data>
+  <data name="TeamRotate" xml:space="preserve">
+    <value>Rotate team key...</value>
+  </data>
+  <data name="TeamRotateButton" xml:space="preserve">
+    <value>Rotate</value>
+  </data>
+  <data name="TeamRotateTitle" xml:space="preserve">
+    <value>Rotate the team key?</value>
+  </data>
+  <data name="TeamRotateMessage" xml:space="preserve">
+    <value>Every confirmed member gets the new key. New passwords for this team can be saved again once it is done.</value>
+  </data>
+  <data name="TeamReconfirmTitle" xml:space="preserve">
+    <value>Confirm this device again?</value>
+  </data>
+  <data name="TeamReconfirmMessage" xml:space="preserve">
+    <value>Confirming it again rotates the team key. Every confirmed member, that device included, gets the new key.</value>
+  </data>
+  <data name="TeamConfirmAgain" xml:space="preserve">
+    <value>Confirm again...</value>
+  </data>
+  <data name="TeamStoppedOwnDevice" xml:space="preserve">
+    <value>One of your devices</value>
+  </data>
+  <data name="TeamStoppedDevice" xml:space="preserve">
+    <value>A device of {0}</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamStoppedAt" xml:space="preserve">
+    <value>Stopped at version {0:N0}</value>
+    <comment>{0} is the team key's version.</comment>
+  </data>
+  <data name="TeamStoppedAtOthers" xml:space="preserve">
+    <value>Stopped at version {0:N0}. Only an owner or admin who held it can confirm it again.</value>
+    <comment>{0} is the team key's version.</comment>
+  </data>
+  <data name="TeamMemberYou" xml:space="preserve">
+    <value>{0} (you)</value>
+    <comment>{0} is your name.</comment>
+  </data>
+  <data name="TeamKeyStatus_Ended" xml:space="preserve">
+    <value>This team's keys ended on this computer. An owner needs to create a new team and share its connections again.</value>
+  </data>
+  <data name="TeamKeyStatus_StoppedCatchUp" xml:space="preserve">
+    <value>This computer stopped using the team key: it couldn't verify a newer version. An owner or admin needs to confirm this computer again.</value>
+  </data>
+  <data name="TeamKeyStatus_RestoreWait" xml:space="preserve">
+    <value>The server lost a team key in a restore. This computer waits until the device that made it sends it again, then carries on by itself.</value>
+  </data>
+  <data name="TeamKeyStatus_RestartHeld" xml:space="preserve">
+    <value>The team key was started over. Compare the words of the owner who did it before this computer uses it.</value>
+  </data>
+  <data name="TeamKeyStatus_NoKeys" xml:space="preserve">
+    <value>The team's owner hasn't set up its keys yet.</value>
+  </data>
+  <data name="TeamKeyStatus_NoKeysCreate" xml:space="preserve">
+    <value>This team has no keys yet. Create them to share passwords with the team end-to-end.</value>
+  </data>
+  <data name="TeamKeyStatus_NoHolderLeft" xml:space="preserve">
+    <value>No one on this team holds the current team key. An owner needs to start it over.</value>
+  </data>
+  <data name="TeamKeyStatus_NoHolderLeftRestart" xml:space="preserve">
+    <value>No one on this team holds the current team key. Start it over to share passwords with the team again.</value>
+  </data>
+  <data name="TeamKeyStatus_AwaitingConfirmation" xml:space="preserve">
+    <value>Waiting for an owner or admin to confirm you. Show them your words so they can compare.</value>
+  </data>
+  <data name="TeamKeyStatus_RotationDue" xml:space="preserve">
+    <value>A team key rotation is due. New passwords for this team wait until the key is rotated.</value>
+  </data>
+  <data name="TeamKeyStatus_Holder" xml:space="preserve">
+    <value>Version {0:N0}. This computer holds the team key and can share passwords with the team.</value>
+    <comment>{0} is the team key's version.</comment>
+  </data>
+  <data name="TeamMemberStatus_NoKeys" xml:space="preserve">
+    <value>Waiting for this person to set up their keys</value>
+  </data>
+  <data name="TeamMemberStatus_AwaitingConfirmation" xml:space="preserve">
+    <value>Waiting for confirmation</value>
+  </data>
+  <data name="TeamMemberStatus_Holder" xml:space="preserve">
+    <value>Confirmed</value>
+  </data>
+  <data name="TeamMemberStatus_Alert" xml:space="preserve">
+    <value>Keys changed</value>
+  </data>
+  <data name="TeamRole_Owner" xml:space="preserve">
+    <value>Owner</value>
+  </data>
+  <data name="TeamRole_Admin" xml:space="preserve">
+    <value>Admin</value>
+  </data>
+  <data name="TeamRole_Editor" xml:space="preserve">
+    <value>Editor</value>
+  </data>
+  <data name="TeamRole_Member" xml:space="preserve">
+    <value>Member</value>
+  </data>
+  <data name="TeamNotice_KeysChanged" xml:space="preserve">
+    <value>The keys of {0} changed. Compare their words before sharing team keys with them.</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamNotice_RecoveryKeyReplaced" xml:space="preserve">
+    <value>{0} replaced their recovery key.</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamNotice_Restarted" xml:space="preserve">
+    <value>The team key was started over.</value>
+  </data>
+  <data name="TeamNotice_RestartHeld" xml:space="preserve">
+    <value>{0} started the team key over. Compare their words before this computer uses it.</value>
+    <comment>{0} is the member's name.</comment>
+  </data>
+  <data name="TeamNotice_RestartHeldStranger" xml:space="preserve">
+    <value>Someone who is not on this team started the team key over. Don't accept it unless an owner tells you why.</value>
+  </data>
+  <data name="TeamNotice_SupersededWrap" xml:space="preserve">
+    <value>A teammate's device sent the team key to your old keys, so TablePro shared your current keys with the team again. The server may have kept your key change from that teammate.</value>
+  </data>
+  <data name="TeamNotice_Conflict" xml:space="preserve">
+    <value>The server offered a team key that differs from one this computer already checked. This computer stopped using this team's keys.</value>
+  </data>
 </root>

@@ -89,14 +89,16 @@ public sealed class LicenseGateTests
     {
         string[] mac =
         [
-            "icloud_sync", "encrypted_export", "env_var_references", "linked_folders", "query_insights",
-            "result_charts", "team_catalog", "team_library", "compare_sync", "data_rewind",
+            "icloud_sync", "service_sync", "encrypted_export", "env_var_references", "linked_folders",
+            "query_insights", "result_charts", "team_catalog", "team_library", "compare_sync", "data_rewind",
         ];
 
         Assert.Equal(
             mac.Append(PlanFeatures.SharedLinks).Order(StringComparer.Ordinal),
             PlanFeatures.All.Select(feature => feature.Code).Order(StringComparer.Ordinal));
-        Assert.Equal([PlanFeatures.SharedLinks], PlanFeatures.OnWindows.Select(feature => feature.Code));
+        Assert.Equal(
+            [PlanFeatures.ServiceSync, PlanFeatures.TeamLibrary, PlanFeatures.SharedLinks],
+            PlanFeatures.OnWindows.Select(feature => feature.Code));
     }
 
     [Fact]

@@ -52,6 +52,55 @@
                 <HyperlinkButton x:Uid="LicensingGuideLink" x:Name="LicensingGuideLink" AutomationProperties.AutomationId="LicensingGuideLink" />
             </StackPanel>
 
+            <!-- Off or TablePro Sync, its status and what it carries (docs/decisions/0029-tablepro-sync.md). -->
+            <TextBlock x:Uid="SyncHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
+            <InfoBar x:Name="SyncBar" AutomationProperties.AutomationId="SyncBar" IsClosable="False" IsOpen="False" Visibility="Collapsed" />
+            <InfoBar x:Name="SyncGateBar" AutomationProperties.AutomationId="SyncGateBar" IsClosable="False" IsOpen="False" Visibility="Collapsed" />
+            <toolkit:SettingsCard x:Uid="SyncProviderCard" x:Name="SyncProviderCard" AutomationProperties.AutomationId="SyncProviderCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE753;" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="SyncProviderBox" x:Uid="SyncProviderBox" AutomationProperties.AutomationId="SyncProviderBox" MinWidth="200" SelectionChanged="OnSyncProviderChanged">
+                    <ComboBoxItem x:Uid="SyncProviderOff" Tag="Off" />
+                    <ComboBoxItem x:Uid="SyncProviderTableProSync" x:Name="SyncProviderTableProSyncItem" Tag="TableProSync" />
+                </ComboBox>
+            </toolkit:SettingsCard>
+            <StackPanel x:Name="SyncPoliciesHost" AutomationProperties.AutomationId="SyncPolicies" Spacing="{StaticResource SettingsCardSpacing}" Visibility="Collapsed" />
+            <toolkit:SettingsCard x:Name="SyncStatusCard" AutomationProperties.AutomationId="SyncStatusCard" Visibility="Collapsed">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon x:Name="SyncStatusIcon" Glyph="&#xE895;" /></toolkit:SettingsCard.HeaderIcon>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <ProgressRing x:Name="SyncProgress" Width="20" Height="20" IsActive="False" Visibility="Collapsed" />
+                    <Button x:Uid="SyncNowButton" x:Name="SyncNowButton" AutomationProperties.AutomationId="SyncNowButton" Click="OnSyncNow" />
+                </StackPanel>
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="SyncKeysCard" x:Name="SyncKeysCard" AutomationProperties.AutomationId="SyncKeysCard" IsClickEnabled="True" Click="OnSyncKeysCard" Visibility="Collapsed">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE72E;" /></toolkit:SettingsCard.HeaderIcon>
+            </toolkit:SettingsCard>
+            <toolkit:SettingsCard x:Uid="SyncTeamKeysCard" x:Name="SyncTeamKeysCard" AutomationProperties.AutomationId="SyncTeamKeysCard" IsClickEnabled="True" Click="OnSyncTeamKeysCard" Visibility="Collapsed">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE716;" /></toolkit:SettingsCard.HeaderIcon>
+            </toolkit:SettingsCard>
+            <toolkit:SettingsExpander x:Uid="SyncCategoriesExpander" x:Name="SyncCategoriesExpander" AutomationProperties.AutomationId="SyncCategoriesExpander" Visibility="Collapsed">
+                <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xE71D;" /></toolkit:SettingsExpander.HeaderIcon>
+                <toolkit:SettingsExpander.Items>
+                    <toolkit:SettingsCard x:Uid="SyncConnectionsCard">
+                        <ToggleSwitch x:Name="SyncConnectionsSwitch" x:Uid="SyncConnectionsSwitch" AutomationProperties.AutomationId="SyncConnectionsSwitch" Toggled="OnSyncCategoryToggled" />
+                    </toolkit:SettingsCard>
+                    <toolkit:SettingsCard x:Uid="SyncPasswordsCard" x:Name="SyncPasswordsCard">
+                        <ToggleSwitch x:Name="SyncPasswordsSwitch" x:Uid="SyncPasswordsSwitch" AutomationProperties.AutomationId="SyncPasswordsSwitch" Toggled="OnSyncCategoryToggled" />
+                    </toolkit:SettingsCard>
+                    <toolkit:SettingsCard x:Uid="SyncGroupsCard">
+                        <ToggleSwitch x:Name="SyncGroupsSwitch" x:Uid="SyncGroupsSwitch" AutomationProperties.AutomationId="SyncGroupsSwitch" Toggled="OnSyncCategoryToggled" />
+                    </toolkit:SettingsCard>
+                    <toolkit:SettingsCard x:Uid="SyncSavedQueriesCard">
+                        <ToggleSwitch x:Name="SyncSavedQueriesSwitch" x:Uid="SyncSavedQueriesSwitch" AutomationProperties.AutomationId="SyncSavedQueriesSwitch" Toggled="OnSyncCategoryToggled" />
+                    </toolkit:SettingsCard>
+                    <toolkit:SettingsCard x:Uid="SyncTableFavoritesCard">
+                        <ToggleSwitch x:Name="SyncTableFavoritesSwitch" x:Uid="SyncTableFavoritesSwitch" AutomationProperties.AutomationId="SyncTableFavoritesSwitch" Toggled="OnSyncCategoryToggled" />
+                    </toolkit:SettingsCard>
+                    <toolkit:SettingsCard x:Uid="SyncDatabaseFavoritesCard">
+                        <ToggleSwitch x:Name="SyncDatabaseFavoritesSwitch" x:Uid="SyncDatabaseFavoritesSwitch" AutomationProperties.AutomationId="SyncDatabaseFavoritesSwitch" Toggled="OnSyncCategoryToggled" />
+                    </toolkit:SettingsCard>
+                </toolkit:SettingsExpander.Items>
+            </toolkit:SettingsExpander>
+
             <TextBlock x:Uid="AppearanceHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <toolkit:SettingsCard x:Uid="ThemeCard" x:Name="ThemeCard">
                 <toolkit:SettingsCard.HeaderIcon><SymbolIcon Symbol="FontColor" /></toolkit:SettingsCard.HeaderIcon>

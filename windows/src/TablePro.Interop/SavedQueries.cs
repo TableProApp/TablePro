@@ -17,6 +17,22 @@ public sealed record SavedQueryFolder(Guid Id, string Name, Guid? ParentId, long
 // Read in one transaction, each list in its place's order.
 public sealed record SavedQueryList(IReadOnlyList<SavedQuery> Queries, IReadOnlyList<SavedQueryFolder> Folders);
 
+// Every saved query and folder the store holds, each with the connection it belongs to, null for one shown everywhere.
+public sealed record StoredSavedQuery(
+    Guid Id,
+    string Name,
+    string Sql,
+    string? Keyword,
+    Guid? ConnectionId,
+    Guid? FolderId,
+    long Order);
+
+public sealed record StoredSavedQueryFolder(Guid Id, string Name, Guid? ConnectionId, Guid? ParentId, long Order);
+
+public sealed record SavedQueryContents(
+    IReadOnlyList<StoredSavedQuery> Queries,
+    IReadOnlyList<StoredSavedQueryFolder> Folders);
+
 // A connection's saved queries and their folders, kept in the saved queries' database (core ADRs 0017 and 0052). The list
 // holds those with no connection too, which show in every connection.
 public sealed class SavedQueries : IDisposable
@@ -46,6 +62,27 @@ public sealed class SavedQueries : IDisposable
                 DateTimeOffset.FromUnixTimeMilliseconds(query.UpdatedAtMs)))],
             [.. list.Folders.Select(folder =>
                 new SavedQueryFolder(Guid.Parse(folder.Id), folder.Name, Id(folder.ParentId), folder.Order))]);
+    }
+
+    // Every connection's, as a publish to a team sends them.
+    public async Task<SavedQueryContents> GetAllAsync()
+    {
+        var contents = await CoreCall.RunAsync(() => _store.Contents()).ConfigureAwait(false);
+        return new SavedQueryContents(
+            [.. contents.Queries.Select(query => new StoredSavedQuery(
+                Guid.Parse(query.Id),
+                query.Name,
+                query.Sql,
+                query.Keyword,
+                Id(query.ConnectionId),
+                Id(query.FolderId),
+                query.Order))],
+            [.. contents.Folders.Select(folder => new StoredSavedQueryFolder(
+                Guid.Parse(folder.Id),
+                folder.Name,
+                Id(folder.ConnectionId),
+                Id(folder.ParentId),
+                folder.Order))]);
     }
 
     // Null when the connection has a query of that name and replace is false; nothing is written then.
