@@ -108,6 +108,9 @@ public sealed class SyncHost : IDisposable
     private bool _uploadResuming;
     private bool _disposed;
     private Task _categories = Task.CompletedTask;
+    // Services a lease keeps past a sign-in change, and those closed meanwhile, disposed once their last lease ends.
+    private readonly Dictionary<ISyncEngine, int> _leases = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<ISyncEngine> _retired = new(ReferenceEqualityComparer.Instance);
 
     public SyncHost(ISyncHostApp app)
     {
@@ -407,6 +410,39 @@ public sealed class SyncHost : IDisposable
         return engine.Team;
     }
 
+    // Keeps the open service alive past a sign-in change until disposed, as Sign Out's last step deletes the account's
+    // Team Library data through the service of the sign-in that ended. Null when it could not open.
+    public async Task<SyncLease?> LeaseAsync()
+    {
+        if (await GetEngineAsync().ConfigureAwait(true) is not { } engine)
+        {
+            return null;
+        }
+
+        _leases[engine] = _leases.GetValueOrDefault(engine) + 1;
+        return new SyncLease(this, engine);
+    }
+
+    internal void Release(ISyncEngine engine)
+    {
+        if (!_leases.TryGetValue(engine, out var count))
+        {
+            return;
+        }
+
+        if (count > 1)
+        {
+            _leases[engine] = count - 1;
+            return;
+        }
+
+        _leases.Remove(engine);
+        if (_retired.Remove(engine))
+        {
+            engine.Dispose();
+        }
+    }
+
     // After the settings changed; the switches apply before the first upload too. In order, each with the settings as
     // they are when it runs, so the last change is the one the core keeps.
     public Task ApplyCategoriesAsync()
@@ -462,6 +498,13 @@ public sealed class SyncHost : IDisposable
         _watch = null;
         _engine?.Dispose();
         _engine = null;
+        foreach (var retired in _retired)
+        {
+            retired.Dispose();
+        }
+
+        _retired.Clear();
+        _leases.Clear();
     }
 
     // An open that a sign-in change overtook has no failure of its own.
@@ -510,7 +553,7 @@ public sealed class SyncHost : IDisposable
 
         if (generation != _generation || _disposed)
         {
-            engine.Dispose();
+            Retire(engine);
             return null;
         }
 
@@ -558,6 +601,18 @@ public sealed class SyncHost : IDisposable
         return await GetEngineAsync().ConfigureAwait(true);
     }
 
+    private void Retire(ISyncEngine engine)
+    {
+        if (_leases.ContainsKey(engine))
+        {
+            _retired.Add(engine);
+        }
+        else
+        {
+            engine.Dispose();
+        }
+    }
+
     private void Close()
     {
         _generation++;
@@ -566,7 +621,11 @@ public sealed class SyncHost : IDisposable
         _watch?.Cancel();
         _watch?.Dispose();
         _watch = null;
-        _engine?.Dispose();
+        if (_engine is { } engine)
+        {
+            Retire(engine);
+        }
+
         _engine = null;
         Keys = null;
         AccountChoice = null;
@@ -746,3 +805,28 @@ public sealed class SyncHost : IDisposable
     }
 }
 
+// A service kept open for one task, even after a sign-in change closed it for everything else.
+public sealed class SyncLease : IDisposable
+{
+    private readonly SyncHost _host;
+    private ISyncEngine? _engine;
+
+    internal SyncLease(SyncHost host, ISyncEngine engine)
+    {
+        _host = host;
+        _engine = engine;
+    }
+
+    public ITeamCalls Team => (_engine ?? throw new ObjectDisposedException(nameof(SyncLease))).Team;
+
+    public IKeyFlows Keys => (_engine ?? throw new ObjectDisposedException(nameof(SyncLease))).Keys;
+
+    public void Dispose()
+    {
+        if (_engine is { } engine)
+        {
+            _engine = null;
+            _host.Release(engine);
+        }
+    }
+}

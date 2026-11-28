@@ -7962,6 +7962,26 @@ New fingerprint: {2}</value>
   <data name="TeamPublishExplain" xml:space="preserve">
     <value>Queries you published before and deleted since are removed from the team library. Team connections are not sent from this computer yet.</value>
   </data>
+  <data name="TeamSignOutTitle" xml:space="preserve">
+    <value>Sign out of TablePro on this computer?</value>
+  </data>
+  <data name="TeamSignOutUploadFailed" xml:space="preserve">
+    <value>The upload did not finish. {0}</value>
+    <comment>{0} is why.</comment>
+  </data>
+  <data name="TeamSignOutUnsent" xml:space="preserve">
+    <value>These Team Library changes are not uploaded yet and are lost if you discard them: {0}.</value>
+    <comment>{0} is the list of changes.</comment>
+  </data>
+  <data name="TeamSignOutUnlisted" xml:space="preserve">
+    <value>TablePro couldn't list the Team Library changes not uploaded yet. Discarding loses any there are.</value>
+  </data>
+  <data name="TeamSignOutUpload" xml:space="preserve">
+    <value>Upload and sign out</value>
+  </data>
+  <data name="TeamSignOutDiscard" xml:space="preserve">
+    <value>Discard and sign out</value>
+  </data>
   <data name="TeamOwnWordsTitle" xml:space="preserve">
     <value>Your words</value>
   </data>
