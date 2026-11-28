@@ -349,6 +349,27 @@ public sealed class TableTab : IWorkspaceTab
 
     public bool CanPreview => HasUnsavedChanges && _tableEditor is not null && !IsSaving;
 
+    // The grid's own undo and redo, from the core tracker (ADR 0068); the text editor keeps its own.
+    public bool CanUndoEdit => CanEdit && Edits is { CanUndo: true } && !_saveBlocked;
+
+    public bool CanRedoEdit => CanEdit && Edits is { CanRedo: true } && !_saveBlocked;
+
+    public void UndoEdit()
+    {
+        if (CanUndoEdit && _view.CommitOpenEdit())
+        {
+            Edits!.Undo();
+        }
+    }
+
+    public void RedoEdit()
+    {
+        if (CanRedoEdit && _view.CommitOpenEdit())
+        {
+            Edits!.Redo();
+        }
+    }
+
     public int FirstColumnToFill => _tableEditor is { } editor ? EditedRows.FirstColumnToFill(editor.Columns) : 0;
 
     public bool Shows(string? schema, string table) =>

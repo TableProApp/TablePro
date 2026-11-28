@@ -113,6 +113,27 @@ public sealed partial class QueryTab
 
     public bool CanPreviewRows => HasPendingRows && !IsSavingRows;
 
+    // The result grid's own undo and redo, from the core tracker (ADR 0068); the editor keeps its own.
+    public bool CanUndoRows => CanEditResult && _editing?.Edits is { CanUndo: true } && !_saveBlocked;
+
+    public bool CanRedoRows => CanEditResult && _editing?.Edits is { CanRedo: true } && !_saveBlocked;
+
+    public void UndoRows()
+    {
+        if (CanUndoRows && _editing is { } editing && _resultView?.CommitOpenEdit() == true)
+        {
+            editing.Edits.Undo();
+        }
+    }
+
+    public void RedoRows()
+    {
+        if (CanRedoRows && _editing is { } editing && _resultView?.CommitOpenEdit() == true)
+        {
+            editing.Edits.Redo();
+        }
+    }
+
     public int FirstColumnToFill => _editing is { } editing ? EditedRows.FirstColumnToFill(editing.Edits.Columns) : 0;
 
     public bool IsDeleted(int row) => _editing?.Edits.IsDeleted(row) == true;
