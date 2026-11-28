@@ -16,26 +16,30 @@ struct SyncStatusRow: View {
 
     var body: some View {
         LabeledContent {
-            // First baseline keeps the value on the label's baseline while the spinner shows.
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                if isBusy {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityHidden(true)
-                } else {
-                    Image(systemName: symbolName)
-                        .foregroundStyle(isWarning ? Color.orange : Color.secondary)
-                        .accessibilityHidden(true)
-                }
+            // Review goes under the status, so the count never truncates in the pane's width.
+            VStack(alignment: .trailing, spacing: 6) {
+                // First baseline keeps the value on the label's baseline while the spinner shows.
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    if isBusy {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityHidden(true)
+                    } else {
+                        Image(systemName: symbolName)
+                            .foregroundStyle(isWarning ? Color.orange : Color.secondary)
+                            .accessibilityHidden(true)
+                    }
 
-                // A grouped form keeps the accessibility value a text was first given, so each title is a text of its own.
-                Text(title)
-                    .id(title)
-                    .accessibilityIdentifier("settings-sync-status")
+                    // A grouped form keeps the accessibility value a text was first given, so each title is a text of its own.
+                    Text(title)
+                        .id(title)
+                        .multilineTextAlignment(.trailing)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("settings-sync-status")
+                }
 
                 if let review {
                     Button(String(localized: "Review…"), action: review)
-                        .padding(.leading, 6)
                         .accessibilityHint(Text("Shows the changes from your other devices that wait for your approval"))
                         .accessibilityIdentifier("settings-sync-review-approvals")
                 }
