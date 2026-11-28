@@ -2091,6 +2091,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -6557,6 +6559,17 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_syncservice_sign_out_keys(ulong @ptr
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_syncservice_sync_keys_now(ulong @ptr
     );
 
     #if NET8_0_OR_GREATER
@@ -12133,6 +12146,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_syncservice_sync_keys_now(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_syncservice_team_keys(
     );
 
@@ -15337,6 +15361,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_sign_out_keys();
             if (checksum != 22984) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_sign_out_keys` checksum `22984`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_syncservice_sync_keys_now();
+            if (checksum != 50430) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_syncservice_sync_keys_now` checksum `50430`, library returned `{checksum}`");
             }
         }
         {
@@ -25064,6 +25094,8 @@ internal interface ISyncService {
     /// <exception cref="CoreException"></exception>
     Task<SignOutOutcomeTag> SignOutKeys();
     /// <exception cref="CoreException"></exception>
+    Task SyncKeysNow();
+    /// <exception cref="CoreException"></exception>
     Task<TeamKeysInfo> TeamKeys(string @team);
     /// <exception cref="CoreException"></exception>
     Task ChooseProvider(SyncProviderTag @provider);
@@ -26000,6 +26032,24 @@ internal class SyncService : ISyncService, IDisposable {
         (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
         // Lift
         (result) => FfiConverterTypeSignOutOutcomeTag.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task SyncKeysNow() {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_syncservice_sync_keys_now(thisPtr);
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
         // Error
         FfiConverterTypeCoreError.INSTANCE
     );
@@ -36800,6 +36850,7 @@ internal record SyncStatusInfo (
     SyncProviderTag? Provider, 
     SyncPhaseTag Phase, 
     long? LastPassMs, 
+    long? LastSyncedMs, 
     string? Problem, 
     uint WaitingApprovals, 
     uint Conflicts, 
@@ -36816,6 +36867,7 @@ class FfiConverterTypeSyncStatusInfo: FfiConverterRustBuffer<SyncStatusInfo> {
             Provider: FfiConverterOptionalTypeSyncProviderTag.INSTANCE.Read(stream),
             Phase: FfiConverterTypeSyncPhaseTag.INSTANCE.Read(stream),
             LastPassMs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            LastSyncedMs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
             Problem: FfiConverterOptionalString.INSTANCE.Read(stream),
             WaitingApprovals: FfiConverterUInt32.INSTANCE.Read(stream),
             Conflicts: FfiConverterUInt32.INSTANCE.Read(stream),
@@ -36829,6 +36881,7 @@ class FfiConverterTypeSyncStatusInfo: FfiConverterRustBuffer<SyncStatusInfo> {
             + FfiConverterOptionalTypeSyncProviderTag.INSTANCE.AllocationSize(value.Provider)
             + FfiConverterTypeSyncPhaseTag.INSTANCE.AllocationSize(value.Phase)
             + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.LastPassMs)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.LastSyncedMs)
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Problem)
             + FfiConverterUInt32.INSTANCE.AllocationSize(value.WaitingApprovals)
             + FfiConverterUInt32.INSTANCE.AllocationSize(value.Conflicts)
@@ -36840,6 +36893,7 @@ class FfiConverterTypeSyncStatusInfo: FfiConverterRustBuffer<SyncStatusInfo> {
             FfiConverterOptionalTypeSyncProviderTag.INSTANCE.Write(value.Provider, stream);
             FfiConverterTypeSyncPhaseTag.INSTANCE.Write(value.Phase, stream);
             FfiConverterOptionalInt64.INSTANCE.Write(value.LastPassMs, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.LastSyncedMs, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.Problem, stream);
             FfiConverterUInt32.INSTANCE.Write(value.WaitingApprovals, stream);
             FfiConverterUInt32.INSTANCE.Write(value.Conflicts, stream);

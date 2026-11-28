@@ -172,7 +172,10 @@ pub enum SyncPhaseTag {
 pub struct SyncStatusInfo {
     pub provider: Option<SyncProviderTag>,
     pub phase: SyncPhaseTag,
+    // When the last pass ended, whatever it ended in.
     pub last_pass_ms: Option<i64>,
+    // When a pass last ended without an error, kept across launches: what an app shows as the last sync.
+    pub last_synced_ms: Option<i64>,
     // The last pass's error code.
     pub problem: Option<String>,
     // Records with a value waiting for the person, the team scopes' included whatever the personal provider is.
@@ -409,6 +412,7 @@ impl SyncService {
                 provider: Some(SyncProviderTag::Off),
                 phase: SyncPhaseTag::Off,
                 last_pass_ms: None,
+                last_synced_ms: None,
                 problem: None,
                 waiting_approvals: 0,
                 conflicts: 0,
@@ -430,6 +434,7 @@ impl SyncService {
                     SyncPhaseTag::Unavailable
                 },
                 last_pass_ms: None,
+                last_synced_ms: None,
                 problem: Some(error.code().to_owned()),
                 waiting_approvals: 0,
                 conflicts: 0,

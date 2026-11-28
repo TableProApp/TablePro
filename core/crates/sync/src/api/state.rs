@@ -32,6 +32,18 @@ pub trait StateStore: Send + Sync {
     async fn purge(&self) -> Result<(), StateError> {
         Ok(())
     }
+
+    // When a pass last ended without an error, which the app shows after a restart while no pass gets through. Kept
+    // outside the MAC: it decides nothing a pass sends or applies, and sealing it would cost each pass a commit and an
+    // anchor write. A store that keeps no file keeps none.
+    async fn last_synced_ms(&self) -> Result<Option<i64>, StateError> {
+        Ok(None)
+    }
+
+    async fn set_last_synced_ms(&self, at_ms: i64) -> Result<(), StateError> {
+        let _ = at_ms;
+        Ok(())
+    }
 }
 
 // What ends the distrust an open found of the key tables (0054, A stale file).

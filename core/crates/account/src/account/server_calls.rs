@@ -11,7 +11,7 @@ use secrecy::{ExposeSecret as _, SecretString};
 use serde::Deserialize;
 use tablepro_cloud_api::{ApiError, rate_limited, read_capped, refusal, schema_mismatch};
 
-use super::{AccessToken, Account, Call, Licensed, Server, Session, SignOutCause, Trust};
+use super::{AccessToken, Account, Call, Licensed, Server, Session, SignOutCause, SignedInAs, Trust};
 use crate::account_error::AccountError;
 use crate::account_file::{self, AccountFile};
 use crate::account_settings::SignInKey;
@@ -279,16 +279,39 @@ impl Account {
             Err(error) => Err(error),
         };
         let token = self.ended_by(&mut session, taken).await?;
-        let server = self.current();
+        let of = self.signed_in_as_in(&session);
         Ok(AccessToken {
             token,
+            api: of.api,
+            origin: of.origin,
+            account_id: of.account_id,
+            device_id: of.device_id,
+            session_id: of.session_id,
+            sign_in: of.sign_in,
+        })
+    }
+
+    // With no call, so sync can open the sign-in's state file while the server is out of reach. Each call it then
+    // makes still takes `access_token`, which vouches for a company server first.
+    pub async fn signed_in_as(&self) -> Result<SignedInAs, AccountError> {
+        let session = self.inner.session.lock().await;
+        self.reachable()?;
+        if session.refresh.is_none() {
+            return Err(AccountError::SignedOut);
+        }
+        Ok(self.signed_in_as_in(&session))
+    }
+
+    fn signed_in_as_in(&self, session: &Session) -> SignedInAs {
+        let server = self.current();
+        SignedInAs {
             api: server.api.clone(),
             origin: server.target.origin.clone(),
             account_id: session.account_id.clone(),
             device_id: session.device_id.clone(),
             session_id: session.id.clone(),
             sign_in: SignInKey::of(&server.api, &self.inner.settings.account_file).key,
-        })
+        }
     }
 
     // The account's HTTP client, so the app's own /v2 calls share its connections and its User-Agent.

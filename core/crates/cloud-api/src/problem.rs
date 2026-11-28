@@ -32,7 +32,7 @@ pub async fn answer_error(error: Error<v2::types::Problem>) -> ApiError {
             };
             match serde_json::from_slice::<v2::types::Problem>(&body) {
                 Ok(problem) => problem_error(status, problem),
-                Err(_) => ApiError::Protocol(format!("HTTP {status} without a problem")),
+                Err(_) => without_problem(status),
             }
         }
         Error::CommunicationError(error) | Error::ResponseBodyError(error) => ApiError::unreachable(error),
@@ -88,7 +88,21 @@ pub fn rate_limited(headers: &HeaderMap) -> ApiError {
 pub fn refusal(status: u16, body: &[u8]) -> ApiError {
     match serde_json::from_slice::<v2::types::Problem>(body) {
         Ok(problem) => problem_error(status, problem),
-        Err(_) => ApiError::Protocol(format!("HTTP {status} without a problem")),
+        Err(_) => without_problem(status),
+    }
+}
+
+// A 5xx with no problem is a gateway's or a server's in trouble, which a later try can get past; any other status
+// without one is not a TablePro server's answer.
+fn without_problem(status: u16) -> ApiError {
+    if status >= 500 {
+        ApiError::Refused {
+            status,
+            code: format!("http_{status}"),
+            detail: String::new(),
+        }
+    } else {
+        ApiError::Protocol(format!("HTTP {status} without a problem"))
     }
 }
 
@@ -306,5 +320,17 @@ mod tests {
             rate_limited(&HeaderMap::new()),
             ApiError::RateLimited { retry_after: None }
         ));
+    }
+
+    #[test]
+    fn a_5xx_page_keeps_its_status_and_any_other_page_is_no_server_s_answer() {
+        let gateway = refusal(502, b"<html>Bad Gateway</html>");
+        let missing = refusal(404, b"<html>Not Found</html>");
+
+        assert!(
+            matches!(&gateway, ApiError::Refused { status: 502, code, .. } if code == "http_502"),
+            "{gateway:?}"
+        );
+        assert!(matches!(missing, ApiError::Protocol(_)), "{missing:?}");
     }
 }
