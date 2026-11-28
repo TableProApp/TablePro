@@ -237,52 +237,23 @@ struct SyncSettingsView: View {
     }
 
     private func statusRow(_ presentation: SyncStatusPresentation) -> some View {
-        LabeledContent {
-            // First baseline keeps the value on the label's baseline while the spinner shows.
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                if isSyncing {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityHidden(true)
-                } else {
-                    Image(systemName: presentation.symbolName)
-                        .foregroundStyle(presentation.isWarning ? Color.orange : Color.secondary)
-                        .accessibilityHidden(true)
-                }
-
-                Text(presentation.title)
-                    .accessibilityIdentifier("settings-sync-status")
-            }
-        } label: {
-            Text("Status")
-            if let detail = presentation.statusDetail {
-                Text(detail)
-            }
-        }
+        SyncStatusRow(
+            title: presentation.title,
+            symbolName: presentation.symbolName,
+            isWarning: presentation.isWarning,
+            isBusy: isSyncing,
+            detail: presentation.statusDetail
+        )
     }
 
     private func serviceStatusRow(_ status: SyncServiceStatus) -> some View {
-        LabeledContent {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                if status == .syncing {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityHidden(true)
-                } else {
-                    Image(systemName: status.symbolName)
-                        .foregroundStyle(status.isWarning ? Color.orange : Color.secondary)
-                        .accessibilityHidden(true)
-                }
-
-                Text(status.title)
-                    .accessibilityIdentifier("settings-sync-status")
-            }
-        } label: {
-            Text("Status")
-            if let serviceSyncProblem {
-                Text(serviceSyncProblem)
-            }
-        }
+        SyncStatusRow(
+            title: status.title,
+            symbolName: status.symbolName,
+            isWarning: status.isWarning,
+            isBusy: status == .syncing,
+            detail: serviceSyncProblem
+        )
     }
 
     private func lastSyncedRow(offersSyncNow: Bool) -> some View {
@@ -526,7 +497,7 @@ private struct SyncUpdateActionButton: View {
 }
 
 // Reads like Time Machine's latest backup ("Today at 14:50") and moves to "Yesterday" without a reopen.
-private struct SyncLastSyncedText: View {
+struct SyncLastSyncedText: View {
     let date: Date?
 
     private static let formatter: DateFormatter = {
@@ -541,7 +512,10 @@ private struct SyncLastSyncedText: View {
     var body: some View {
         if let date {
             TimelineView(.everyMinute) { context in
-                Text(verbatim: Self.formatter.string(from: min(date, context.date)))
+                let text = Self.formatter.string(from: min(date, context.date))
+                // As in the Status row: a grouped form keeps the accessibility value a text was first given.
+                Text(verbatim: text)
+                    .id(text)
                     .accessibilityIdentifier("settings-sync-last-synced")
             }
         } else {
