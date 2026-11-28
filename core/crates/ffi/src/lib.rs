@@ -66,9 +66,9 @@ pub use account::{
     settled_sync_provider, share_token_from_link,
 };
 pub use ai::{
-    AiActionTag, AiAssistant, AiChatArg, AiConversationArg, AiConversationStart, AiFailureInfo, AiMessageArg,
-    AiModelInfo, AiProviderInfo, AiProviderTag, AiReply, AiReplyEvent, AiReplyListener, AiRoleTag, AiSettingsArg,
-    AiStopTag, ai_action_message, ai_address_is_valid, ai_host_of, ai_providers,
+    AiActionTag, AiApprover, AiAssistant, AiChatArg, AiConversationArg, AiConversationStart, AiFailureInfo,
+    AiMessageArg, AiModelInfo, AiProviderInfo, AiProviderTag, AiReply, AiReplyEvent, AiReplyListener, AiRoleTag,
+    AiSettingsArg, AiStopTag, AiWriteRequest, ai_action_message, ai_address_is_valid, ai_host_of, ai_providers,
 };
 pub use app_link::{AppLinkInfo, parse_app_link};
 pub use cancel_token::CancelToken;
@@ -146,7 +146,7 @@ pub use mcp::{
 };
 pub use prompter::{HostPrompter, PromptAnswer, PromptFieldInfo, PromptPurposeTag, PromptReasonTag, PromptRequest};
 pub use references::{FollowedReference, ReferenceRefusal, RowReferenceChoice, RowReferences, TableKeys};
-pub use results::{CellBytes, CellTextHead, ResultColumnInfo, ResultSet, ValueKind};
+pub use results::{CellBytes, CellTextHead, GridCopy, GridCopyFormat, ResultColumnInfo, ResultSet, ValueKind};
 pub use row_edits::{
     CellEdit, EditColumnInfo, EditLock, EditStart, GridOverlay, OverlayCell, OverlayRow, PendingCell, PendingKind,
     PendingSummary, PlannedStatement, RowSaveOutcome, SaveGate, SavePreview, TableEditor,
@@ -165,20 +165,21 @@ pub use sync::{
     AccountDeviceInfo, ApprovalRequestInfo, ApprovalSessionInfo, CloudKitAccount, CloudKitChanges, CloudKitDeletion,
     CloudKitFailure, CloudKitFetched, CloudKitField, CloudKitOutcome, CloudKitRecord, CloudKitTransport, CloudKitValue,
     ConflictChoiceTag, CredentialToRotateInfo, DeviceItemClassTag, DeviceItemTag, FingerprintInfo, GenesisOutcomeTag,
-    HeldReasonTag, HeldRecordInfo, HeldRestartInfo, HostDeviceStore, HostLegacyMirror, HostSettings, KeyChangeInfo,
-    KeyNoticeInfo, KeyNoticeKindTag, KeyStateInfo, KeyVersionStateTag, LegacyMetadataArg, LegacyRecordArg,
-    LegacyStandingArg, LegacyStandingTag, LegacyTombstoneArg, LockCauseTag, MemberKeyStatusTag, MemberKeysInfo,
-    MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag, NewIdentityPlanInfo, PassReasonTag, PendingApprovalInfo,
-    PendingResetInfo, RecoveryKeyDraftInfo, RemovalReviewInfo, ResetKindTag, ResetStateTag, ReviewedDeviceInfo,
-    ReviewedMemberInfo, RotationDraftInfo, ScopeStatusInfo, SessionEndTag, SessionPhaseTag, SessionRoleTag,
-    SettingsCategoryArg, SignOutOutcomeTag, StopCauseTag, StoppedDeviceInfo, SyncCategoriesArg, SyncConfig,
-    SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag, SyncRecordRef, SyncService, SyncStatusInfo,
-    TeamConflictInfo, TeamKeysInfo, TeamRoleTag, device_item_class,
+    HeldReasonTag, HeldRecordInfo, HeldRestartInfo, HostDeviceStore, HostLegacyMirror, HostSettings, HostSyncedSecrets,
+    KeyChangeInfo, KeyNoticeInfo, KeyNoticeKindTag, KeyStateInfo, KeyVersionStateTag, LegacyMetadataArg,
+    LegacyRecordArg, LegacyStandingArg, LegacyStandingTag, LegacyTombstoneArg, LockCauseTag, MemberKeyStatusTag,
+    MemberKeysInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag, NewIdentityPlanInfo, PassReasonTag,
+    PendingApprovalInfo, PendingResetInfo, RecoveryKeyDraftInfo, RemovalReviewInfo, ResetKindTag, ResetStateTag,
+    ReviewedDeviceInfo, ReviewedMemberInfo, RotationDraftInfo, ScopeStatusInfo, SessionEndTag, SessionPhaseTag,
+    SessionRoleTag, SettingsCategoryArg, SignOutOutcomeTag, StopCauseTag, StoppedDeviceInfo, SyncCategoriesArg,
+    SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag, SyncRecordRef, SyncService,
+    SyncStatusInfo, SyncedSecretParentTag, SyncedSecretRef, TeamConflictInfo, TeamKeysInfo, TeamRoleTag,
+    device_item_class,
 };
 pub use sync::{
-    TeamConnectionArg, TeamDeclinedArg, TeamFolderArg, TeamImportedEditArg, TeamLibraryImportArg, TeamLibraryItemInfo,
-    TeamLibraryItemRef, TeamLibraryKindTag, TeamLibraryOwnerArg, TeamLibraryTeamInfo, TeamPublishInfo, TeamQueryArg,
-    TeamScopeStatusInfo, UnsentTeamEditInfo, UnsentTeamEditTag,
+    TeamDeclinedArg, TeamFolderArg, TeamImportedEditArg, TeamLibraryImportArg, TeamLibraryItemInfo, TeamLibraryItemRef,
+    TeamLibraryKindTag, TeamLibraryOwnerArg, TeamLibraryTeamInfo, TeamPublishInfo, TeamQueryArg, TeamScopeStatusInfo,
+    UnsentTeamEditInfo, UnsentTeamEditTag,
 };
 pub use syntax::SqlGrammarTag;
 pub use table_folders::{TableFolderItemRecord, TableFolderRecord, TableFolderStore, TableRefRecord};

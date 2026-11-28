@@ -239,8 +239,6 @@ crates/app/src/ui/browse_tab/tests/rows.rs
 crates/app/src/ui/browse_tab/tests/save.rs
 crates/app/src/ui/browse_tab/tests/total.rs
 crates/app/src/ui/clipboard/clipboard_copy.rs
-crates/app/src/ui/clipboard/clipboard_format.rs
-crates/app/src/ui/clipboard/clipboard_payload.rs
 crates/app/src/ui/clipboard/clipboard_writer.rs
 crates/app/src/ui/clipboard/copy_renderer.rs
 crates/app/src/ui/clipboard/mod.rs

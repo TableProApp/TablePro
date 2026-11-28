@@ -403,6 +403,7 @@ async fn the_new_personal_and_history_versions_are_signed_under_the_new_av_and_c
         .unwrap();
         record.check_key(&older).unwrap();
     }
+    drop(txn);
     let Some(Row::KeyVersion(row)) = b
         .get(RowKey::KeyVersion(ScopeName::Personal, KeyPurpose::Personal))
         .await

@@ -1,11 +1,13 @@
-// The names the key sheets show beside an id: a team's from the profile, a member's from the team's member list.
+// The names the key sheets show beside an id: a team's from the profile, a member's from the team's member list, a
+// key device's from the account's device rows.
 
 use std::collections::HashMap;
 
-use tablepro_account::Account;
-use tablepro_keys::encoding::{AccountId, TeamId};
-use tablepro_sync::api::ScopeName;
+use tablepro_account::{Account, Device};
+use tablepro_keys::encoding::{AccountId, KeyDeviceId, TeamId};
 use tablepro_sync::api::ids::parse_typeid;
+use tablepro_sync::api::key_flows::{AccountDevice, ApprovalRequest, ReviewedDevice};
+use tablepro_sync::api::{DeviceRowId, ScopeName};
 use tablepro_sync::http::{Binding, SignIn};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -98,5 +100,77 @@ impl Names {
     #[cfg(test)]
     pub(crate) fn insert_person(&mut self, team: TeamId, account: AccountId, person: Person) {
         self.people.insert((team, account), person);
+    }
+}
+
+// The account's device rows, each naming the key device it holds, so a key device shows its row's name, platform and
+// row: the server's device rows the key flows leave to the app (core ADR 0056, Removing a device). Read as `Names`
+// are, only while the account holds the engine's sign-in; a list that does not load names nothing.
+#[derive(Debug, Default)]
+pub(crate) struct DeviceRows(Vec<Device>);
+
+impl DeviceRows {
+    pub(crate) async fn read(account: Option<&Account>, binding: Option<&Binding>) -> Self {
+        let (Some(account), Some(binding)) = (account, binding) else {
+            return Self::default();
+        };
+        if !still_bound(account, binding).await {
+            return Self::default();
+        }
+        let rows = match account.devices().await {
+            Ok(rows) => rows,
+            Err(error) => {
+                tracing::debug!(%error, "the device list gave no names");
+                return Self::default();
+            }
+        };
+        if still_bound(account, binding).await {
+            Self(rows)
+        } else {
+            Self::default()
+        }
+    }
+
+    // What the engine left out, from the row that holds the key device, or for this device its own row.
+    pub(crate) fn name(&self, mut device: AccountDevice) -> AccountDevice {
+        let row = self.0.iter().find(|row| {
+            row.key_device
+                .as_deref()
+                .and_then(|text| KeyDeviceId::from_wire(text).ok())
+                == Some(device.key_device)
+                || device.device.as_ref().is_some_and(|own| own.0 == row.id)
+        });
+        if let Some(row) = row {
+            device.device.get_or_insert_with(|| DeviceRowId(row.id.clone()));
+            device.name.get_or_insert_with(|| row.name.clone());
+            device.platform.get_or_insert_with(|| row.platform.clone());
+        }
+        device
+    }
+
+    // A new device's key device is on no row until its approval applies, so its request is named by the row that
+    // wrote it.
+    pub(crate) fn name_request(&self, mut request: ApprovalRequest) -> ApprovalRequest {
+        let row = request
+            .device
+            .as_ref()
+            .and_then(|device| self.0.iter().find(|row| row.id == device.0));
+        if let Some(row) = row {
+            request.device_name.get_or_insert_with(|| row.name.clone());
+            request.platform.get_or_insert_with(|| row.platform.clone());
+        }
+        request
+    }
+
+    pub(crate) fn name_reviewed(&self, reviewed: ReviewedDevice) -> ReviewedDevice {
+        ReviewedDevice {
+            device: self.name(reviewed.device),
+            ..reviewed
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn of(rows: Vec<Device>) -> Self {
+        Self(rows)
     }
 }

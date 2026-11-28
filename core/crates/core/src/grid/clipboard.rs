@@ -1,11 +1,11 @@
 /// The type a grid copy offers its cells as, beside the text: what
 /// `CellsEncoder` writes, which a paste prefers to the text.
-pub(crate) const CELLS_MIME_TYPE: &str = "application/x-tablepro-cells+json";
+pub const CELLS_MIME_TYPE: &str = "application/x-tablepro-cells+json";
 
-/// What a copy holds, so an application that reads that type can take
-/// it as such: a spreadsheet pastes tab-separated values into cells.
+/// What a copy holds, so an application that reads that type can take it as
+/// such: a spreadsheet pastes tab-separated values into cells.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ClipboardFormat {
+pub enum ClipboardFormat {
     PlainText,
     Tsv,
     Csv,
@@ -16,7 +16,7 @@ pub(crate) enum ClipboardFormat {
 
 impl ClipboardFormat {
     /// The type offered next to plain text, or `None` for text alone.
-    pub(crate) fn mime_type(self) -> Option<&'static str> {
+    pub fn mime_type(self) -> Option<&'static str> {
         match self {
             Self::PlainText => None,
             Self::Tsv => Some("text/tab-separated-values"),
@@ -26,6 +26,38 @@ impl ClipboardFormat {
             Self::Sql => Some("application/sql"),
         }
     }
+}
+
+/// A rendered copy, ready for the clipboard.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipboardPayload {
+    pub text: String,
+    pub format: ClipboardFormat,
+    /// The rows it holds, or the values for an IN list.
+    pub rows: usize,
+    /// Values an IN list had to leave out.
+    pub skipped: usize,
+    /// The copied cells as `CellsEncoder` writes them, offered beside the
+    /// text so a paste reads them back exactly.
+    pub cells: Option<String>,
+}
+
+impl ClipboardPayload {
+    pub fn plain(text: String) -> Self {
+        Self {
+            text,
+            format: ClipboardFormat::PlainText,
+            rows: 1,
+            skipped: 0,
+            cells: None,
+        }
+    }
+}
+
+/// The text type is a C string, so a NUL would cut the copy short, and a cut
+/// copy pasted back would change the value without a word.
+pub fn holds_nul(text: &str) -> bool {
+    text.contains('\0')
 }
 
 #[cfg(test)]

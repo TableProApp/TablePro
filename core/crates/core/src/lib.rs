@@ -45,6 +45,7 @@ pub mod filter;
 mod foreign_key_check;
 pub mod foreign_key_info;
 mod foreign_key_mode;
+pub mod grid;
 pub mod hex;
 pub mod import;
 pub mod keymap;

@@ -22,6 +22,9 @@ pub trait StateStore: Send + Sync {
     // What opening found; it does not change while the file is open.
     fn opened(&self) -> &Opened;
 
+    // The file has one connection, so a transaction waits for the one before it to end. A caller that holds one never
+    // begins another or makes a network call: a helper that reads or writes rows under its caller's transaction takes
+    // it as `&mut dyn StateTxn`, and a step that pushes or pulls ends its transaction first.
     async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError>;
 
     // Once a delete committed, nothing of what it removed stays in the file's WAL frames or free pages, as a verified
@@ -396,6 +399,10 @@ pub enum HeldReason {
     // A team library record whose id another of its kind holds in other case: neither is applied, listed or sent, as
     // the publish plan leaves both out (0052, Team scope).
     Collides,
+    // An envelope the keys took that its store did not, as while its record waits for the person or points elsewhere
+    // than it was sealed for (0056, Envelopes and history, At use). Each pull offers it to the store again, unlike one
+    // the keys refused, which waits for the server to serve it again.
+    AwaitingStore,
 }
 
 #[derive(Debug, Clone, PartialEq)]

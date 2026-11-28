@@ -69,6 +69,10 @@ impl ResultSet {
         self.store.full_text(self.stored_row(row), column)
     }
 
+    pub(crate) fn copy_value(&self, row: u64, column: usize) -> tablepro_core::Value {
+        self.store.copy_value(self.stored_row(row), column)
+    }
+
     fn stored_row(&self, row: u64) -> u64 {
         self.order
             .as_ref()

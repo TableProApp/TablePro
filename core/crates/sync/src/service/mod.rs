@@ -653,7 +653,12 @@ impl ServiceSync {
         };
         for adapter in self.adapters.in_scope(ScopeName::Personal) {
             let kind = adapter.kind();
-            for record in adapter.records(ScopeName::Personal).await?.records {
+            let local = adapter.records(ScopeName::Personal).await?;
+            // Before the keys exist nothing is sealed yet, so the secrets the move will seal read as held.
+            if kind == Kind::SecretEnvelope && categories.syncs(kind) {
+                plan.secrets_to_seal += u64::try_from(local.unreadable.len()).unwrap_or(u64::MAX);
+            }
+            for record in local.records {
                 let goes = record.standing == Standing::Syncs && categories.syncs(kind);
                 match (goes, kind) {
                     (true, Kind::SecretEnvelope) => plan.secrets_to_seal += 1,
@@ -757,6 +762,9 @@ impl ServiceSync {
         let journal_only = named.is_some();
         let outcome = self.run(session, named, arrival).await;
         self.after_team_pass(session, &outcome).await;
+        if let Ok(keys) = self.keys.key_state().await {
+            self.hooks.read_keys(keys);
+        }
         if outcome.is_err() {
             self.journal.give_back(taken);
         }

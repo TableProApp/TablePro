@@ -25,8 +25,7 @@ use super::tunnel::{
 use super::values::{Object, boolean, clamped, integer, text, unknown_members, uuid_at, uuid_value};
 use crate::adapters::unsettled::{ROUTE_PUBLISHER, SSH_PROFILE_UNLINKED, TLS_MODE_UNSETTLED};
 
-// Every member the store's model reads, so the rest are kept as a newer build wrote them: `project_id`, which the
-// model does not hold yet, and the format stamp among them.
+// Every member the store's model reads, so the rest are kept as a newer build wrote them, the format stamp among them.
 const MEMBERS: &[&str] = &[
     "name",
     "type",
@@ -39,6 +38,7 @@ const MEMBERS: &[&str] = &[
     "safe_mode_level",
     "sort_order",
     "group_id",
+    "project_id",
     "is_favorite",
     "tag_ids",
     "query_timeout_seconds",
@@ -405,6 +405,7 @@ pub(super) fn to_wire(
             saved.query_timeout_secs.filter(|seconds| *seconds <= QUERY_TIMEOUT_MAX),
         )
         .put_some("group_id", saved.group_id.map(uuid_value))
+        .put_some("project_id", saved.project_id.map(uuid_value))
         .put_some("ai_policy", ai_policy_name(saved.ai_policy))
         .put_some("ai_rules", non_empty(details.ai_rules.as_ref()))
         .put_some("redis_database", details.redis_database)
@@ -521,8 +522,9 @@ fn read(id: Uuid, fields: &Value, stored: Option<&SavedConnection>, names: Drive
         last_opened_at: None,
         color: text(fields, "color").and_then(connection_color),
         group_id: uuid_at(fields, "group_id"),
-        // Sync carries no project yet (core ADR 0067), so a pulled connection keeps the one this device stored.
-        project_id: stored.and_then(|stored| stored.project_id),
+        // None names no project. A build before projects keeps the member as one it does not read and sends only what it
+        // changed, so it never takes the member out (`LibraryAdapter::put` keeps the stored one where iCloud lacks it).
+        project_id: uuid_at(fields, "project_id"),
         order: integer(fields, "sort_order").map_or(0, clamped),
         tags: fields
             .get("tag_ids")
