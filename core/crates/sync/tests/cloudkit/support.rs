@@ -592,7 +592,7 @@ impl Rig {
         }
     }
 
-    // What waits for the person, as the app's approval sheet lists it.
+    // What waits for the person, one value per field, as the app's approval sheet lists them record by record.
     pub async fn waiting(&self) -> Vec<PendingApproval> {
         let adapters = Adapters::new(self.adapters());
         let queue = Queue {
@@ -600,10 +600,16 @@ impl Rig {
             adapters: &adapters,
             fence: &StopSignal::new(),
         };
-        queue.waiting().await.unwrap()
+        queue
+            .waiting()
+            .await
+            .unwrap()
+            .into_iter()
+            .flat_map(|record| record.fields)
+            .collect()
     }
 
-    // The person approves every value the queue holds.
+    // The person approves every record the queue holds, each whole.
     pub async fn approve_everything(&self) {
         let adapters = Adapters::new(self.adapters());
         let queue = Queue {
@@ -611,11 +617,8 @@ impl Rig {
             adapters: &adapters,
             fence: &StopSignal::new(),
         };
-        for approval in queue.waiting().await.unwrap() {
-            queue
-                .decide(&approval.key, &approval.field, approval.digest, true)
-                .await
-                .unwrap();
+        for record in queue.waiting().await.unwrap() {
+            queue.decide_record(&record.key, record.digest, true).await.unwrap();
         }
     }
 

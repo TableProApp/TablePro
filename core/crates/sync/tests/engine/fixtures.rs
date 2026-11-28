@@ -59,10 +59,10 @@ async fn approve_everything(device: &Device) {
         if waiting.is_empty() {
             return;
         }
-        for approval in waiting {
+        for record in waiting {
             device
                 .sync
-                .decide_approval(approval.key, approval.field, approval.digest, true)
+                .decide_record_approval(record.key, record.digest, true)
                 .await
                 .unwrap();
         }

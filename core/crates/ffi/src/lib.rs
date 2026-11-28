@@ -11,6 +11,7 @@ pub mod command_line;
 mod completion;
 mod connection_url;
 mod core_handle;
+mod core_log;
 #[cfg(windows)]
 mod credential_manager;
 #[cfg(any(windows, test))]
@@ -87,6 +88,7 @@ pub use completion::{
 };
 pub use connection_url::{ParsedConnectionUrl, parse_connection_url};
 pub use core_handle::{Core, FileOpenRequest};
+pub use core_log::{CoreLogField, CoreLogLevel, CoreLogLine, CoreLogSink, set_core_log_sink};
 pub use definition::ObjectSource;
 pub use designer::{
     DestructiveChangeTag, DraftColumnInput, ForeignKeyInput, IndexInput, IndexKeyInput, ReferentialActionTag,
@@ -176,16 +178,16 @@ pub use structure::{StructureColumn, StructureForeignKey, StructureIndex, TableS
 pub use sync::{
     AccountDeviceInfo, ApprovalRequestInfo, ApprovalSessionInfo, CloudKitAccount, CloudKitChanges, CloudKitDeletion,
     CloudKitFailure, CloudKitFetched, CloudKitField, CloudKitOutcome, CloudKitRecord, CloudKitTransport, CloudKitValue,
-    ConflictChoiceTag, CredentialToRotateInfo, DeviceItemClassTag, DeviceItemTag, FingerprintInfo, GenesisOutcomeTag,
-    HeldReasonTag, HeldRecordInfo, HeldRestartInfo, HostDeviceStore, HostLegacyMirror, HostSettings, HostSyncedSecrets,
-    KeyChangeInfo, KeyNoticeInfo, KeyNoticeKindTag, KeyStateInfo, KeyVersionStateTag, LegacyMetadataArg,
-    LegacyRecordArg, LegacyStandingArg, LegacyStandingTag, LegacyTombstoneArg, LockCauseTag, MemberKeyStatusTag,
-    MemberKeysInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag, NewIdentityPlanInfo, PassReasonTag,
-    PendingApprovalInfo, PendingResetInfo, RecoveryKeyDraftInfo, RemovalReviewInfo, ResetKindTag, ResetStateTag,
-    ReviewedDeviceInfo, ReviewedMemberInfo, RotationDraftInfo, ScopeStatusInfo, SessionEndTag, SessionPhaseTag,
-    SessionRoleTag, SettingsCategoryArg, SignOutOutcomeTag, StopCauseTag, StoppedDeviceInfo, SyncCategoriesArg,
-    SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag, SyncRecordRef, SyncService,
-    SyncStatusInfo, SyncedSecretParentTag, SyncedSecretRef, TeamConflictInfo, TeamKeysInfo, TeamRoleTag,
+    ConflictChoiceTag, CredentialToRotateInfo, DeviceItemClassTag, DeviceItemTag, FieldApprovalInfo, FingerprintInfo,
+    GenesisOutcomeTag, HeldReasonTag, HeldRecordInfo, HeldRestartInfo, HostDeviceStore, HostLegacyMirror, HostSettings,
+    HostSyncedSecrets, KeyChangeInfo, KeyNoticeInfo, KeyNoticeKindTag, KeyStateInfo, KeyVersionStateTag,
+    LegacyMetadataArg, LegacyRecordArg, LegacyStandingArg, LegacyStandingTag, LegacyTombstoneArg, LockCauseTag,
+    MemberKeyStatusTag, MemberKeysInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag, NewIdentityPlanInfo,
+    PassReasonTag, PendingResetInfo, RecordApprovalInfo, RecoveryKeyDraftInfo, RemovalReviewInfo, ResetKindTag,
+    ResetStateTag, ReviewedDeviceInfo, ReviewedMemberInfo, RotationDraftInfo, ScopeStatusInfo, SessionEndTag,
+    SessionPhaseTag, SessionRoleTag, SettingsCategoryArg, SignOutOutcomeTag, StopCauseTag, StoppedDeviceInfo,
+    SyncCategoriesArg, SyncConfig, SyncFailureInfo, SyncListener, SyncPhaseTag, SyncPlatformTag, SyncRecordRef,
+    SyncService, SyncStatusInfo, SyncedSecretParentTag, SyncedSecretRef, TeamConflictInfo, TeamKeysInfo, TeamRoleTag,
     device_item_class,
 };
 pub use sync::{
