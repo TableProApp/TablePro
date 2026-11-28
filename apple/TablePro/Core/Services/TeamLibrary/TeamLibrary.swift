@@ -7,7 +7,6 @@ import Combine
 import Foundation
 import os
 import TableProFFI
-import TableProImport
 
 internal enum TeamLibraryPublishResult: Equatable, Sendable {
     case unchanged
@@ -26,6 +25,7 @@ internal enum TeamLibraryPublishError: Error, Equatable {
 internal struct TeamLibraryDestination: Sendable {
     let teamID: String
     fileprivate let sessionID: String?
+    fileprivate let owner: TeamLibraryOwnerArg?
 }
 
 // Team Library on the core engine (core ADR 0054): the engine pulls each team this account reads, keeps this Mac's
@@ -107,7 +107,7 @@ internal final class TeamLibrary: ObservableObject {
 
     // Taken when the person picks the team, before any confirmation waits.
     func destination(_ teamID: String) -> TeamLibraryDestination {
-        TeamLibraryDestination(teamID: teamID, sessionID: shownSession)
+        TeamLibraryDestination(teamID: teamID, sessionID: shownSession, owner: owner)
     }
 
     func teamName(of teamID: String) -> String? {
@@ -116,15 +116,15 @@ internal final class TeamLibrary: ObservableObject {
 
     // A failed read keeps what shows.
     func refresh() async {
-        guard let session = shownSession else { return }
+        guard let session = shownSession, let owner else { return }
         generation += 1
         let started = generation
         do {
             let engine = try await source.engine()
-            let teams = try await engine.teamLibrary()
+            let teams = try await engine.teamLibrary(expectedOwner: owner)
             // The teams show whatever else fails to read; the status and the edits keep their last reading.
-            let statuses = (try? await engine.teamScopeStatus()) ?? lastStatuses
-            let unsent = (try? await engine.unsentTeamEdits()) ?? self.unsent
+            let statuses = (try? await engine.teamScopeStatus(expectedOwner: owner)) ?? lastStatuses
+            let unsent = (try? await engine.unsentTeamEdits(expectedOwner: owner)) ?? self.unsent
             guard started == generation, session == shownSession else { return }
             commit(teams: teams, statuses: statuses, unsent: unsent)
             // From the same service: one read while another provider's service opens would wait for the state file
@@ -143,18 +143,11 @@ internal final class TeamLibrary: ObservableObject {
 
     func publishConnections(
         _ connections: [DatabaseConnection],
-        exporter: ConnectionBundleExporter = ConnectionBundleExporter(),
         to destination: TeamLibraryDestination
     ) async throws(TeamLibraryPublishError) -> TeamLibraryPublishResult {
-        let arguments: [TeamConnectionArg]
-        do {
-            arguments = try Self.connectionArguments(connections, exporter: exporter)
-        } catch {
-            Self.logger.error("Could not encode the connections to publish: \(error.publicLogShape, privacy: .public)")
-            throw .failed(.refused)
-        }
-        return try await publish(to: destination) { engine in
-            try await engine.publishTeamConnections(teamId: destination.teamID, connections: arguments)
+        let records = connections.map { LibraryRecordMapping.record($0, keeping: nil) }
+        return try await publish(to: destination) { engine, owner in
+            try await engine.publishTeamConnections(expectedOwner: owner, teamId: destination.teamID, connections: records)
         }
     }
 
@@ -183,27 +176,13 @@ internal final class TeamLibrary: ObservableObject {
                 sortOrder: Int64($0.sortOrder)
             )
         }
-        return try await publish(to: destination) { engine in
+        return try await publish(to: destination) { engine, owner in
             try await engine.publishTeamSavedQueries(
+                expectedOwner: owner,
                 teamId: destination.teamID,
                 folders: folderArguments,
                 queries: queryArguments
             )
-        }
-    }
-
-    static func connectionArguments(
-        _ connections: [DatabaseConnection],
-        exporter: ConnectionBundleExporter
-    ) throws -> [TeamConnectionArg] {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        return try connections.map { connection in
-            let settings = try encoder.encode(exporter.teamShareableSettings(for: connection))
-            guard let json = String(bytes: settings, encoding: .utf8) else {
-                throw EncodingError.invalidValue(settings, .init(codingPath: [], debugDescription: "not UTF-8"))
-            }
-            return TeamConnectionArg(id: TeamLibraryID.of(connection.id), settingsJson: json)
         }
     }
 
@@ -221,9 +200,10 @@ internal final class TeamLibrary: ObservableObject {
 
     private func publish(
         to destination: TeamLibraryDestination,
-        _ call: (any TeamLibraryEngine) async throws -> TeamPublishInfo
+        _ call: (any TeamLibraryEngine, TeamLibraryOwnerArg) async throws -> TeamPublishInfo
     ) async throws(TeamLibraryPublishError) -> TeamLibraryPublishResult {
-        guard let session = destination.sessionID, session == shownSession, account.access.state.sessionID == session else {
+        guard let session = destination.sessionID, let owner = destination.owner, session == shownSession,
+              account.access.state.sessionID == session else {
             throw .failed(.signedOut)
         }
         // The roles come from the engine's first read of the teams, which may not have answered yet.
@@ -244,7 +224,7 @@ internal final class TeamLibrary: ObservableObject {
         do {
             let engine = try await source.engine()
             guard session == shownSession else { throw TeamLibraryFailure.signedOut }
-            answer = .success(try await call(engine))
+            answer = .success(try await call(engine, owner))
         } catch {
             answer = .failure(error as? TeamLibraryFailure ?? TeamLibraryFailure(error))
         }
@@ -265,8 +245,9 @@ internal final class TeamLibrary: ObservableObject {
     // The edits Sign Out lists, read from the engine whatever shows, since a lost team_library hides the library but
     // keeps its edits. Nil when they could not be read.
     func unsentChanges() async -> [String]? {
+        guard let owner else { return nil }
         do {
-            return try await source.engine().unsentTeamEdits().map(Self.name(of:))
+            return try await source.engine().unsentTeamEdits(expectedOwner: owner).map(Self.name(of:))
         } catch {
             Self.logger.error("Listing the unsent Team Library edits failed: \(error.publicLogShape, privacy: .public)")
             return nil
@@ -298,9 +279,9 @@ internal final class TeamLibrary: ObservableObject {
         guard account.access.state.sessionID == session, account.access.state.isSignedIn else { return nil }
         await signOut()
         var deleted = true
-        if let engine {
+        if let engine, let leaving {
             do {
-                try await engine.deleteTeamLibraryData()
+                try await engine.deleteTeamLibraryData(expectedOwner: leaving)
             } catch {
                 Self.logger.error("Deleting the Team Library data failed: \(error.publicLogShape, privacy: .public)")
                 deleted = false
@@ -406,7 +387,7 @@ internal final class TeamLibrary: ObservableObject {
         do {
             let engine = try await source.engine()
             guard adopted == signIn else { return }
-            try await engine.importTeamLibrary(teams: teams)
+            try await engine.importTeamLibrary(expectedOwner: owner, teams: teams)
             legacy.imported(for: owner)
         } catch {
             Self.logger.error("Importing the earlier Team Library failed: \(error.publicLogShape, privacy: .public)")

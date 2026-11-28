@@ -9,18 +9,26 @@ import TableProPluginKit
 
 internal extension LinkedConnection {
     @MainActor
-    func databaseConnection(origin: ConnectionOrigin = .linkedFolder) -> DatabaseConnection {
-        var built = DatabaseConnection(
+    func databaseConnection() -> DatabaseConnection {
+        DatabaseConnection(
             importing: connection,
             id: id,
             groupId: nil,
             tagIds: [],
             credentialProfileId: nil,
             resolvesSSHProfile: { SSHProfileStorage.shared.profile(for: $0) != nil }
-        )
-        built.promptForPassword = Self.signsInWithPassword(built)
-        built.origin = origin
-        return built
+        ).sharedCopy(from: .linkedFolder)
+    }
+}
+
+internal extension DatabaseConnection {
+    // A linked folder's or a team's row is never saved, so nothing it came with holds its password.
+    @MainActor
+    func sharedCopy(from origin: ConnectionOrigin) -> DatabaseConnection {
+        var copy = self
+        copy.promptForPassword = Self.signsInWithPassword(copy)
+        copy.origin = origin
+        return copy
     }
 
     @MainActor

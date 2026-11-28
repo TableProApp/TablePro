@@ -13,7 +13,7 @@ use uuid::Uuid;
 use super::scopes::kind_off;
 use super::team_library::{colliding_ids, library_kind};
 use super::{PassCtx, ServiceSync, begin};
-use crate::adapters::{approval, local_view};
+use crate::adapters::{approval, envelopes, local_view};
 use crate::api::adapter::LocalRecords;
 use crate::api::error::SyncError;
 use crate::api::ids::{ChangeTag, EpochId, IdempotencyKey, KindName, RecordKey, ScopeName};
@@ -21,10 +21,12 @@ use crate::api::scopes::ScopeInfo;
 use crate::api::state::{
     BaseRow, DeletedHistoryRow, OutboxRow, RefusedRow, Row, RowKey, RowRange, ScopeRow, Standing, StandingRow, Table,
 };
-use crate::api::transport::{Change, ChangeOp, ChangeOutcome, DeletedReason, Proof, PushBatch, TransportError};
+use crate::api::transport::{
+    Change, ChangeOp, ChangeOutcome, DeletedReason, Proof, PushBatch, RejectedCode, TransportError,
+};
 use crate::engine::{
-    Diffed, KeptOff, Pending, PendingOp, change_bytes, diff, forget_kept_off, hold_kept_off, hold_left_behind,
-    kept_off_connections, split,
+    Diffed, JournalIds, KeptOff, Pending, PendingOp, change_bytes, diff, forget_kept_off, hold_kept_off,
+    hold_left_behind, kept_off_connections, split,
 };
 
 enum Sent {
@@ -49,6 +51,13 @@ struct Refusals {
 }
 
 impl Refusals {
+    fn forgetting(drops: Vec<RecordKey>) -> Self {
+        Self {
+            puts: Vec::new(),
+            drops,
+        }
+    }
+
     fn is_empty(&self) -> bool {
         self.puts.is_empty() && self.drops.is_empty()
     }
@@ -92,6 +101,32 @@ pub(super) enum AfterPush {
     Done,
     Pull,
     NewEpoch,
+}
+
+// A `policy` refusal stands only while the switch that refused it is off: once the scopes body says it is on again,
+// the change goes up again, as a device pushes its copies back when an admin turns a switch on (0051, Policies). The
+// refusals that lapsed come back apart, for the pass to forget.
+fn standing_refusals(
+    refused: HashMap<RecordKey, RefusedRow>,
+    row: &ScopeRow,
+) -> (HashMap<RecordKey, RefusedRow>, Vec<RecordKey>) {
+    let (standing, lapsed): (HashMap<RecordKey, RefusedRow>, HashMap<RecordKey, RefusedRow>) =
+        refused.into_iter().partition(|(key, refusal)| {
+            refusal.code != RejectedCode::Policy.as_str()
+                || key
+                    .kind
+                    .known()
+                    .is_none_or(|kind| kind_off(row.policies, row.scope, kind))
+        });
+    (standing, lapsed.into_keys().collect())
+}
+
+// The ids a journal pass reads of `kind`; None when it named nothing of it. An envelope counts as named with its record.
+fn named_of(named: &JournalIds, kind: Kind) -> Option<HashSet<String>> {
+    if kind == Kind::SecretEnvelope {
+        return Some(envelopes::named(named)).filter(|ids| !ids.is_empty());
+    }
+    named.get(&kind).cloned()
 }
 
 fn framed(hasher: &mut Sha256, part: &[u8]) {
@@ -263,12 +298,12 @@ impl ServiceSync {
         let scope = row.scope;
         let skip = self.skipped(scope).await?;
         let held = approval::held_members(begin(&self.state).await?.as_mut(), scope).await?;
-        let refused = self.refused_in(scope).await?;
+        let (refused, lapsed) = standing_refusals(self.refused_in(scope).await?, row);
         let categories = ctx.categories_in(scope);
         let none = HashSet::new();
         let mut out = Vec::new();
         let mut pruned = Vec::new();
-        let mut refusals = Refusals::default();
+        let mut refusals = Refusals::forgetting(lapsed);
         let kept_off = self.kept_off(scope).await?;
         let left = self.left_behind(scope).await?;
         let mut left_drops = Vec::new();
@@ -282,7 +317,7 @@ impl ServiceSync {
             }
             // A journal pass diffs only what the journal named, and a kind it named nothing of not at all (0060).
             let named = match &ctx.named {
-                Some(named) => match named.get(&kind) {
+                Some(named) => match named_of(named, kind) {
                     Some(ids) => Some(ids),
                     None => continue,
                 },
@@ -305,7 +340,7 @@ impl ServiceSync {
             if let Some(arrival) = ctx.arrival.as_deref().filter(|_| scope == ScopeName::Personal) {
                 arrival.mark(&mut diffed.pending);
             }
-            if let Some(ids) = named {
+            if let Some(ids) = &named {
                 diffed.pending.retain(|pending| ids.contains(&pending.key.record_id));
                 diffed.pruned.retain(|key| ids.contains(&key.record_id));
                 diffed.refused.retain(|(key, _)| ids.contains(&key.record_id));
@@ -341,7 +376,7 @@ impl ServiceSync {
                     .chain(&local.unreadable)
                     .map(|id| RecordKey::new(scope, kind, id.clone())),
             );
-            refusals.drop_unless(&refused, scope, kind, named, &standing);
+            refusals.drop_unless(&refused, scope, kind, named.as_ref(), &standing);
             if kind == Kind::HistoryEntry {
                 out.extend(self.sealed(ctx, pending).await?);
             } else {
@@ -414,7 +449,7 @@ impl ServiceSync {
         };
         let skip = self.skipped(scope).await?;
         let held = approval::held_members(begin(&self.state).await?.as_mut(), scope).await?;
-        let refused = self.refused_in(scope).await?;
+        let (refused, _) = standing_refusals(self.refused_in(scope).await?, &row);
         let kept_off = self.kept_off(scope).await?;
         let left = self.left_behind(scope).await?;
         let categories = self.categories();

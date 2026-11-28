@@ -1,6 +1,6 @@
 # 0051: Sync protocol and record rules
 
-- **Status**: Accepted; amends 0044, 0047, 0048 and 0055; the JSON depth count, the personal wire names and which settings kinds sync amended by 0061; the push-back sets, stored nulls, two server columns and key id refusals amended by 0064; restore detection, a missing identity row, the first passkey's step-up, team envelope deletes while `rotation_due` and the install audit page amended by 0065
+- **Status**: Accepted; amends 0044, 0047, 0048 and 0055; the JSON depth count, the personal wire names and which settings kinds sync amended by 0061; the push-back sets, stored nulls, two server columns and key id refusals amended by 0064; restore detection, a missing identity row, the first passkey's step-up, team envelope deletes while `rotation_due` and the install audit page amended by 0065; the restore check's functions and R1's epoch amended by 0072; history tombstones, Team Library's push order and team ids in other case amended by 0075
 - **Date**: 2026-11-25
 
 ## Context

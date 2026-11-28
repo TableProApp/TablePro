@@ -620,7 +620,8 @@ async fn a_pulled_credential_profile_of_a_name_this_device_holds_settles_the_nam
     assert_eq!(name(other).as_deref(), Some("ops (2)"));
 }
 
-// A pull's write to the library is reported once to a host that tags the file, with the digest of what it wrote.
+// A pull's write to the library is reported to a host that tags the file, with the digest of what it wrote, until the
+// host acknowledges it.
 #[tokio::test]
 async fn a_pull_s_write_is_reported_once_to_a_host_that_tags_the_file() {
     let dir = tempfile::tempdir().unwrap();
@@ -639,7 +640,7 @@ async fn a_pull_s_write_is_reported_once_to_a_host_that_tags_the_file() {
         .await
         .unwrap();
 
-    let taken = store.take_written_blocking().unwrap();
+    let taken = store.peek_written_blocking().unwrap();
     let bytes = std::fs::read(store.path()).unwrap();
     let on_disk = {
         use sha2::Digest;
@@ -649,7 +650,8 @@ async fn a_pull_s_write_is_reported_once_to_a_host_that_tags_the_file() {
         taken.iter().map(|write| write.digest.as_str()).collect::<Vec<_>>(),
         [on_disk.as_str()]
     );
-    assert!(store.take_written_blocking().unwrap().is_empty());
+    assert_eq!(store.ack_written_blocking(&on_disk).unwrap(), 1);
+    assert!(store.peek_written_blocking().unwrap().is_empty());
 }
 
 const PROJECT: &str = "5A2B7C1D-3E4F-4A5B-8C6D-7E8F9A0B1C2D";

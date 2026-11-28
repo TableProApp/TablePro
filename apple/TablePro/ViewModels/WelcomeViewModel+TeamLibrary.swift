@@ -2,12 +2,8 @@
 //  WelcomeViewModel+TeamLibrary.swift
 //  TablePro
 //
-//  Publishing connections to the team library. Credentials are never sent: the export envelope strips passwords,
-//  passphrases, TOTP secrets and secure plugin fields.
-//
 
 import AppKit
-import TableProImport
 
 extension WelcomeViewModel {
     func publishConnectionsToTeamLibrary(_ connectionsToPublish: [DatabaseConnection], teamID: String) {
@@ -37,12 +33,11 @@ extension WelcomeViewModel {
         _ connections: [DatabaseConnection],
         to destination: TeamLibraryDestination,
         through library: TeamLibrary,
-        exporter: ConnectionBundleExporter = ConnectionBundleExporter(),
         confirm: @MainActor ([DatabaseConnection]) async -> Bool
     ) async -> TeamLibraryPublishOutcome {
         guard await confirm(connections) else { return .declined }
         do throws(TeamLibraryPublishError) {
-            return .finished(try await library.publishConnections(connections, exporter: exporter, to: destination))
+            return .finished(try await library.publishConnections(connections, to: destination))
         } catch {
             return .failed(error)
         }

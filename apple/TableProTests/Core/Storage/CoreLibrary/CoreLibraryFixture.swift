@@ -131,6 +131,12 @@ final class CoreLibraryFixture {
 
     // Another core over the same folder. Reporting, it seals its own writes as the app's core does for its engine.
     func coreLibrary(reporting: Bool = false) throws -> ConnectionLibrary {
+        try core(reporting: reporting).library()
+    }
+
+    // A second core over the store's folder, as the engine's writes reach it; with the store's key, it reads and
+    // acknowledges the same reports.
+    func core(reporting: Bool) throws -> Core {
         let core = try Core(
             config: HostConfig(clientVersion: "test", storageDir: coreURL.deletingLastPathComponent().path),
             secrets: ConnectionKeychainSecrets(keychain: keychain) { _ in false }
@@ -138,7 +144,7 @@ final class CoreLibraryFixture {
         if reporting, let key = ConnectionStoreIntegrity.shared.libraryReportKey() {
             try core.reportLibraryWrites(key: key)
         }
-        return try core.library()
+        return core
     }
 
     // A write the core makes on its own, as its engine does for a pull, which this Mac's store is not told of.

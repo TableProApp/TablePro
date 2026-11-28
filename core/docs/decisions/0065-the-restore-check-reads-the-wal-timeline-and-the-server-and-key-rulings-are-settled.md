@@ -1,6 +1,6 @@
 # 0065: The restore check reads the WAL's timeline, and the server and key rulings are settled
 
-- **Status**: Accepted; amends 0051, 0056 and 0064
+- **Status**: Accepted; amends 0051, 0056 and 0064; the restore check's functions and the install audit page amended by 0072
 - **Date**: 2026-11-26
 
 ## Context

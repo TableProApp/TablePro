@@ -73,7 +73,6 @@ internal protocol WelcomeOutlineControlling: AnyObject {
 @MainActor
 final class WelcomeViewModel: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "WelcomeViewModel")
-    private static let teamLibraryNamespace = UUID(uuidString: "00000000-0000-0000-0000-000000000000") ?? UUID()
     private static let searchDebounceNanoseconds: UInt64 = 150_000_000
 
     let services: AppServices
@@ -107,7 +106,7 @@ final class WelcomeViewModel: ObservableObject {
     @Published var linkedConnections: [LinkedConnection] = [] {
         didSet { rebuildOutline() }
     }
-    @Published var teamLibraryConnections: [LinkedConnection] = [] {
+    @Published var teamLibraryConnections: [DatabaseConnection] = [] {
         didSet { rebuildOutline() }
     }
 
@@ -270,14 +269,15 @@ final class WelcomeViewModel: ObservableObject {
         return linkedConnections
     }
 
-    var presentableTeamLibraryConnections: [LinkedConnection] {
+    var presentableTeamLibraryConnections: [DatabaseConnection] {
         guard services.featureAccess.isAvailable(.teamLibrary) else { return [] }
         return teamLibraryConnections
     }
 
-    var sharedConnectionsById: [UUID: LinkedConnection] {
+    var sharedConnectionsById: [UUID: WelcomeSharedConnection] {
         Dictionary(
-            (presentableLinkedConnections + presentableTeamLibraryConnections).map { ($0.id, $0) },
+            presentableLinkedConnections.map { ($0.id, WelcomeSharedConnection.linked($0)) }
+                + presentableTeamLibraryConnections.map { ($0.id, WelcomeSharedConnection.team($0)) },
             uniquingKeysWith: { first, _ in first }
         )
     }
@@ -353,7 +353,7 @@ final class WelcomeViewModel: ObservableObject {
             includesRecent: showsRecent,
             externalSections: [
                 LibraryExternalSection(kind: .linkedFolders, entries: presentableLinkedConnections.map(\.libraryEntry)),
-                LibraryExternalSection(kind: .teamLibrary, entries: presentableTeamLibraryConnections.map(\.libraryEntry)),
+                LibraryExternalSection(kind: .teamLibrary, entries: presentableTeamLibraryConnections.map(\.libraryExternalEntry)),
             ]
         )
     }
@@ -682,10 +682,8 @@ final class WelcomeViewModel: ObservableObject {
         connectToDatabase(connection)
     }
 
-    func connectToLinkedConnection(_ linked: LinkedConnection) {
-        let connection = linked.databaseConnection(
-            origin: linked.folderId == Self.teamLibraryNamespace ? .teamLibrary : .linkedFolder
-        )
+    func connectToSharedConnection(_ shared: WelcomeSharedConnection) {
+        let connection = shared.databaseConnection()
         Task {
             do {
                 try await TabRouter.shared.openTransientConnection(connection)
@@ -695,20 +693,9 @@ final class WelcomeViewModel: ObservableObject {
         }
     }
 
-    private static func buildTeamLibraryConnections() -> [LinkedConnection] {
+    private static func buildTeamLibraryConnections() -> [DatabaseConnection] {
         guard FeatureAccess.shared.isAvailable(.teamLibrary) else { return [] }
-        let placeholderURL = URL(fileURLWithPath: "/")
-        var seen: Set<UUID> = []
-        return TeamLibrary.shared.content.connections.compactMap { connection in
-            let id = LinkedFolderWatcher.stableId(namespace: teamLibraryNamespace, key: connection.id)
-            guard seen.insert(id).inserted else { return nil }
-            return LinkedConnection(
-                id: id,
-                connection: connection.settings,
-                folderId: teamLibraryNamespace,
-                sourceFileURL: placeholderURL
-            )
-        }
+        return TeamLibrary.shared.content.connections.map(\.connection)
     }
 
     // MARK: - Import / Export

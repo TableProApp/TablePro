@@ -37,6 +37,11 @@ enum HostedAccessibility {
     static func element(_ identifier: String, in window: NSWindow) -> AXUIElement? {
         let root = children(kAXWindowsAttribute, of: AXUIElementCreateApplication(getpid()))
             .first { string(kAXTitleAttribute, of: $0) == window.title }
+        return root.flatMap { element(identifier, below: $0) }
+    }
+
+    // Searches the element's own subtree, as a rig that opens a page and looks inside it does.
+    static func element(_ identifier: String, below parent: AXUIElement) -> AXUIElement? {
         func find(_ element: AXUIElement, depth: Int) -> AXUIElement? {
             guard depth < 20 else { return nil }
             if string(kAXIdentifierAttribute, of: element) == identifier {
@@ -49,12 +54,22 @@ enum HostedAccessibility {
             }
             return nil
         }
-        return root.flatMap { find($0, depth: 0) }
+        return find(parent, depth: 0)
     }
 
     static func label(of element: AXUIElement) -> String? {
         let title = string(kAXTitleAttribute, of: element) ?? ""
         return title.isEmpty ? string(kAXDescriptionAttribute, of: element) : title
+    }
+
+    static func value(of element: AXUIElement) -> String? {
+        string(kAXValueAttribute, of: element)
+    }
+
+    static func actions(of element: AXUIElement) -> [String] {
+        var names: CFArray?
+        guard AXUIElementCopyActionNames(element, &names) == .success else { return [] }
+        return names as? [String] ?? []
     }
 
     static func press(_ element: AXUIElement) {

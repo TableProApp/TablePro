@@ -86,7 +86,7 @@ struct ConnectionOriginTests {
             sourceFileURL: URL(fileURLWithPath: "/tmp/shared.tablepro")
         )
         #expect(linked.databaseConnection().origin == .linkedFolder)
-        #expect(linked.databaseConnection(origin: .teamLibrary).origin == .teamLibrary)
+        #expect(WelcomeSharedConnection.team(DatabaseConnection(name: "Team")).databaseConnection().origin == .teamLibrary)
 
         guard case .success(let parsed) = ConnectionURLParser.parse("postgresql://db.example.com:5432/app") else {
             Issue.record("The URL did not parse")

@@ -601,14 +601,13 @@ private struct AccountTeamRow: View {
         return String(format: String(localized: "%@ · %@"), role, seat)
     }
 
-    // The team's keys page holds Manage on the Web too, so the row opens it.
+    // The team's keys page holds Manage on the Web too, so the row opens it. A drill row, as the pane's own pages are, so
+    // the link carries the team's name and its drill identifier.
     var body: some View {
-        NavigationLink(value: SettingsRoute.team(id: team.id, name: team.name)) {
-            SettingsRecordRow(title: team.name, subtitle: subtitle)
-        }
-        .modifier(AccountRowMenu(title: String(localized: "Manage…")) {
-            model.openPortal(team.manage)
-        })
+        SettingsDrillRow(route: SettingsRoute.team(id: team.id, name: team.name), name: team.name, detail: subtitle)
+            .modifier(AccountRowMenu(title: String(localized: "Manage…")) {
+                model.openPortal(team.manage)
+            })
     }
 }
 
