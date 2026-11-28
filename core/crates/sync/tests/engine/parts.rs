@@ -292,7 +292,10 @@ async fn the_scheduler_waits_out_retry_after_before_it_tries_again() {
 
 // The events logged on this thread, each with its level, its text and its public `code`.
 #[derive(Clone, Default)]
-struct Logged(Arc<Mutex<Vec<(tracing::Level, String, Option<String>)>>>);
+struct Logged(Arc<Mutex<Vec<Line>>>);
+
+// An event's level, text and public `code`.
+type Line = (tracing::Level, String, Option<String>);
 
 impl tracing::Subscriber for Logged {
     fn register_callsite(&self, _: &'static tracing::Metadata<'static>) -> tracing::subscriber::Interest {

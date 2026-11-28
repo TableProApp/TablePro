@@ -1649,7 +1649,10 @@ mod tests {
 
     // The events logged on this thread, each with its level, its text and its public `code`.
     #[derive(Clone, Default)]
-    struct Logged(Arc<std::sync::Mutex<Vec<(tracing::Level, String, Option<String>)>>>);
+    struct Logged(Arc<std::sync::Mutex<Vec<Line>>>);
+
+    // An event's level, text and public `code`.
+    type Line = (tracing::Level, String, Option<String>);
 
     impl tracing::Subscriber for Logged {
         fn register_callsite(&self, _: &'static tracing::Metadata<'static>) -> tracing::subscriber::Interest {
@@ -1722,7 +1725,7 @@ mod tests {
                 break;
             }
         }
-        let failed = |lines: &[(tracing::Level, String, Option<String>)]| {
+        let failed = |lines: &[Line]| {
             lines
                 .iter()
                 .find(|(_, text, _)| text.contains("the entitlement refresh failed"))
