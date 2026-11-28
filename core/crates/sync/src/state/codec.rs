@@ -340,13 +340,14 @@ const STANDINGS: [(Standing, &str); 3] = [
     (Standing::Unknown, "unknown"),
 ];
 
-const HELD_REASONS: [(HeldReason, &str); 6] = [
+const HELD_REASONS: [(HeldReason, &str); 7] = [
     (HeldReason::Unreadable, "unreadable"),
     (HeldReason::UnknownKind, "unknown_kind"),
     (HeldReason::AwaitingApproval, "awaiting_approval"),
     (HeldReason::AwaitingDeviceApproval, "awaiting_device_approval"),
     (HeldReason::RefusedInRefill, "refused_in_refill"),
     (HeldReason::Collides, "collides"),
+    (HeldReason::AwaitingStore, "awaiting_store"),
 ];
 
 const VERSION_STATES: [(KeyVersionState, &str); 3] = [
