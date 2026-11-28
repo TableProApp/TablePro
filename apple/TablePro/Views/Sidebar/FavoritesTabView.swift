@@ -283,51 +283,9 @@ internal struct FavoritesTabView: View {
     }
 
     private func publishSavedQueriesToTeam(teamID: String) {
-        let destination = teamLibrary.destination(teamID)
-        Task { @MainActor in
-            let favorites = await SQLFavoriteManager.shared.fetchFavorites()
-            let folders = await SQLFavoriteManager.shared.fetchFolders()
-            guard !favorites.isEmpty else {
-                presentTeamLibraryInfo(String(localized: "You have no saved queries to publish."))
-                return
-            }
-            guard await confirmPublishSavedQueries(count: favorites.count) else { return }
-            let outcome: TeamLibraryPublishOutcome
-            do throws(TeamLibraryPublishError) {
-                outcome = .finished(try await teamLibrary.publishSavedQueries(
-                    favorites: favorites,
-                    folders: folders,
-                    to: destination
-                ))
-            } catch {
-                outcome = .failed(error)
-            }
-            TeamLibraryPublishing.present(outcome) {
-                showsTeamLibraryConflicts = true
-            }
+        TeamLibrarySavedQueriesPublishing.publish(to: teamID, through: teamLibrary) {
+            showsTeamLibraryConflicts = true
         }
-    }
-
-    private func confirmPublishSavedQueries(count: Int) async -> Bool {
-        await AlertHelper.confirm(
-            title: String(localized: "Publish saved queries to your team?"),
-            message: String(
-                format: String(
-                    localized: "Your team will see the names and SQL of %d saved queries. Queries you published from this Mac and deleted since are removed from the team library."
-                ),
-                count
-            ),
-            confirmButton: String(localized: "Publish"),
-            window: nil
-        )
-    }
-
-    private func presentTeamLibraryInfo(_ message: String) {
-        AlertHelper.showInfoSheet(
-            title: String(localized: "Team Library"),
-            message: message,
-            window: nil
-        )
     }
 
     private func favoritesList(

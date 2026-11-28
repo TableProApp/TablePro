@@ -14,6 +14,7 @@ enum FileMenuBuilder {
     private static let conversationHistoryDelegate = ConversationHistoryMenuDelegate()
     private static let revertToDelegate = QueryTabRevertMenuDelegate()
     private static let projectDelegate = ProjectMenuDelegate()
+    private static let teamPublishDelegate = TeamPublishMenuDelegate()
 
     static func build(keyboard: KeyboardSettings) -> NSMenuItem {
         let file = MenuItemFactory.menu(String(localized: "File"), items: [
@@ -140,6 +141,7 @@ enum FileMenuBuilder {
                 String(localized: "Manage Shared Links…"),
                 action: #selector(AppDelegate.manageSharedLinks(_:))
             ),
+            teamPublishSubmenu(),
             sharingSeparator(),
             MenuItemFactory.item(
                 String(localized: "Backup Dump…"),
@@ -210,6 +212,15 @@ enum FileMenuBuilder {
     private static func projectSubmenu() -> NSMenuItem {
         let container = MenuItemFactory.submenu(String(localized: "Project"), items: [])
         container.submenu?.delegate = projectDelegate
+        return container
+    }
+
+    // The Favorites list's empty-area menu has the same command, which neither VoiceOver nor the keyboard reaches.
+    private static func teamPublishSubmenu() -> NSMenuItem {
+        let container = MenuItemFactory.submenu(String(localized: "Publish Saved Queries to Team"), items: [])
+        container.identifier = TeamPublishMenuGroup.identifier
+        container.submenu?.delegate = teamPublishDelegate
+        container.isHidden = true
         return container
     }
 
