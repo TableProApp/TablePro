@@ -1169,7 +1169,7 @@ public sealed class TableTab : IWorkspaceTab
         }
 
         var rows = (int)Math.Clamp(_results.RowCount, 0, int.MaxValue);
-        SetEdits(new TableEdits(editor.Columns, rows), shown);
+        SetEdits(new TableEdits(editor, shown, rows), shown);
     }
 
     // Each change goes back as if typed on the row its key finds; a lock keeps every one, and the rest wait.
@@ -1293,11 +1293,16 @@ public sealed class TableTab : IWorkspaceTab
             return false;
         }
 
-        var planned = edits.ToRowEdits();
-        IRowSave save;
+        return await RunSaveAsync(edits, reload).ConfigureAwait(true);
+    }
+
+    // The delete question comes at every Safe Mode level, as on macOS, then the level's own.
+    private async Task<bool> RunSaveAsync(TableEdits edits, bool reload)
+    {
+        SavePreview preview;
         try
         {
-            save = _tableEditor!.Plan(_editsRows, planned.Edits);
+            preview = edits.Preview();
         }
         catch (TableProException exception)
         {
@@ -1305,37 +1310,27 @@ public sealed class TableTab : IWorkspaceTab
             return false;
         }
 
-        using (save)
+        if (preview.IsEmpty)
         {
-            return await RunSaveAsync(save, edits, planned, reload).ConfigureAwait(true);
-        }
-    }
-
-    // The delete question comes at every Safe Mode level, as on macOS, then the level's own.
-    private async Task<bool> RunSaveAsync(IRowSave save, TableEdits edits, PlannedEdits planned, bool reload)
-    {
-        if (save.IsEmpty)
-        {
-            edits.Discard();
             return true;
         }
 
-        if (save.Gate == SaveGate.Refuse)
+        if (preview.Gate == SaveGate.Refuse)
         {
             _view.ShowEditRefusal(new EditRefusal.TableLocked(EditLock.ReadOnlyConnection));
             return false;
         }
 
-        var deletes = planned.Edits.Count(edit => edit is RowEdit.Delete);
+        var deletes = checked((int)preview.Deletes);
         if (deletes > 0 && !await _view.ConfirmDeleteAsync(Table.Name, deletes).ConfigureAwait(true))
         {
             return false;
         }
 
-        var confirmed = save.Gate == SaveGate.Run;
-        if (save.Gate == SaveGate.Confirm)
+        var confirmed = preview.Gate == SaveGate.Run;
+        if (preview.Gate == SaveGate.Confirm)
         {
-            if (!await _view.ConfirmSaveAsync(_session.Name, save.Statements).ConfigureAwait(true))
+            if (!await _view.ConfirmSaveAsync(_session.Name, preview.Statements).ConfigureAwait(true))
             {
                 _view.ShowSaveCancelled();
                 return false;
@@ -1360,18 +1355,15 @@ public sealed class TableTab : IWorkspaceTab
             {
                 // On disk before the first statement: an end while it runs leaves the edits blocked, not saved twice.
                 _view.WriteSessionNow();
-                (outcome, failure) = await EditedRows.RunSaveAsync(save, confirmed).ConfigureAwait(true);
+                (outcome, failure) = await Rows(edits).SaveAsync(confirmed).ConfigureAwait(true);
             }
             finally
             {
                 SetSaving(false);
             }
 
-            if (outcome is RowSaveOutcome.Saved)
-            {
-                edits.Discard();
-            }
-            else if (outcome is RowSaveOutcome.Unknown)
+            // The editor settles the tracker: a commit drops the saved rows, an unknown outcome refuses the next save.
+            if (outcome is RowSaveOutcome.Unknown)
             {
                 _saveBlocked = true;
                 OnEditsChanged(this, EventArgs.Empty);
@@ -1384,11 +1376,10 @@ public sealed class TableTab : IWorkspaceTab
             return outcome is RowSaveOutcome.Saved;
         }
 
-        return await AfterSaveAsync(outcome, failure, planned, reload).ConfigureAwait(true);
+        return await AfterSaveAsync(outcome, failure, reload).ConfigureAwait(true);
     }
 
-    private async Task<bool> AfterSaveAsync(
-        RowSaveOutcome? outcome, CoreError? failure, PlannedEdits planned, bool reload)
+    private async Task<bool> AfterSaveAsync(RowSaveOutcome? outcome, CoreError? failure, bool reload)
     {
         switch (outcome)
         {
@@ -1403,11 +1394,11 @@ public sealed class TableTab : IWorkspaceTab
                 return true;
             case RowSaveOutcome.RolledBack rolledBack:
                 await _view.ShowSaveFailedAsync(rolledBack.Error, incomplete: false).ConfigureAwait(true);
-                FocusEdit(planned, rolledBack.Edit);
+                FocusRow(rolledBack.Row);
                 return false;
             case RowSaveOutcome.Unknown unknown:
                 await _view.ShowSaveFailedAsync(unknown.Error, incomplete: true).ConfigureAwait(true);
-                FocusEdit(planned, unknown.Edit);
+                FocusRow(unknown.Row);
                 return false;
             default:
                 if (failure is not null)
@@ -1420,11 +1411,11 @@ public sealed class TableTab : IWorkspaceTab
     }
 
     // The row of the change the engine said the save stopped at.
-    private void FocusEdit(PlannedEdits planned, int? edit)
+    private void FocusRow(long? row)
     {
-        if (EditedRows.RowOf(planned, edit) is { } row)
+        if (EditedRows.RowOf(row) is { } at)
         {
-            _view.FocusRow(row);
+            _view.FocusRow(at);
         }
     }
 

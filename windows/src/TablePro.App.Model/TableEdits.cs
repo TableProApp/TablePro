@@ -126,6 +126,9 @@ public sealed class TableEdits
     // The same object until the next change, so the grid swaps its edits only when something moved.
     public Grid.GridEdits Snapshot() => _snapshot ??= Build(_editor.Overlay(_source));
 
+    // The pending edits by place, which the session file serializes for recovery.
+    public PendingOverlay Overlay() => _editor.Overlay(_source);
+
     public SavePreview Preview() => _editor.Preview();
 
     public Task<RowSaveOutcome> SaveAsync(bool confirmed, CancellationToken cancellationToken) =>
