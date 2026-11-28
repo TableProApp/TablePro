@@ -182,7 +182,7 @@ impl Core {
 
 // The Apple apps keep a connection's engine as the Mac's `DatabaseType` names it, Linux and Windows as the core's
 // driver id.
-fn driver_names(platform: SyncPlatformTag) -> DriverNames {
+pub(crate) fn driver_names(platform: SyncPlatformTag) -> DriverNames {
     match platform {
         SyncPlatformTag::Macos | SyncPlatformTag::Ios => DriverNames::Mac,
         SyncPlatformTag::Linux | SyncPlatformTag::Windows => DriverNames::Core,

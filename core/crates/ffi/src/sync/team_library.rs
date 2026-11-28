@@ -7,11 +7,15 @@ use std::sync::Arc;
 
 use serde_json::Value;
 use tablepro_keys::encoding::{AccountId, Origin};
-use tablepro_storage::{ChangeJournal, StoragePaths, TeamLibraryKind, TeamLibraryOwner, TeamLibraryStore};
+use tablepro_storage::{
+    ChangeJournal, ConnectionListState, SshProfile, StoragePaths, TeamLibraryKind, TeamLibraryOwner, TeamLibraryStore,
+};
 use tablepro_sync::SyncError;
+use tablepro_sync::adapters::library::{DriverNames, team_bundle, team_connection};
 use tablepro_sync::adapters::store_journal::StoreJournal;
 use tablepro_sync::api::ids::{ScopeName, typeid_uuid};
 use tablepro_sync::api::scopes::Role;
+use tablepro_sync::api::state::StateIdentity;
 use tablepro_sync::api::team_library::{
     FacadeBase, ImportedEdit, SignInGuard, TeamConnection, TeamFolder, TeamId, TeamItem, TeamItemRef,
     TeamLibraryControl, TeamLibraryError, TeamLibraryImport, TeamLibraryPolicy, TeamLibraryTeam, TeamPublish,
@@ -25,6 +29,7 @@ use super::service::SyncService;
 use crate::account::AccountService;
 use crate::core_handle::Core;
 use crate::error::CoreError;
+use crate::library_contents::{LibraryConnectionRecord, stored_connection};
 use crate::runtime::on_runtime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
@@ -46,6 +51,10 @@ pub struct TeamLibraryItemInfo {
     pub kind: TeamLibraryKindTag,
     pub id: String,
     pub fields_json: String,
+    // A connection item read as a library connection (the Mac's bundle, `ExportableConnection`), in this platform's
+    // driver names; None for a folder or a query, and for a copy whose id is not a UUID.
+    #[uniffi(default = None)]
+    pub connection: Option<LibraryConnectionRecord>,
     // Who last changed it, as the server names them to this account, and when in milliseconds since the Unix epoch;
     // None until a pull names anyone.
     #[uniffi(default = None)]
@@ -63,13 +72,6 @@ pub struct TeamLibraryTeamInfo {
     pub role: Option<TeamRoleTag>,
     pub can_write: bool,
     pub items: Vec<TeamLibraryItemInfo>,
-}
-
-// `settings_json` is the connection's bundle (`ExportableConnection`); the core strips every secret key.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
-pub struct TeamConnectionArg {
-    pub id: String,
-    pub settings_json: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -162,6 +164,27 @@ pub struct TeamLibraryOwnerArg {
     pub account_id: String,
 }
 
+// The owner a service engine's sign-in binds its Team Library to, spelled as `team_library_owner` spells one.
+fn owner_of(identity: &StateIdentity) -> Option<TeamLibraryOwner> {
+    let StateIdentity::Service { origin, account, .. } = identity else {
+        return None;
+    };
+    Some(TeamLibraryOwner {
+        origin: origin.as_str().to_owned(),
+        account_id: account.to_wire(),
+    })
+}
+
+// A call names the owner it means, which must be the engine's: the engine an account switch opens has another, so a
+// call the app started for one account never lands on the next one's library.
+fn check_owner(expected: &TeamLibraryOwnerArg, identity: &StateIdentity) -> Result<(), CoreError> {
+    let expected = team_library_owner(&expected.api_origin, &expected.account_id).ok_or_else(|| malformed("owner"))?;
+    if owner_of(identity).as_ref() != Some(&expected) {
+        return Err(SyncError::from(TeamLibraryError::OtherOwner).into());
+    }
+    Ok(())
+}
+
 // One spelling of each owner, so the app's and the engine's name the same store file: the API's origin, and the
 // account's UUID as the state file binds it, whether the account names it by UUID or by its `acct_` TypeID.
 pub(crate) fn team_library_owner(api_origin: &str, account_id: &str) -> Option<TeamLibraryOwner> {
@@ -244,23 +267,57 @@ fn item_ref_info(item: TeamItemRef) -> TeamLibraryItemRef {
     }
 }
 
-fn item_info(item: TeamItem) -> TeamLibraryItemInfo {
+// A tunnel whose host or user `ssh` would read as an option or a shell word, refused as the Mac refuses a team copy
+// (`refusedSSHDestination`): a teammate's copy never reaches `ssh` with one.
+fn refused_destination(saved: &tablepro_storage::SavedConnection) -> bool {
+    let Some(ssh) = saved.ssh.as_ref().filter(|ssh| ssh.enabled) else {
+        return false;
+    };
+    let user = |name: Option<&String>| name.filter(|name| !name.is_empty()).cloned();
+    std::iter::once((ssh.host.as_str(), ssh.port, user(ssh.username.as_ref())))
+        .chain(
+            ssh.jump_hosts
+                .iter()
+                .map(|hop| (hop.host.as_str(), hop.port, user(hop.username.as_ref()))),
+        )
+        .filter(|(host, _, _)| !host.trim().is_empty())
+        .any(|(host, port, user)| tablepro_ssh::SshDestination::new(host, port, user).is_err())
+}
+
+// A team's connection as the app shows it: the bundle read the way every platform reads it, linking only an SSH profile
+// this device holds. None for one whose tunnel names a destination `ssh` would misread.
+fn item_info(item: TeamItem, names: DriverNames, profiles: &[SshProfile]) -> TeamLibraryItemInfo {
+    let connection = (item.item.kind == TeamLibraryKind::Connection)
+        .then(|| Uuid::parse_str(&item.item.id).ok())
+        .flatten()
+        .map(|id| {
+            team_connection(id, &item.item.fields, names, |profile| {
+                profiles.iter().any(|held| held.id == profile)
+            })
+        })
+        .filter(|saved| !refused_destination(saved))
+        .map(|saved| LibraryConnectionRecord::from(&saved));
     TeamLibraryItemInfo {
         kind: kind_tag(item.item.kind),
         id: item.item.id,
         fields_json: item.item.fields.to_string(),
+        connection,
         updated_by: item.updated_by,
         updated_at_ms: item.updated_at_ms,
     }
 }
 
-fn team_info(team: TeamLibraryTeam) -> TeamLibraryTeamInfo {
+fn team_info(team: TeamLibraryTeam, names: DriverNames, profiles: &[SshProfile]) -> TeamLibraryTeamInfo {
     TeamLibraryTeamInfo {
         team_id: team_id(team.team),
         name: team.name,
         role: team.role.map(role_tag),
         can_write: team.writable,
-        items: team.items.into_iter().map(item_info).collect(),
+        items: team
+            .items
+            .into_iter()
+            .map(|item| item_info(item, names, profiles))
+            .collect(),
     }
 }
 
@@ -298,10 +355,21 @@ fn status_info(status: TeamScopeStatus) -> TeamScopeStatusInfo {
     }
 }
 
-fn connection(arg: TeamConnectionArg) -> Result<TeamConnection, CoreError> {
+// The bundle the team gets, built the one way every platform builds it; the publish strips every secret key.
+fn connection(
+    record: LibraryConnectionRecord,
+    names: DriverNames,
+    profiles: &[SshProfile],
+) -> Result<TeamConnection, CoreError> {
+    let id = entity(&record.connection.id, "connection id")?;
+    let saved = stored_connection(id, record, None)?;
+    let profile = saved
+        .details
+        .ssh_profile_id
+        .and_then(|linked| profiles.iter().find(|held| held.id == linked));
     Ok(TeamConnection {
-        id: entity(&arg.id, "connection id")?,
-        settings: object(&arg.settings_json, "connection settings")?,
+        id,
+        settings: team_bundle(&saved, profile, names),
     })
 }
 
@@ -362,8 +430,11 @@ fn import(arg: TeamLibraryImportArg) -> Result<TeamLibraryImport, CoreError> {
 impl SyncService {
     // Team scopes always use TablePro Sync, whatever the personal provider is (core ADR 0054, Providers), so every
     // Team Library call reaches the service engine, which runs teams-only on an iCloud or Off device.
+    // On the engine of the owner the app means. An engine's owner never changes, and a sign-in-bound call checks that
+    // the sign-in still holds after every await, so nothing lands on another account's library.
     async fn on_team_library<T, F>(
         &self,
+        expected_owner: TeamLibraryOwnerArg,
         work: impl FnOnce(Arc<dyn TeamLibraryControl>) -> F + Send + 'static,
     ) -> Result<T, CoreError>
     where
@@ -373,11 +444,24 @@ impl SyncService {
         let service = Arc::clone(&self.service);
         on_runtime(&self.tasks, async move {
             let engine = service.engine().await?;
+            check_owner(&expected_owner, engine.sync.identity())?;
             work(Arc::clone(&engine.sync) as Arc<dyn TeamLibraryControl>)
                 .await
                 .map_err(CoreError::from)
         })
         .await
+    }
+
+    fn driver_names(&self) -> DriverNames {
+        super::open::driver_names(self.config.platform)
+    }
+
+    // The SSH profiles this Core's library holds, as it last read them: the only ones a team copy may link.
+    fn held_profiles(&self) -> Vec<SshProfile> {
+        match self.connections.as_ref().map(|store| store.snapshot().state) {
+            Some(ConnectionListState::Ready(list)) => list.ssh_profiles.to_vec(),
+            _ => Vec::new(),
+        }
     }
 }
 
@@ -465,15 +549,32 @@ async fn name_teams(control: Arc<dyn TeamLibraryControl>, account: tablepro_acco
     }
 }
 
+// Every Team Library call names the owner the app means, as `team_library_owner` gave it, and is refused with
+// `sync.team_library.other_owner` on another one's engine.
 #[uniffi::export]
 impl SyncService {
+    // The owner this service's TablePro Sync sign-in binds Team Library to, for the app to pass back to each call; None
+    // without one.
+    pub fn team_library_owner(&self) -> Option<TeamLibraryOwnerArg> {
+        let engine = self.service.now().ok()?;
+        let owner = owner_of(engine.sync.identity())?;
+        Some(TeamLibraryOwnerArg {
+            api_origin: owner.origin,
+            account_id: owner.account_id,
+        })
+    }
+
     // Names come from the profile in the background, so this never waits on the network; the listener says when
     // they changed.
-    pub async fn team_library(&self) -> Result<Vec<TeamLibraryTeamInfo>, CoreError> {
+    pub async fn team_library(
+        &self,
+        expected_owner: TeamLibraryOwnerArg,
+    ) -> Result<Vec<TeamLibraryTeamInfo>, CoreError> {
         let account = self.account.as_ref().map(|service| service.account.clone());
         let tasks = self.tasks.clone();
+        let (names, profiles) = (self.driver_names(), self.held_profiles());
         let teams = self
-            .on_team_library(move |control| async move {
+            .on_team_library(expected_owner, move |control| async move {
                 let teams = control.team_library().await?;
                 if let Some(account) = account {
                     drop(tasks.spawn_task(name_teams(control, account)));
@@ -481,19 +582,30 @@ impl SyncService {
                 Ok(teams)
             })
             .await?;
-        Ok(teams.into_iter().map(team_info).collect())
+        Ok(teams
+            .into_iter()
+            .map(|team| team_info(team, names, &profiles))
+            .collect())
     }
 
-    // The same request and ids `TeamLibraryPublishPlan.connections` sent; the core decides what goes up.
+    // The connections `TeamLibraryPublishPlan.connections` names, as the library holds them; the core builds each one's
+    // bundle and decides what goes up.
     pub async fn publish_team_connections(
         &self,
+        expected_owner: TeamLibraryOwnerArg,
         team_id: String,
-        connections: Vec<TeamConnectionArg>,
+        connections: Vec<LibraryConnectionRecord>,
     ) -> Result<TeamPublishInfo, CoreError> {
         let team = team(&team_id)?;
-        let connections = connections.into_iter().map(connection).collect::<Result<Vec<_>, _>>()?;
+        let (names, profiles) = (self.driver_names(), self.held_profiles());
+        let connections = connections
+            .into_iter()
+            .map(|record| connection(record, names, &profiles))
+            .collect::<Result<Vec<_>, _>>()?;
         let publish = self
-            .on_team_library(move |control| async move { control.publish_team_connections(team, connections).await })
+            .on_team_library(expected_owner, move |control| async move {
+                control.publish_team_connections(team, connections).await
+            })
             .await?;
         Ok(publish_info(publish))
     }
@@ -501,6 +613,7 @@ impl SyncService {
     // Every saved query and folder this device holds: what it published before and no longer holds is removed.
     pub async fn publish_team_saved_queries(
         &self,
+        expected_owner: TeamLibraryOwnerArg,
         team_id: String,
         folders: Vec<TeamFolderArg>,
         queries: Vec<TeamQueryArg>,
@@ -509,61 +622,88 @@ impl SyncService {
         let folders = folders.into_iter().map(folder).collect::<Result<Vec<_>, _>>()?;
         let queries = queries.into_iter().map(query).collect::<Result<Vec<_>, _>>()?;
         let publish = self
-            .on_team_library(
-                move |control| async move { control.publish_team_saved_queries(team, folders, queries).await },
-            )
+            .on_team_library(expected_owner, move |control| async move {
+                control.publish_team_saved_queries(team, folders, queries).await
+            })
             .await?;
         Ok(publish_info(publish))
     }
 
     pub async fn remove_team_items(
         &self,
+        expected_owner: TeamLibraryOwnerArg,
         team_id: String,
         items: Vec<TeamLibraryItemRef>,
     ) -> Result<TeamPublishInfo, CoreError> {
         let team = team(&team_id)?;
         let items = items.into_iter().map(item_ref).collect();
         let publish = self
-            .on_team_library(move |control| async move { control.remove_team_items(team, items).await })
+            .on_team_library(expected_owner, move |control| async move {
+                control.remove_team_items(team, items).await
+            })
             .await?;
         Ok(publish_info(publish))
     }
 
     // What a sign-out or a switch lists before it asks push, discard or cancel.
-    pub async fn unsent_team_edits(&self) -> Result<Vec<UnsentTeamEditInfo>, CoreError> {
+    pub async fn unsent_team_edits(
+        &self,
+        expected_owner: TeamLibraryOwnerArg,
+    ) -> Result<Vec<UnsentTeamEditInfo>, CoreError> {
         let edits = self
-            .on_team_library(move |control| async move { control.unsent_team_edits().await })
+            .on_team_library(expected_owner, move |control| async move {
+                control.unsent_team_edits().await
+            })
             .await?;
         Ok(edits.into_iter().map(unsent_info).collect())
     }
 
     // None discards every team's, refused and imported edits included.
-    pub async fn discard_team_edits(&self, team_id: Option<String>) -> Result<(), CoreError> {
+    pub async fn discard_team_edits(
+        &self,
+        expected_owner: TeamLibraryOwnerArg,
+        team_id: Option<String>,
+    ) -> Result<(), CoreError> {
         let team = team_id.as_deref().map(team).transpose()?;
-        self.on_team_library(move |control| async move { control.discard_team_edits(team).await })
-            .await
+        self.on_team_library(expected_owner, move |control| async move {
+            control.discard_team_edits(team).await
+        })
+        .await
     }
 
     // Also after the sign-in ended, as Sign Out deletes once it has signed out. On failure Team Library stays off for
     // this account until a later delete succeeds.
-    pub async fn delete_team_library_data(&self) -> Result<(), CoreError> {
-        self.on_team_library(move |control| async move { control.delete_team_library_data().await })
-            .await
+    pub async fn delete_team_library_data(&self, expected_owner: TeamLibraryOwnerArg) -> Result<(), CoreError> {
+        self.on_team_library(expected_owner, move |control| async move {
+            control.delete_team_library_data().await
+        })
+        .await
     }
 
-    pub async fn team_scope_status(&self) -> Result<Vec<TeamScopeStatusInfo>, CoreError> {
+    pub async fn team_scope_status(
+        &self,
+        expected_owner: TeamLibraryOwnerArg,
+    ) -> Result<Vec<TeamScopeStatusInfo>, CoreError> {
         let status = self
-            .on_team_library(move |control| async move { control.team_scope_status().await })
+            .on_team_library(expected_owner, move |control| async move {
+                control.team_scope_status().await
+            })
             .await?;
         Ok(status.into_iter().map(status_info).collect())
     }
 
     // Once, with what the library 0.88 kept for this sign-in: kept on disk at once and pushed against the facade's
     // versions once each team is pulled, so an edit the team changed meanwhile asks Keep Mine or Keep Theirs.
-    pub async fn import_team_library(&self, teams: Vec<TeamLibraryImportArg>) -> Result<(), CoreError> {
+    pub async fn import_team_library(
+        &self,
+        expected_owner: TeamLibraryOwnerArg,
+        teams: Vec<TeamLibraryImportArg>,
+    ) -> Result<(), CoreError> {
         let teams = teams.into_iter().map(import).collect::<Result<Vec<_>, _>>()?;
-        self.on_team_library(move |control| async move { control.import_team_library(teams).await })
-            .await
+        self.on_team_library(expected_owner, move |control| async move {
+            control.import_team_library(teams).await
+        })
+        .await
     }
 }
 
@@ -649,14 +789,121 @@ mod tests {
         assert_eq!(parsed.connection, Some(Uuid::from_u128(8)));
     }
 
+    fn record(id: &str) -> LibraryConnectionRecord {
+        let saved = team_connection(
+            Uuid::from_u128(1),
+            &json!({"name": "Shop", "host": "db", "port": 5432, "database": "shop", "username": "app",
+                "type": "PostgreSQL"}),
+            DriverNames::Mac,
+            |_| false,
+        );
+        let mut record = LibraryConnectionRecord::from(&saved);
+        id.clone_into(&mut record.connection.id);
+        record
+    }
+
+    // A published connection goes as the bundle the Mac writes, and one whose id is not a UUID is refused.
     #[test]
-    fn fields_that_are_not_an_object_are_refused() {
-        let arg = TeamConnectionArg {
-            id: Uuid::from_u128(1).to_string(),
-            settings_json: "[1]".to_owned(),
+    fn a_published_connection_goes_as_the_mac_s_bundle_and_a_bad_id_is_refused() {
+        let id = Uuid::from_u128(1).hyphenated().to_string().to_uppercase();
+
+        let published = connection(record(&id), DriverNames::Mac, &[]).unwrap();
+        let refused = connection(record("not a uuid"), DriverNames::Mac, &[]);
+
+        assert_eq!(published.id, Uuid::from_u128(1));
+        assert_eq!(
+            published.settings,
+            json!({"name": "Shop", "host": "db", "port": 5432, "database": "shop", "username": "app",
+                "type": "PostgreSQL"})
+        );
+        assert_eq!(refused.unwrap_err().code(), "sync.team_library.malformed");
+    }
+
+    // A team's connection reads as a library connection; a folder or a query carries none.
+    #[test]
+    fn a_connection_item_reads_as_a_library_connection_and_a_query_as_none() {
+        let fields = json!({"name": "Shop", "host": "db", "port": 5432, "database": "shop", "username": "app",
+            "type": "PostgreSQL"});
+        let item = |kind, id: &str| TeamItem {
+            item: TeamLibraryItem {
+                kind,
+                id: id.to_owned(),
+                fields: fields.clone(),
+            },
+            updated_by: None,
+            updated_at_ms: None,
+        };
+        let id = Uuid::from_u128(1).hyphenated().to_string().to_uppercase();
+
+        let connection = item_info(item(TeamLibraryKind::Connection, &id), DriverNames::Mac, &[]);
+        let query = item_info(item(TeamLibraryKind::Query, "Q1"), DriverNames::Mac, &[]);
+
+        let record = connection.connection.expect("a connection");
+        assert_eq!(record.connection.name, "Shop");
+        assert_eq!(record.connection.port, 5432);
+        assert!(query.connection.is_none());
+    }
+
+    // A copy whose tunnel names an option where a host goes reads as no connection, as the Mac refuses one.
+    #[test]
+    fn a_copy_whose_tunnel_host_is_an_option_reads_as_no_connection() {
+        let fields = json!({"name": "Shop", "host": "db", "port": 5432, "database": "shop", "username": "app",
+            "type": "PostgreSQL", "sshConfig": {"enabled": true, "host": "-oProxyCommand=touch /tmp/x",
+            "username": "ops", "authMethod": "SSH Agent", "privateKeyPath": "", "agentSocketPath": ""}});
+        let item = TeamItem {
+            item: TeamLibraryItem {
+                kind: TeamLibraryKind::Connection,
+                id: Uuid::from_u128(1).hyphenated().to_string(),
+                fields,
+            },
+            updated_by: None,
+            updated_at_ms: None,
         };
 
-        assert_eq!(connection(arg).unwrap_err().code(), "sync.team_library.malformed");
+        assert!(item_info(item, DriverNames::Mac, &[]).connection.is_none());
+    }
+
+    fn signed_in(account: u128) -> StateIdentity {
+        StateIdentity::Service {
+            origin: Origin::parse("https://api.tablepro.app").unwrap(),
+            sign_in: "sign-in".to_owned(),
+            account: AccountId(Uuid::from_u128(account)),
+            device_row: tablepro_sync::api::ids::DeviceRowId("dev_1".to_owned()),
+        }
+    }
+
+    // The owner a call names must be the engine's, in either spelling of the account; another account's is refused.
+    #[test]
+    fn a_call_for_another_owner_is_refused_and_either_spelling_of_this_one_passes() {
+        let identity = signed_in(9);
+        let owner = owner_of(&identity).unwrap();
+        let by_typeid = TeamLibraryOwnerArg {
+            api_origin: "https://api.tablepro.app/".to_owned(),
+            account_id: format!("acct_{}", wire(9).trim_start_matches("team_")),
+        };
+        let by_uuid = TeamLibraryOwnerArg {
+            api_origin: "https://api.tablepro.app".to_owned(),
+            account_id: Uuid::from_u128(9).to_string(),
+        };
+        let other = TeamLibraryOwnerArg {
+            api_origin: "https://api.tablepro.app".to_owned(),
+            account_id: Uuid::from_u128(10).to_string(),
+        };
+
+        assert_eq!(
+            Some(owner),
+            team_library_owner("https://api.tablepro.app", &Uuid::from_u128(9).to_string())
+        );
+        assert!(check_owner(&by_typeid, &identity).is_ok());
+        assert!(check_owner(&by_uuid, &identity).is_ok());
+        assert_eq!(
+            check_owner(&other, &identity).unwrap_err().code(),
+            "sync.team_library.other_owner"
+        );
+        assert_eq!(
+            check_owner(&other, &signed_in(10)).map_err(|error| error.code().to_owned()),
+            Ok(())
+        );
     }
 
     #[test]
@@ -695,21 +942,25 @@ mod tests {
 
     #[test]
     fn a_team_crosses_the_boundary_with_its_role_and_items_as_json_text() {
-        let info = team_info(TeamLibraryTeam {
-            team: TeamId(Uuid::from_u128(5)),
-            name: Some("Acme".to_owned()),
-            role: Some(Role::Editor),
-            writable: true,
-            items: vec![TeamItem {
-                item: TeamLibraryItem {
-                    kind: TeamLibraryKind::Folder,
-                    id: "F1".to_owned(),
-                    fields: json!({"name": "Shared"}),
-                },
-                updated_by: Some("Ada".to_owned()),
-                updated_at_ms: Some(1_700_000_000_000),
-            }],
-        });
+        let info = team_info(
+            TeamLibraryTeam {
+                team: TeamId(Uuid::from_u128(5)),
+                name: Some("Acme".to_owned()),
+                role: Some(Role::Editor),
+                writable: true,
+                items: vec![TeamItem {
+                    item: TeamLibraryItem {
+                        kind: TeamLibraryKind::Folder,
+                        id: "F1".to_owned(),
+                        fields: json!({"name": "Shared"}),
+                    },
+                    updated_by: Some("Ada".to_owned()),
+                    updated_at_ms: Some(1_700_000_000_000),
+                }],
+            },
+            DriverNames::Mac,
+            &[],
+        );
 
         assert_eq!(info.team_id, wire(5));
         assert_eq!(info.role, Some(TeamRoleTag::Editor));
