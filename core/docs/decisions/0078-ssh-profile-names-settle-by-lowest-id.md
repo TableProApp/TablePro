@@ -14,5 +14,5 @@
 
 ## Consequences
 
-- Every device settles an SSH profile name collision the same way, by id.
+- Every device leaves the name to the same profile, the lowest id. With three or more profiles of one name arriving in different orders, as across pull pages, two devices can number the others differently; each rename goes up as an ordinary edit, so the names converge as any edit does. The same holds for credential profiles under 0075.
 - A connection that names an SSH profile by id is not touched by the rename.
