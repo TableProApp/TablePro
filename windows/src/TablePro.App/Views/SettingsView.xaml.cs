@@ -650,9 +650,33 @@ public sealed partial class SettingsView : UserControl
             bool erased;
             try
             {
-                lease = await _workbench.Sync.LeaseAsync();
                 // Read before the sign-out, so the delete after it reaches this account's library and no other.
+                lease = await _workbench.Sync.LeaseAsync();
                 owner = lease?.Team.Owner;
+                while (lease is null || owner is null)
+                {
+                    // Without the service the edits cannot be listed or uploaded, so the person is asked as when
+                    // listing fails; Upload tries the service again.
+                    if (!_workbench.TeamLibraryAvailable && _workbench.TeamLibrary.Unsent.Count == 0)
+                    {
+                        break;
+                    }
+
+                    var answer = await TeamDialogs.SignOutUnsentAsync(this, new TeamSignOutQuestion(null, null));
+                    if (answer == TeamSignOutAnswer.Cancel || _workbench.SignInSession != session)
+                    {
+                        return;
+                    }
+
+                    if (answer == TeamSignOutAnswer.Discard)
+                    {
+                        break;
+                    }
+
+                    lease ??= await _workbench.Sync.LeaseAsync();
+                    owner = lease?.Team.Owner;
+                }
+
                 if (lease is not null && owner is not null && !await TeamSignOut.SettleUnsentAsync(
                         lease.Team,
                         owner,
@@ -669,6 +693,13 @@ public sealed partial class SettingsView : UserControl
                         CrashLog.Note("keys sign out", reason.Code);
                         return KeyDialogs.SignOutFailedAsync(this, reason);
                     });
+
+                // The key erase may have started the service the first read could not reach.
+                if (erased && owner is null && _workbench.SignInSession == session)
+                {
+                    lease ??= await _workbench.Sync.LeaseAsync();
+                    owner = lease?.Team.Owner;
+                }
             }
             finally
             {
