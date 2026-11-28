@@ -15,6 +15,7 @@ struct FieldDrivenListMenuTests {
     /// item, and row 2 belongs to a list that supplies no menu items at all.
     private final class Provider: NSObject, NSTableViewDelegate, FieldDrivenMenuProviding {
         private(set) var askedRows: [Int] = []
+        let offersMenus = true
 
         func menu(forRow row: Int) -> NSMenu? {
             askedRows.append(row)

@@ -11,6 +11,7 @@ mod legacy;
 mod moves;
 mod names;
 mod open;
+mod secrets;
 mod service;
 mod service_records;
 mod team_library;
@@ -37,6 +38,7 @@ pub use keys::{
 pub use legacy::{
     HostLegacyMirror, LegacyMetadataArg, LegacyRecordArg, LegacyStandingArg, LegacyStandingTag, LegacyTombstoneArg,
 };
+pub use secrets::{HostSyncedSecrets, SyncedSecretParentTag, SyncedSecretRef};
 pub use service::{
     ConflictChoiceTag, HeldReasonTag, HeldRecordInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag,
     NewIdentityPlanInfo, PassReasonTag, PendingApprovalInfo, ScopeStatusInfo, SyncCategoriesArg, SyncConfig,
@@ -44,7 +46,7 @@ pub use service::{
     TeamConflictInfo,
 };
 pub use team_library::{
-    TeamConnectionArg, TeamDeclinedArg, TeamFolderArg, TeamImportedEditArg, TeamLibraryImportArg, TeamLibraryItemInfo,
-    TeamLibraryItemRef, TeamLibraryKindTag, TeamLibraryOwnerArg, TeamLibraryTeamInfo, TeamPublishInfo, TeamQueryArg,
-    TeamScopeStatusInfo, UnsentTeamEditInfo, UnsentTeamEditTag,
+    TeamDeclinedArg, TeamFolderArg, TeamImportedEditArg, TeamLibraryImportArg, TeamLibraryItemInfo, TeamLibraryItemRef,
+    TeamLibraryKindTag, TeamLibraryOwnerArg, TeamLibraryTeamInfo, TeamPublishInfo, TeamQueryArg, TeamScopeStatusInfo,
+    UnsentTeamEditInfo, UnsentTeamEditTag,
 };

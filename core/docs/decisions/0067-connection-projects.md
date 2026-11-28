@@ -1,6 +1,6 @@
 # 0067: Connection projects scope the library, stored as optional keys of version 1
 
-- **Status**: Accepted
+- **Status**: Accepted; project order and what syncs amended by 0071
 - **Date**: 2026-11-20
 
 ## Context
