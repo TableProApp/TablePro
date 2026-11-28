@@ -409,8 +409,8 @@ async fn a_run_s_details_go_up_and_come_back_and_its_fingerprint_stays_here() {
 async fn a_run_under_a_millisecond_reaches_another_device_with_its_microseconds() {
     let here = tempfile::tempdir().unwrap();
     let there = tempfile::tempdir().unwrap();
-    let (history, adapter) = adapter(here.path()).await;
     let (other_history, other) = adapter(there.path()).await;
+    let (history, adapter) = adapter(here.path()).await;
     let mut ran = ran_on("PostgreSQL", "SELECT 1");
     ran.duration_us = Some(90);
     ran.details.first_row_us = Some(70);

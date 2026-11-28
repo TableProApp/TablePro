@@ -188,7 +188,12 @@ mod tests {
         let csv = history_csv(&[quick.clone(), slow]).expect("csv");
         let script = history_sql(&[quick], chrono::DateTime::UNIX_EPOCH);
 
-        let durations: Vec<&str> = csv.lines().skip(1).filter_map(|line| line.split(',').nth(3)).collect();
+        let durations: Vec<&str> = csv
+            .lines()
+            .skip(1)
+            .filter_map(|line| line.split(',').nth(3))
+            .map(|field| field.trim_matches('"'))
+            .collect();
         assert_eq!(durations, ["0.09", "12"], "{csv}");
         assert!(script.contains(" · ok · 0.09 ms\n"), "{script}");
         assert_eq!(millis_text(1_250), "1.25");

@@ -1183,7 +1183,7 @@ mod tests {
             .fetch_one(&history.pool)
             .await
             .expect("count migrations");
-        assert_eq!(applied, 9);
+        assert_eq!(applied, 10);
     }
 
     /// A database an earlier build wrote, with its saved queries, is kept
@@ -1381,7 +1381,7 @@ mod tests {
     /// means a change went into a file that has already run somewhere.
     #[test]
     fn migrator_embeds_every_migration() {
-        assert_eq!(schema::MIGRATOR.iter().count(), 9);
+        assert_eq!(schema::MIGRATOR.iter().count(), 10);
     }
 
     #[tokio::test]
