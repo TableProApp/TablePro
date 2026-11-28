@@ -5,6 +5,7 @@
 mod backoff;
 mod batch;
 mod diff;
+mod held;
 mod hooks;
 mod scheduler;
 mod settle;
@@ -19,6 +20,7 @@ pub use diff::{
     Diffed, KeptOff, Pending, PendingOp, diff, forget_kept_off, hold_kept_off, hold_left_behind, kept_off_connections,
     left_behind_digest,
 };
+pub use held::Waiting;
 pub use hooks::{EngineEvents, EngineHooks};
 pub use scheduler::{Journal, JournalEntry, JournalIds, JournalObserver, Pass, SchedulerHandle, Wake, spawn};
 pub use settle::{Judgement, Settled, base_of, key_base, mode, settle, settle_moved};

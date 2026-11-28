@@ -4,15 +4,15 @@
 use tablepro_sync::SyncError;
 use tablepro_sync::api::control::{
     ConflictChoice, HeldRecord, HeldRecordReason, MoveBackPlan, MovePlan, NewIdentityChoice, NewIdentityPlan,
-    PassReason, PendingApproval, ProviderChoice, SyncCategories, SyncPhase, SyncStatus, TeamConflict,
+    PassReason, PendingApproval, ProviderChoice, RecordApproval, SyncCategories, SyncPhase, SyncStatus, TeamConflict,
 };
 use tablepro_sync::api::state::{HeldReason, Provider};
 use tablepro_sync::api::{KindName, RecordKey, ScopeName};
 
 use super::service::{
-    ConflictChoiceTag, HeldReasonTag, HeldRecordInfo, MoveBackPlanInfo, MovePlanInfo, NewIdentityChoiceTag,
-    NewIdentityPlanInfo, PassReasonTag, PendingApprovalInfo, ScopeStatusInfo, SyncCategoriesArg, SyncPhaseTag,
-    SyncRecordRef, SyncStatusInfo, TeamConflictInfo,
+    ConflictChoiceTag, FieldApprovalInfo, HeldReasonTag, HeldRecordInfo, MoveBackPlanInfo, MovePlanInfo,
+    NewIdentityChoiceTag, NewIdentityPlanInfo, PassReasonTag, RecordApprovalInfo, ScopeStatusInfo, SyncCategoriesArg,
+    SyncPhaseTag, SyncRecordRef, SyncStatusInfo, TeamConflictInfo,
 };
 use crate::account::SyncProviderTag;
 
@@ -86,6 +86,7 @@ impl From<SyncPhase> for SyncPhaseTag {
             SyncPhase::PullOnly => Self::PullOnly,
             SyncPhase::ZoneRemoved => Self::ZoneRemoved,
             SyncPhase::NewIdentity => Self::NewIdentity,
+            SyncPhase::NeedsApproval => Self::NeedsApproval,
         }
     }
 }
@@ -164,14 +165,25 @@ impl From<NewIdentityPlan> for NewIdentityPlanInfo {
     }
 }
 
-impl From<PendingApproval> for PendingApprovalInfo {
-    fn from(approval: PendingApproval) -> Self {
+impl From<RecordApproval> for RecordApprovalInfo {
+    fn from(approval: RecordApproval) -> Self {
         Self {
             record: approval.key.into(),
-            field: approval.field,
-            pulled: approval.pulled.to_string(),
+            name: approval.name,
+            new_record: approval.new_record,
             digest: hex::encode(approval.digest),
+            fields: approval.fields.into_iter().map(FieldApprovalInfo::from).collect(),
+        }
+    }
+}
+
+impl From<PendingApproval> for FieldApprovalInfo {
+    fn from(approval: PendingApproval) -> Self {
+        Self {
+            field: approval.field,
             current: approval.current.map(|value| value.to_string()),
+            pulled: (!approval.pulled.is_null()).then(|| approval.pulled.to_string()),
+            digest: hex::encode(approval.digest),
         }
     }
 }
