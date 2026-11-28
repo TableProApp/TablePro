@@ -189,6 +189,7 @@ async fn removing_a_device_needs_a_step_up_then_r_and_keeps_only_compared_device
         flows.add_device(AccountDevice {
             key_device,
             device: None,
+            requested_by: None,
             name: None,
             platform: None,
             added_at_us: None,

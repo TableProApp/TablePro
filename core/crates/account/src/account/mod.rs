@@ -241,6 +241,7 @@ impl Account {
         let held = !policy.allows_server(&server.target.origin);
         if held {
             tracing::warn!(
+                code = ServerError::Managed.code(),
                 "the organization's policy does not allow the account server, so the account makes no call to it"
             );
         }
@@ -345,6 +346,7 @@ impl Account {
     fn hold(&self) {
         if !self.inner.held.swap(true, Ordering::SeqCst) {
             tracing::warn!(
+                code = ServerError::Managed.code(),
                 "the organization's policy no longer allows the account server, so the account stops calling it"
             );
         }
@@ -373,7 +375,7 @@ impl Account {
             if let Err(error) = &refreshed
                 && next_refresh(&refreshed) == RETRY_INTERVAL
             {
-                tracing::warn!(%error, "the entitlement refresh failed");
+                tracing::warn!(code = error.code(), %error, "the entitlement refresh failed");
             }
             wait_until_due(&mut due, Utc::now).await;
         }
@@ -395,7 +397,7 @@ impl Account {
                 return;
             }
             Err(error) => {
-                tracing::warn!(%error, "the account file was not read");
+                tracing::warn!(code = error.code(), %error, "the account file was not read");
                 AccountFile::default()
             }
         };
@@ -411,13 +413,17 @@ impl Account {
             Ok(Some(refresh)) => refresh,
             Ok(None) => {
                 if let Err(error) = account_file::remove(path).await {
-                    tracing::warn!(%error, "the account file was not removed");
+                    tracing::warn!(code = error.code(), %error, "the account file was not removed");
                 }
                 self.signed_out(&mut session);
                 return;
             }
             Err(error) => {
-                tracing::warn!(%error, "the keyring gave no account sign-in, so this run starts signed out");
+                tracing::warn!(
+                    code = error.code(),
+                    %error,
+                    "the keyring gave no account sign-in, so this run starts signed out"
+                );
                 self.signed_out(&mut session);
                 return;
             }
@@ -462,7 +468,7 @@ impl Account {
                 (self.lapsed(session, token, at), Some(EntitlementProblem::Expired))
             }
             Err(error) => {
-                tracing::warn!(%error, "the kept entitlement does not verify");
+                tracing::warn!(code = error.code(), %error, "the kept entitlement does not verify");
                 (None, None)
             }
         }
@@ -483,10 +489,10 @@ impl Account {
             }
             kept => {
                 if let Some(Err(error)) = kept {
-                    tracing::info!(%error, "the imported offline file no longer verifies");
+                    tracing::warn!(code = error.code(), %error, "the imported offline file no longer verifies");
                 }
                 if let Err(error) = account_file::remove(&self.inner.settings.account_file).await {
-                    tracing::warn!(%error, "the account file was not removed");
+                    tracing::warn!(code = error.code(), %error, "the account file was not removed");
                 }
                 self.signed_out(session);
             }
@@ -594,7 +600,7 @@ impl Account {
         let oauth = &connection.oauth;
         if let Err(error) = server_calls::audience_check(server, &tokens.access) {
             if let Err(revoked) = oauth.revoke(&refresh).await {
-                tracing::warn!(error = %revoked, "a sign-in for another API was not revoked");
+                tracing::warn!(code = revoked.code(), error = %revoked, "a sign-in for another API was not revoked");
             }
             return Err(error);
         }
@@ -603,7 +609,7 @@ impl Account {
         self.reachable()?;
         if self.inner.attempts.load(Ordering::SeqCst) != attempt {
             if let Err(error) = oauth.revoke(&refresh).await {
-                tracing::warn!(%error, "a superseded sign-in was not revoked");
+                tracing::warn!(code = error.code(), %error, "a superseded sign-in was not revoked");
             }
             return Err(AccountError::SignInCanceled);
         }
@@ -613,7 +619,7 @@ impl Account {
             && server_calls::same_issuer(&session, server).is_ok()
             && let Err(error) = oauth.revoke(&previous).await
         {
-            tracing::warn!(%error, "the previous sign-in was not revoked");
+            tracing::warn!(code = error.code(), %error, "the previous sign-in was not revoked");
         }
         *session = Session {
             issuer: connection
@@ -678,7 +684,7 @@ impl Account {
         match (past_limit, refreshed) {
             (true, refreshed) => refreshed,
             (false, Err(error)) => {
-                tracing::warn!(%error, "the entitlement refresh after a device removal failed");
+                tracing::warn!(code = error.code(), %error, "the entitlement refresh after a device removal failed");
                 Ok(())
             }
             (false, Ok(())) => Ok(()),
@@ -898,7 +904,11 @@ impl Account {
         session.remembered = match vault.store_refresh_token(&refresh).await {
             Ok(()) => true,
             Err(error) => {
-                tracing::warn!(%error, "no keyring took the account's sign-in; it lasts until the app quits");
+                tracing::warn!(
+                    code = error.code(),
+                    %error,
+                    "no keyring took the account's sign-in; it lasts until the app quits"
+                );
                 // A rotated token presented again revokes the whole family.
                 let _ = vault.delete_refresh_token().await;
                 false
@@ -946,10 +956,10 @@ impl Account {
     async fn forget(&self, session: &mut Session, cause: SignOutCause) {
         let signed_in = session.refresh.is_some();
         if let Err(error) = self.current().vault.delete_refresh_token().await {
-            tracing::warn!(%error, "the account's sign-in was not removed from the keyring");
+            tracing::warn!(code = error.code(), %error, "the account's sign-in was not removed from the keyring");
         }
         if let Err(error) = account_file::remove(&self.inner.settings.account_file).await {
-            tracing::warn!(%error, "the account file was not removed");
+            tracing::warn!(code = error.code(), %error, "the account file was not removed");
         }
         self.signed_out(session);
         if signed_in {
@@ -989,7 +999,7 @@ impl Account {
     async fn write_file(&self, session: &Session, entitlement: Option<String>) {
         let file = self.file_for(session, entitlement);
         if let Err(error) = account_file::write(&self.inner.settings.account_file, &file).await {
-            tracing::warn!(%error, "the account file was not written");
+            tracing::warn!(code = error.code(), %error, "the account file was not written");
         }
     }
 
@@ -1635,6 +1645,100 @@ mod tests {
             account.status().borrow().feature_access(FEATURE, Utc::now()),
             FeatureAccess::Expired
         );
+    }
+
+    // The events logged on this thread, each with its level, its text and its public `code`.
+    #[derive(Clone, Default)]
+    struct Logged(Arc<std::sync::Mutex<Vec<(tracing::Level, String, Option<String>)>>>);
+
+    impl tracing::Subscriber for Logged {
+        fn register_callsite(&self, _: &'static tracing::Metadata<'static>) -> tracing::subscriber::Interest {
+            tracing::subscriber::Interest::sometimes()
+        }
+
+        fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+            true
+        }
+
+        fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+            tracing::span::Id::from_u64(1)
+        }
+
+        fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+
+        fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+
+        fn event(&self, event: &tracing::Event<'_>) {
+            #[derive(Default)]
+            struct Fields {
+                text: String,
+                code: Option<String>,
+            }
+            impl tracing::field::Visit for Fields {
+                fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+                    if field.name() == "code" {
+                        self.code = Some(value.to_owned());
+                    }
+                }
+
+                fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+                    if field.name() == "message" {
+                        self.text = format!("{value:?}");
+                    }
+                }
+            }
+            let mut fields = Fields::default();
+            event.record(&mut fields);
+            self.0
+                .lock()
+                .unwrap()
+                .push((*event.metadata().level(), fields.text, fields.code));
+        }
+
+        fn enter(&self, _: &tracing::span::Id) {}
+
+        fn exit(&self, _: &tracing::span::Id) {}
+    }
+
+    // A support log shows only an event's public fields, so the refresh that failed names its code there (E2E r4).
+    #[tokio::test(start_paused = true)]
+    async fn a_failed_refresh_logs_its_code_at_warn() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        keep(dir.path(), None).await;
+        let account = account(dir.path(), Keyring::holding(Some("refresh")));
+        let mut status = account.status();
+        let logged = Logged::default();
+        let _logging = tracing::subscriber::set_default(logged.clone());
+
+        let running = tokio::spawn({
+            let account = account.clone();
+            async move { account.run().await }
+        });
+        loop {
+            status.changed().await.expect("the account runs");
+            if let AccountStatus::SignedIn(held) = &*status.borrow_and_update()
+                && matches!(held.problem, Some(EntitlementProblem::RefreshFailed(_)))
+            {
+                break;
+            }
+        }
+        let failed = |lines: &[(tracing::Level, String, Option<String>)]| {
+            lines
+                .iter()
+                .find(|(_, text, _)| text.contains("the entitlement refresh failed"))
+                .cloned()
+        };
+        for _ in 0..100 {
+            if failed(&logged.0.lock().unwrap()).is_some() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        running.abort();
+
+        let failed = failed(&logged.0.lock().unwrap()).expect("the failed refresh is logged");
+        assert_eq!(failed.0, tracing::Level::WARN);
+        assert_eq!(failed.2.as_deref(), Some("account.unreachable"));
     }
 
     #[tokio::test(start_paused = true)]

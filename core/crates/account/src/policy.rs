@@ -109,7 +109,11 @@ impl ManagedPolicy {
                 .filter_map(|entry| {
                     let provider = SyncProvider::from_name(entry);
                     if provider.is_none() {
-                        tracing::warn!(%entry, "PersonalSyncProvider names no provider, so the entry is skipped");
+                        tracing::warn!(
+                            code = crate::account_error::POLICY_IGNORED,
+                            %entry,
+                            "PersonalSyncProvider names no provider, so the entry is skipped"
+                        );
                     }
                     provider
                 })

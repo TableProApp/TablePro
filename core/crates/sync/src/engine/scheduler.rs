@@ -183,6 +183,8 @@ pub fn spawn(pass: Arc<dyn Pass>, wake: Wake, stop: StopSignal, backoff: Backoff
 // of, never put it off.
 async fn run(pass: Arc<dyn Pass>, wake: Wake, stop: StopSignal, mut backoff: Backoff) {
     let mut poll_at = tokio::time::Instant::now() + pass.poll_interval();
+    // The code of the failure the passes are in, so a device offline for hours warns once, not on every retry.
+    let mut failing: Option<&'static str> = None;
     loop {
         let why = tokio::select! {
             why = wake.next() => why,
@@ -194,8 +196,22 @@ async fn run(pass: Arc<dyn Pass>, wake: Wake, stop: StopSignal, mut backoff: Bac
         if stop.is_stopped() {
             continue;
         }
-        match pass.pass(why).await {
-            Ok(()) => backoff.succeeded(),
+        let passed = pass.pass(why).await;
+        if let Err(error) = &passed {
+            let code = error.code();
+            // A stop ends the pass in flight, which is no failure.
+            if matches!(error, SyncError::Cancelled) || failing == Some(code) {
+                tracing::debug!(code, "sync pass ended as before");
+            } else {
+                tracing::warn!(code, "sync pass failed");
+                failing = Some(code);
+            }
+        }
+        match passed {
+            Ok(()) => {
+                backoff.succeeded();
+                failing = None;
+            }
             Err(error) if retryable(&error) => {
                 let wait = backoff.failed(retry_after_ms(&error));
                 pass.waiting(Some(wait));
@@ -206,9 +222,7 @@ async fn run(pass: Arc<dyn Pass>, wake: Wake, stop: StopSignal, mut backoff: Bac
                 pass.waiting(None);
                 wake.pass_soon(why);
             }
-            Err(error) => {
-                tracing::debug!(code = error.code(), "sync pass ended; waiting for the next trigger");
-            }
+            Err(_) => {}
         }
     }
 }

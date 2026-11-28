@@ -290,6 +290,88 @@ async fn the_scheduler_waits_out_retry_after_before_it_tries_again() {
     assert!(matches!(waits.first(), Some(Some(wait)) if *wait >= 30_000));
 }
 
+// The events logged on this thread, each with its level, its text and its public `code`.
+#[derive(Clone, Default)]
+struct Logged(Arc<Mutex<Vec<(tracing::Level, String, Option<String>)>>>);
+
+impl tracing::Subscriber for Logged {
+    fn register_callsite(&self, _: &'static tracing::Metadata<'static>) -> tracing::subscriber::Interest {
+        tracing::subscriber::Interest::sometimes()
+    }
+
+    fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+        true
+    }
+
+    fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+        tracing::span::Id::from_u64(1)
+    }
+
+    fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+
+    fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+
+    fn event(&self, event: &tracing::Event<'_>) {
+        #[derive(Default)]
+        struct Fields {
+            text: String,
+            code: Option<String>,
+        }
+        impl tracing::field::Visit for Fields {
+            fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+                if field.name() == "code" {
+                    self.code = Some(value.to_owned());
+                }
+            }
+
+            fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+                if field.name() == "message" {
+                    self.text = format!("{value:?}");
+                }
+            }
+        }
+        let mut fields = Fields::default();
+        event.record(&mut fields);
+        self.0
+            .lock()
+            .unwrap()
+            .push((*event.metadata().level(), fields.text, fields.code));
+    }
+
+    fn enter(&self, _: &tracing::span::Id) {}
+
+    fn exit(&self, _: &tracing::span::Id) {}
+}
+
+// A device offline for hours warns with the failure's code once, when its passes start failing, not on every retry.
+#[tokio::test(start_paused = true)]
+async fn failed_passes_warn_once_with_their_code_until_one_succeeds() {
+    let logged = Logged::default();
+    let _logging = tracing::subscriber::set_default(logged.clone());
+    let pass = Flaky::new(3, None);
+    let wake = Wake::new();
+    let _scheduler = spawn(pass.clone(), wake.clone(), StopSignal::new(), Backoff::STANDARD);
+
+    wake.pass_soon(PassReason::Launch);
+    for _ in 0..4 {
+        pass.done.notified().await;
+    }
+
+    let code = SyncError::Transport(TransportError::RateLimited {
+        retry_after_ms: Some(30_000),
+    })
+    .code();
+    let lines = logged.0.lock().unwrap().clone();
+    let passes: Vec<_> = lines
+        .iter()
+        .filter(|(_, text, _)| text.starts_with("sync pass"))
+        .collect();
+    assert_eq!(passes.len(), 3, "{passes:?}");
+    assert_eq!(passes[0].0, tracing::Level::WARN);
+    assert!(passes[1..].iter().all(|(level, _, _)| *level == tracing::Level::DEBUG));
+    assert!(passes.iter().all(|(_, _, logged)| logged.as_deref() == Some(code)));
+}
+
 #[tokio::test]
 async fn wakes_during_a_pass_run_one_more_and_a_stop_holds_the_next() {
     let gate = Arc::new(Notify::new());

@@ -388,7 +388,10 @@ impl Items<'_> {
         Ok(match Root::decode(&bytes) {
             Some(root) => RootItem::Held(Box::new(root)),
             None => {
-                tracing::warn!("the state file's anchor root does not parse");
+                tracing::warn!(
+                    code = crate::api::error::StateError::Integrity.code(),
+                    "the state file's anchor root does not parse"
+                );
                 RootItem::Malformed
             }
         })
