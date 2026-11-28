@@ -32,7 +32,7 @@ internal enum TeamLibraryFailure: Error, Equatable, Sendable {
         case "sync.server", "sync.restore_check_unavailable", "sync.idempotency_in_progress":
             self = .server
         case "sync.signed_out", "sync.interactive_sign_in_required", "sync.device_removed",
-             "sync.team_library.signed_in_changed":
+             "sync.team_library.signed_in_changed", "sync.team_library.other_owner":
             self = .signedOut
         case "sync.feature_required", "sync.seat_required", "sync.team_library.unknown_team":
             self = .unreadable
