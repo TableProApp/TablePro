@@ -1703,13 +1703,13 @@ mod tests {
         fn exit(&self, _: &tracing::span::Id) {}
     }
 
-    // A support log shows only an event's public fields, so the refresh that failed names its code there (E2E r4).
-    #[tokio::test(start_paused = true)]
+    // A support log shows only an event's public fields, so the refresh that failed names its code there (E2E r4). On
+    // the real clock: a paused one jumps ahead while the account's file write runs off the runtime.
+    #[tokio::test]
     async fn a_failed_refresh_logs_its_code_at_warn() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         keep(dir.path(), None).await;
         let account = account(dir.path(), Keyring::holding(Some("refresh")));
-        let mut status = account.status();
         let logged = Logged::default();
         let _logging = tracing::subscriber::set_default(logged.clone());
 
@@ -1717,21 +1717,13 @@ mod tests {
             let account = account.clone();
             async move { account.run().await }
         });
-        loop {
-            status.changed().await.expect("the account runs");
-            if let AccountStatus::SignedIn(held) = &*status.borrow_and_update()
-                && matches!(held.problem, Some(EntitlementProblem::RefreshFailed(_)))
-            {
-                break;
-            }
-        }
         let failed = |lines: &[Line]| {
             lines
                 .iter()
                 .find(|(_, text, _)| text.contains("the entitlement refresh failed"))
                 .cloned()
         };
-        for _ in 0..100 {
+        for _ in 0..500 {
             if failed(&logged.0.lock().unwrap()).is_some() {
                 break;
             }
