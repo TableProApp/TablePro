@@ -82,7 +82,7 @@ pub use table_folders::{
 };
 pub use tag_name_error::TagNameError;
 pub use team_library::{
-    TeamLibraryCopy, TeamLibraryImported, TeamLibraryItem, TeamLibraryKind, TeamLibraryLocal, TeamLibraryOwner,
-    TeamLibraryRef, TeamLibraryStore, TeamLibraryTeam, TeamLibraryWriter,
+    TeamLibraryCopy, TeamLibraryEnvelope, TeamLibraryImported, TeamLibraryItem, TeamLibraryKind, TeamLibraryLocal,
+    TeamLibraryOwner, TeamLibraryRef, TeamLibraryStore, TeamLibraryTeam, TeamLibraryWriter,
     delete_other_owners_blocking as delete_other_team_library_owners_blocking,
 };

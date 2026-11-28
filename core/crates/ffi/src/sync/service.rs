@@ -135,6 +135,8 @@ pub struct SyncService {
     pub(crate) service: Arc<ServiceSlot>,
     // This Core's connections, which name what a removed party could read.
     pub(crate) connections: Option<tablepro_storage::ConnectionStore>,
+    // The device's secrets, which a publish to a team seals from.
+    pub(crate) secrets: Option<Arc<dyn tablepro_sync::api::secrets::DeviceSecrets>>,
     // The downgrade mirror's marks while no iCloud engine carries them.
     pub(crate) legacy_marks: Option<Arc<tablepro_sync::cloudkit::LegacyMarks>>,
     pub(crate) _marks_hear_stores: Option<tablepro_sync::adapters::store_journal::Listening>,
@@ -172,7 +174,10 @@ pub enum SyncPhaseTag {
 pub struct SyncStatusInfo {
     pub provider: Option<SyncProviderTag>,
     pub phase: SyncPhaseTag,
+    // When the last pass ended, whatever it ended in.
     pub last_pass_ms: Option<i64>,
+    // When a pass last ended without an error, kept across launches: what an app shows as the last sync.
+    pub last_synced_ms: Option<i64>,
     // The last pass's error code.
     pub problem: Option<String>,
     // Records with a value waiting for the person, the team scopes' included whatever the personal provider is.
@@ -409,6 +414,7 @@ impl SyncService {
                 provider: Some(SyncProviderTag::Off),
                 phase: SyncPhaseTag::Off,
                 last_pass_ms: None,
+                last_synced_ms: None,
                 problem: None,
                 waiting_approvals: 0,
                 conflicts: 0,
@@ -430,6 +436,7 @@ impl SyncService {
                     SyncPhaseTag::Unavailable
                 },
                 last_pass_ms: None,
+                last_synced_ms: None,
                 problem: Some(error.code().to_owned()),
                 waiting_approvals: 0,
                 conflicts: 0,

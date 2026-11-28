@@ -210,6 +210,7 @@ impl ServiceSync {
                 reverted.push((row.kind, row.key.record_id));
             }
             reverted.extend(self.revert(scope).await?);
+            self.revert_envelopes(scope).await?;
             self.forget_refusals(scope).await?;
             self.update_local(scope, move |local| {
                 local.imports.clear();

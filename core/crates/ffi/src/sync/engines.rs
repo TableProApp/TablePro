@@ -16,7 +16,7 @@ use tablepro_sync::adapters::library::{self, DriverNames, Provider};
 use tablepro_sync::adapters::saved_queries::SavedQueryAdapter;
 use tablepro_sync::adapters::settings::{ConnectionStanding, SettingsAdapter};
 use tablepro_sync::adapters::store_journal::{Listening, StoreJournal};
-use tablepro_sync::adapters::team_library::TeamLibraryAdapter;
+use tablepro_sync::adapters::team_library::{TeamEnvelopeAdapter, TeamLibraryAdapter};
 use tablepro_sync::api::control::{PassReason, SyncCategories, SyncControl};
 use tablepro_sync::api::key_flows::KeyFlows;
 use tablepro_sync::api::state::StateIdentity;
@@ -335,6 +335,12 @@ impl ServiceEngine {
         let mut adapters = hosts.adapters(Provider::TableproSync);
         adapters.extend(hosts.envelopes(&keys, &state));
         adapters.extend(team_library.iter().flat_map(TeamLibraryAdapter::all));
+        // After the connections, so a connection's write goes up before its secrets'.
+        adapters.extend(
+            team_library
+                .iter()
+                .map(|store| Arc::new(TeamEnvelopeAdapter::new(store)) as Arc<dyn RecordAdapter>),
+        );
         let sync = Arc::new(ServiceSync::new(ServiceParts {
             transport: link.transport,
             state,
@@ -349,6 +355,7 @@ impl ServiceEngine {
             mode,
             follows,
         }));
+        sync.read_last_synced().await;
         if let (Some(host), Some(store)) = (&hosts.team_library, team_library) {
             let session = binding
                 .as_ref()
@@ -435,9 +442,10 @@ pub(crate) const FILE_POLL: Duration = Duration::from_millis(100);
 const FILE_WAIT_TRIES: u32 = 50;
 const FILE_POLL_MAX: Duration = Duration::from_secs(5);
 
-// The TablePro Sync engine, or why it is not running. A start that failed for a reason that passes, as the network or
-// a locked device store, is tried again by the next call that needs the engine, for the same sign-in only; any other
-// failure holds until the app opens sync again. A start that found the state file busy goes on by itself once the file
+// The TablePro Sync engine, or why it is not running. It starts with the server out of reach, since the transport binds
+// to the sign-in the account holds; a start that failed for a reason that passes, as a locked device store, is tried
+// again by the next call that needs the engine, for the same sign-in only; any other failure holds until the app opens
+// sync again. A start that found the state file busy goes on by itself once the file
 // is free.
 pub(crate) struct ServiceSlot {
     held: Mutex<Result<Arc<ServiceEngine>, SyncError>>,

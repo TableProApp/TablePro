@@ -11,7 +11,7 @@ use secrecy::{ExposeSecret as _, SecretString};
 use serde::Deserialize;
 use tablepro_cloud_api::{ApiError, rate_limited, read_capped, refusal, schema_mismatch};
 
-use super::{AccessToken, Account, Call, Licensed, Server, Session, SignOutCause, Trust};
+use super::{AccessToken, Account, Call, Licensed, Server, Session, SignOutCause, SignedInAs, Trust};
 use crate::account_error::AccountError;
 use crate::account_file::{self, AccountFile};
 use crate::account_settings::SignInKey;
@@ -109,7 +109,7 @@ impl Account {
                     Err(error) => Err(error),
                 };
                 if let Err(error) = revoked {
-                    tracing::warn!(%error, "the previous server's sign-in was not revoked");
+                    tracing::warn!(code = error.code(), %error, "the previous server's sign-in was not revoked");
                 }
             }
             self.forget(&mut session, SignOutCause::ServerChanged).await;
@@ -279,16 +279,39 @@ impl Account {
             Err(error) => Err(error),
         };
         let token = self.ended_by(&mut session, taken).await?;
-        let server = self.current();
+        let of = self.signed_in_as_in(&session);
         Ok(AccessToken {
             token,
+            api: of.api,
+            origin: of.origin,
+            account_id: of.account_id,
+            device_id: of.device_id,
+            session_id: of.session_id,
+            sign_in: of.sign_in,
+        })
+    }
+
+    // With no call, so sync can open the sign-in's state file while the server is out of reach. Each call it then
+    // makes still takes `access_token`, which vouches for a company server first.
+    pub async fn signed_in_as(&self) -> Result<SignedInAs, AccountError> {
+        let session = self.inner.session.lock().await;
+        self.reachable()?;
+        if session.refresh.is_none() {
+            return Err(AccountError::SignedOut);
+        }
+        Ok(self.signed_in_as_in(&session))
+    }
+
+    fn signed_in_as_in(&self, session: &Session) -> SignedInAs {
+        let server = self.current();
+        SignedInAs {
             api: server.api.clone(),
             origin: server.target.origin.clone(),
             account_id: session.account_id.clone(),
             device_id: session.device_id.clone(),
             session_id: session.id.clone(),
             sign_in: SignInKey::of(&server.api, &self.inner.settings.account_file).key,
-        })
+        }
     }
 
     // The account's HTTP client, so the app's own /v2 calls share its connections and its User-Agent.
@@ -352,7 +375,11 @@ impl Account {
                 };
             }
             Err(error) => {
-                tracing::warn!(%error, "the keyring gave no account sign-in, so the Mac's entitlement waits for the next run");
+                tracing::warn!(
+                    code = error.code(),
+                    %error,
+                    "the keyring gave no account sign-in, so the Mac's entitlement waits for the next run"
+                );
                 return false;
             }
         };
@@ -372,7 +399,11 @@ impl Account {
                 (self.lapsed(session, token, at), Some(EntitlementProblem::Expired))
             }
             Some((_, Err(error))) => {
-                tracing::info!(%error, "the Mac's entitlement is not this machine's, so the device registers again");
+                tracing::info!(
+                    code = error.code(),
+                    %error,
+                    "the Mac's entitlement is not this machine's, so the device registers again"
+                );
                 (None, None)
             }
         };
@@ -384,7 +415,11 @@ impl Account {
         // Until account.json holds the sign-in, the old file is the only thing that opens the Keychain next launch.
         match account_file::write(&self.inner.settings.account_file, &file).await {
             Ok(()) => remove_legacy(&path).await,
-            Err(error) => tracing::warn!(%error, "the account file was not written, so the Mac's entitlement stays"),
+            Err(error) => tracing::warn!(
+                code = error.code(),
+                %error,
+                "the account file was not written, so the Mac's entitlement stays"
+            ),
         }
         tracing::info!(device = session.device_id.is_some(), "adopted the Mac's sign-in");
         self.publish(session, entitlement, problem);
@@ -411,7 +446,11 @@ impl Account {
         };
         match account_file::write(&self.inner.settings.account_file, &file).await {
             Ok(()) => remove_legacy(path).await,
-            Err(error) => tracing::warn!(%error, "the account file was not written, so the Mac's offline file stays"),
+            Err(error) => tracing::warn!(
+                code = error.code(),
+                %error,
+                "the account file was not written, so the Mac's offline file stays"
+            ),
         }
         *session = Session::default();
         tracing::info!("adopted the Mac's offline file");
@@ -429,10 +468,10 @@ impl Account {
             .vaults
             .vault(&SignInKey::of(api, &self.inner.settings.account_file));
         if let Err(error) = vault.delete_refresh_token().await {
-            tracing::warn!(%error, "the other server's sign-in was not removed from the keyring");
+            tracing::warn!(code = error.code(), %error, "the other server's sign-in was not removed from the keyring");
         }
         if let Err(error) = account_file::remove(&self.inner.settings.account_file).await {
-            tracing::warn!(%error, "the account file was not removed");
+            tracing::warn!(code = error.code(), %error, "the account file was not removed");
         }
         self.signed_out(session);
         let _ = self.inner.sign_outs.send(SignOutCause::ServerChanged);
@@ -449,6 +488,7 @@ pub(super) fn trust_tag(refresh: &SecretString, api: &str, file: &AccountFile) -
 pub(super) fn tag_matches(file: &AccountFile, refresh: &SecretString, api: &str) -> bool {
     let Some(Ok(tag)) = file.trust_tag.as_deref().map(|tag| URL_SAFE_NO_PAD.decode(tag)) else {
         tracing::warn!(
+            code = crate::account_error::ENTITLEMENT,
             "the account file's issuer and license are not this sign-in's, so a new sign-in or refresh replaces them"
         );
         return false;
@@ -457,6 +497,7 @@ pub(super) fn tag_matches(file: &AccountFile, refresh: &SecretString, api: &str)
     let matches = hmac::verify(&key, &tagged(api, file), &tag).is_ok();
     if !matches {
         tracing::warn!(
+            code = crate::account_error::ENTITLEMENT,
             "the account file's issuer and license are not this sign-in's, so a new sign-in or refresh replaces them"
         );
     }
@@ -555,11 +596,11 @@ async fn read_legacy(path: &std::path::Path) -> Option<String> {
         Ok(Ok(text)) => Some(text.trim().to_owned()).filter(|token| !token.is_empty()),
         Ok(Err(error)) if error.kind() == std::io::ErrorKind::NotFound => None,
         Ok(Err(error)) => {
-            tracing::warn!(%error, "the Mac's entitlement was not read");
+            tracing::warn!(code = crate::account_error::STORAGE, %error, "the Mac's entitlement was not read");
             None
         }
         Err(error) => {
-            tracing::warn!(%error, "the Mac's entitlement was not read");
+            tracing::warn!(code = crate::account_error::STORAGE, %error, "the Mac's entitlement was not read");
             None
         }
     }
@@ -570,6 +611,8 @@ async fn remove_legacy(path: &std::path::Path) {
     match tokio::fs::remove_file(path).await {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => tracing::warn!(%error, "the Mac's entitlement was not removed"),
+        Err(error) => {
+            tracing::warn!(code = crate::account_error::STORAGE, %error, "the Mac's entitlement was not removed")
+        }
     }
 }

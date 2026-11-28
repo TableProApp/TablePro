@@ -175,7 +175,10 @@ pub enum NewIdentityChoice {
 pub struct SyncStatus {
     pub provider: Option<Provider>,
     pub phase: SyncPhase,
+    // When the last pass ended, whatever it ended in; it tells the app a pass ran.
     pub last_pass_ms: Option<i64>,
+    // When a pass last ended without an error, kept in the state file across launches.
+    pub last_synced_ms: Option<i64>,
     // The last pass's error code, as `SyncError::code` gives it.
     pub problem: Option<&'static str>,
     // Records with a value waiting for the person.
@@ -190,6 +193,7 @@ impl SyncStatus {
         provider: None,
         phase: SyncPhase::Unavailable,
         last_pass_ms: None,
+        last_synced_ms: None,
         problem: Some("sync.unimplemented"),
         waiting_approvals: 0,
         conflicts: 0,

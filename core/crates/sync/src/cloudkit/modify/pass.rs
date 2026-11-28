@@ -196,6 +196,7 @@ impl CloudKitSync {
                 provider: Some(Provider::ICloud),
                 phase: SyncPhase::Idle,
                 last_pass_ms: None,
+                last_synced_ms: None,
                 problem: None,
                 waiting_approvals: 0,
                 conflicts: 0,
@@ -653,6 +654,12 @@ impl CloudKitSync {
             session.choice_owed = Some(unsent);
         }
         let state = self.files.open(identity(account)).await?;
+        // Another account's file holds another account's last sync.
+        let kept = state.last_synced_ms().await.unwrap_or_else(|error| {
+            tracing::warn!(code = error.code(), "the last sync time was not read");
+            None
+        });
+        lock(&self.status).last_synced_ms = kept;
         session.stale_handled = false;
         session.legacy_checked = false;
         if let Some(legacy) = &self.legacy {
@@ -883,10 +890,22 @@ impl CloudKitSync {
     // A journal pass diffs only what it was told of, so the count it saw is not what waits.
     async fn finish(&self, session: &Session, outcome: &Result<CloudKitReport, SyncError>, journal_only: bool) {
         let held = self.counts(session).await;
+        let now = self.clock.now_ms();
+        // A throttled pass is the scheduler's failure, which backs off from it.
+        let synced = matches!(outcome, Ok(report) if report.throttle().is_none());
+        if synced
+            && let Some(state) = &session.state
+            && let Err(error) = state.set_last_synced_ms(now).await
+        {
+            tracing::warn!(code = error.code(), "the last sync time was not kept");
+        }
         let mut status = lock(&self.status);
-        status.last_pass_ms = Some(self.clock.now_ms());
+        status.last_pass_ms = Some(now);
         match outcome {
             Ok(report) => {
+                if synced {
+                    status.last_synced_ms = Some(now);
+                }
                 // A record the store refused is held, never dropped silently: the pass that held it says so.
                 status.problem = (report.fetch.counts.refused > 0).then_some(crate::api::error::UNREADABLE);
                 if !journal_only {

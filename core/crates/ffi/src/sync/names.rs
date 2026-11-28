@@ -17,7 +17,7 @@ pub(crate) struct Person {
 }
 
 async fn still_bound(account: &Account, binding: &Binding) -> bool {
-    SignIn::signed_in(account)
+    SignIn::signed_in_as(account)
         .await
         .is_ok_and(|signed_in| binding.holds(&signed_in))
 }
@@ -131,7 +131,9 @@ impl DeviceRows {
         }
     }
 
-    // What the engine left out, from the row that holds the key device, or for this device its own row.
+    // What the engine left out, from the row that holds the key device, or for this device its own row. A key device
+    // no row holds any more, as after its Sign Out, takes only the name and platform of the row that asked for it: it
+    // still waits to be removed, so that row is not its own.
     pub(crate) fn name(&self, mut device: AccountDevice) -> AccountDevice {
         let row = self.0.iter().find(|row| {
             row.key_device
@@ -142,6 +144,14 @@ impl DeviceRows {
         });
         if let Some(row) = row {
             device.device.get_or_insert_with(|| DeviceRowId(row.id.clone()));
+        }
+        let named = row.or_else(|| {
+            device
+                .requested_by
+                .as_ref()
+                .and_then(|asked| self.0.iter().find(|row| row.id == asked.0))
+        });
+        if let Some(row) = named {
             device.name.get_or_insert_with(|| row.name.clone());
             device.platform.get_or_insert_with(|| row.platform.clone());
         }

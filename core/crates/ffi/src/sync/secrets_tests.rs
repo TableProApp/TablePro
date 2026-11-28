@@ -684,3 +684,105 @@ async fn secrets_are_read_between_library_writes_never_during_one() {
     );
     assert_eq!(after.secrets_to_seal, 1);
 }
+
+// The Mac's host for every secret it syncs, its connections' own among them.
+#[derive(Default, Clone)]
+struct EverySecret(Arc<Mutex<HashMap<(String, String), SecretString>>>);
+
+impl HostSyncedSecrets for EverySecret {
+    fn kinds(&self, parent: SyncedSecretParentTag) -> Vec<String> {
+        match parent {
+            SyncedSecretParentTag::Connection => vec![
+                "password".to_owned(),
+                "ssl_key_passphrase".to_owned(),
+                "password".to_owned(),
+            ],
+            SyncedSecretParentTag::SshProfile | SyncedSecretParentTag::CredentialProfile => Vec::new(),
+        }
+    }
+
+    fn load(&self, secret: SyncedSecretRef) -> Result<Option<SecretString>, HostSecretError> {
+        Ok(self.0.lock().unwrap().get(&(secret.parent_id, secret.kind)).cloned())
+    }
+
+    fn store(&self, secret: SyncedSecretRef, value: SecretString) -> Result<(), HostSecretError> {
+        self.0.lock().unwrap().insert((secret.parent_id, secret.kind), value);
+        Ok(())
+    }
+
+    fn delete(&self, secret: SyncedSecretRef) -> Result<(), HostSecretError> {
+        self.0.lock().unwrap().remove(&(secret.parent_id, secret.kind));
+        Ok(())
+    }
+}
+
+// A connection's password the app names goes through the app, which keeps a pulled one on the device only, never
+// through `HostSecrets`, whose items may follow the app's iCloud Keychain switch; one it leaves out still goes
+// through this Core's own store.
+#[tokio::test]
+async fn a_connection_secret_the_app_names_goes_through_the_app_and_never_this_core_s_store() {
+    use tablepro_records::Kind;
+    use tablepro_records::envelope::SecretKind;
+    use tablepro_sync::api::secrets::{DeviceSecrets, SecretRef};
+
+    let tasks = runtime::tasks().unwrap();
+    let server = server_now();
+    let mac = Mac::open(
+        &tasks,
+        &server,
+        AccountId(Uuid::new_v4()),
+        "dev_01k8d6wpggfd68tbhz818p4ww4",
+    )
+    .await;
+    let host = EverySecret::default();
+    let secrets = CoreSecrets::new(
+        mac.core.vault(),
+        mac.core.connection_store().unwrap(),
+        mac.core.writes(),
+        Some(Arc::new(host.clone()) as Arc<dyn HostSyncedSecrets>),
+        tasks.clone(),
+    );
+    let connection = Uuid::new_v4();
+    let of = |secret| SecretRef {
+        parent: Kind::Connection,
+        parent_id: connection,
+        secret,
+    };
+
+    secrets
+        .store(&of(SecretKind::Password), &SecretString::from("pulled"))
+        .await
+        .unwrap();
+    secrets
+        .store(&of(SecretKind::SshPassword), &SecretString::from("tunnel"))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        secrets.kinds(Kind::Connection),
+        [
+            SecretKind::Password,
+            SecretKind::SslKeyPassphrase,
+            SecretKind::SshPassword,
+            SecretKind::SshKeyPassphrase
+        ]
+    );
+    let held = host.0.lock().unwrap().clone();
+    assert_eq!(
+        held.get(&(tablepro_records::record_id::uuid_id(connection), "password".to_owned()))
+            .map(|secret| secret.expose_secret().to_owned())
+            .as_deref(),
+        Some("pulled")
+    );
+    assert_eq!(mac.keychain.password(&connection.to_string()), None);
+    assert_eq!(
+        mac.keychain
+            .0
+            .lock()
+            .unwrap()
+            .get(&(connection.to_string(), SecretKindTag::SshPassword))
+            .map(|secret| secret.expose_secret().to_owned())
+            .as_deref(),
+        Some("tunnel")
+    );
+}

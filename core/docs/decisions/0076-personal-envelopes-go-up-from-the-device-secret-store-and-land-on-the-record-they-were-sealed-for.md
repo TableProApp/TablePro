@@ -1,6 +1,6 @@
 # 0076: Personal envelopes go up from the device's secret store and land on the record they were sealed for
 
-- **Status**: Accepted; amends 0054 and 0066
+- **Status**: Accepted; amends 0054 and 0066; which path a connection's own secrets take amended by 0077; the store that serves a team's envelopes named by 0079
 - **Date**: 2026-11-28
 
 ## Context

@@ -15,8 +15,9 @@ use tablepro_records::secret_key::is_secret_key;
 use tablepro_storage::{TeamLibraryItem, TeamLibraryKind, TeamLibraryLocal};
 use uuid::Uuid;
 
+use super::secrets::SecretTarget;
 use crate::api::state::BaseRow;
-use crate::api::team_library::{TeamConnection, TeamFolder, TeamItemRef, TeamQuery};
+use crate::api::team_library::{TeamConnection, TeamFolder, TeamItemRef, TeamQuery, TeamSecrets};
 use crate::api::transport::DeletedReason;
 
 pub(super) fn kind_of(kind: TeamLibraryKind) -> tablepro_records::Kind {
@@ -287,6 +288,30 @@ pub(super) fn connections(view: &TeamView<'_>, connections: &[TeamConnection]) -
         planned.push(view.upsert(kind, id, fields, true));
     }
     planned
+}
+
+// The connections whose secrets a publish names, under the id the team stores each, left out where `connections` leaves
+// the connection itself out: an id in other case, or a copy Keep Theirs turned down.
+pub(super) fn secret_targets(view: &TeamView<'_>, connections: &[TeamConnection]) -> Vec<SecretTarget> {
+    connections
+        .iter()
+        .filter_map(|connection| {
+            let TeamSecrets::Set(secrets) = &connection.secrets else {
+                return None;
+            };
+            let kind = TeamLibraryKind::Connection;
+            let id = view.stored_id(kind, connection.id);
+            let fields = without_secret_keys(connection.settings.clone());
+            if view.collides(kind, &id) || view.declines(kind, &id, &fields) {
+                return None;
+            }
+            Some(SecretTarget {
+                id,
+                fields,
+                secrets: secrets.clone(),
+            })
+        })
+        .collect()
 }
 
 fn object(members: Vec<(&str, Value)>) -> Value {

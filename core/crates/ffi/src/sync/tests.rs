@@ -233,6 +233,36 @@ async fn with_sync_off_a_sign_in_still_syncs_teams_and_its_keys() {
     );
 }
 
+// A key screen's pass runs the engine that holds the keys whatever the personal provider is, and reads the server.
+#[tokio::test]
+async fn a_key_screen_s_pass_reads_the_server_with_sync_off() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let account = AccountId(Uuid::new_v4());
+    let team = TeamId(Uuid::new_v4());
+    server.add_team(team, &[(account, Role::Owner)]);
+    let opened = open(&tasks, |parts| OpenParts {
+        link: Ok(link(&server, account)),
+        ..parts
+    })
+    .await;
+
+    opened.service.sync_keys_now().await.unwrap();
+    let scopes = opened.service.scope_statuses();
+    for _ in 0..20 {
+        server.fail_next(tablepro_sync::api::TransportError::Network {
+            detail: "connection timed out".to_owned(),
+        });
+    }
+    let offline = opened.service.sync_keys_now().await.unwrap_err();
+
+    assert!(
+        scopes.iter().any(|scope| scope.scope == ScopeName::Team(team).wire()),
+        "{scopes:?}"
+    );
+    assert_eq!(code(&offline), "sync.network");
+}
+
 // A team with no key yet never holds back the personal pass or the service, and lists its member (core ADR 0056).
 #[tokio::test]
 async fn an_owner_whose_team_has_no_key_yet_still_syncs_personal_data() {
@@ -351,6 +381,63 @@ async fn the_service_opened_after_a_first_upload_starts_once_the_one_before_clos
     );
 }
 
+// E2E F21: relaunched while its server was out of reach, a Mac said "Sync Is Unavailable" and "Last synced: Never".
+// Its engine starts and its pass fails as the network does, and it shows when it last synced.
+#[tokio::test]
+async fn a_relaunch_with_the_server_out_of_reach_keeps_the_last_sync() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let account = AccountId(Uuid::new_v4());
+    server.add_team(TeamId(Uuid::new_v4()), &[(account, Role::Owner)]);
+    let dir = tempfile::tempdir().unwrap();
+    let device_store = Arc::new(FakeDeviceStore::new());
+    let files: Arc<dyn StateFiles> = Arc::new(SqliteStateFiles::at(dir.path().join("sync"), device_store.clone()));
+    let off = open(
+        &tasks,
+        on_one_mac(&files, &device_store, link(&server, account), SyncProviderTag::Off),
+    )
+    .await;
+    first_upload(&off.service).await;
+    drop(off);
+    let synced = open(
+        &tasks,
+        on_one_mac(
+            &files,
+            &device_store,
+            link(&server, account),
+            SyncProviderTag::TableproSync,
+        ),
+    )
+    .await;
+    synced.service.sync_now(PassReasonTag::Person).await.unwrap();
+    let last = synced.service.status().last_synced_ms;
+    drop(synced);
+
+    for _ in 0..20 {
+        server.fail_next(tablepro_sync::api::TransportError::Network {
+            detail: "connection timed out".to_owned(),
+        });
+    }
+    let relaunched = open(
+        &tasks,
+        on_one_mac(
+            &files,
+            &device_store,
+            link(&server, account),
+            SyncProviderTag::TableproSync,
+        ),
+    )
+    .await;
+    let failed = relaunched.service.sync_now(PassReasonTag::Person).await.unwrap_err();
+    let status = relaunched.service.status();
+
+    assert!(last.is_some());
+    assert_eq!(code(&failed), "sync.network");
+    assert_eq!(status.problem.as_deref(), Some("sync.network"), "{status:?}");
+    assert_ne!(status.phase, SyncPhaseTag::Unavailable, "{status:?}");
+    assert_eq!(status.last_synced_ms, last);
+}
+
 // The move's first pass, asked for while the Off service is still closing, waits for it instead of failing.
 #[tokio::test]
 async fn a_pass_asked_for_while_the_service_before_closes_waits_for_it() {
@@ -424,7 +511,8 @@ async fn a_second_mac_signed_in_with_sync_off_learns_by_itself_that_it_needs_app
 }
 
 // The key sheets name each key device by the account's row that holds it, this Mac's by its own row; a key device no
-// row holds keeps no row, which the Mac shows as removed with its keys not changed yet.
+// row holds keeps no row, which the Mac shows as removed with its keys not changed yet, under the name of the row that
+// asked for it when this Mac approved it.
 #[test]
 fn a_key_device_takes_the_name_platform_and_row_of_the_row_that_holds_it() {
     use tablepro_keys::encoding::KeyDeviceId;
@@ -450,10 +538,12 @@ fn a_key_device_takes_the_name_platform_and_row_of_the_row_that_holds_it() {
     let rows = super::names::DeviceRows::of(vec![
         row("dev_a", "Lab (a)", None),
         row("dev_b", "Lab (b)", Some(other)),
+        row("dev_c", "Lab (c)", None),
     ]);
-    let key = |key_device, device: Option<&str>| AccountDevice {
+    let key = |key_device, device: Option<&str>, requested_by: Option<&str>| AccountDevice {
         key_device,
         device: device.map(|id| DeviceRowId(id.to_owned())),
+        requested_by: requested_by.map(|id| DeviceRowId(id.to_owned())),
         name: None,
         platform: None,
         added_at_us: None,
@@ -461,15 +551,21 @@ fn a_key_device_takes_the_name_platform_and_row_of_the_row_that_holds_it() {
         compared: false,
     };
 
-    let this = rows.name(key(mine, Some("dev_a")));
-    let approved = rows.name(key(other, None));
-    let removed = rows.name(key(gone, None));
+    let this = rows.name(key(mine, Some("dev_a"), None));
+    let approved = rows.name(key(other, None, Some("dev_c")));
+    let removed = rows.name(key(gone, None, None));
+    let signed_out = rows.name(key(gone, None, Some("dev_c")));
 
     assert_eq!(this.name.as_deref(), Some("Lab (a)"));
     assert_eq!(this.platform.as_deref(), Some("macos"));
     assert_eq!(approved.device, Some(DeviceRowId("dev_b".to_owned())));
     assert_eq!(approved.name.as_deref(), Some("Lab (b)"));
     assert_eq!((removed.device, removed.name), (None, None));
+    assert_eq!(
+        (signed_out.device, signed_out.name.as_deref()),
+        (None, Some("Lab (c)")),
+        "a key device that waits to be removed is named by the row that asked for it, and keeps no row"
+    );
 }
 
 // A new device's request is named by the row that wrote it, as the server serves it beside the request; its key device
@@ -1180,6 +1276,7 @@ fn status(provider: SyncProviderTag, phase: SyncPhaseTag, waiting: u32) -> super
         provider: Some(provider),
         phase,
         last_pass_ms: None,
+        last_synced_ms: None,
         problem: None,
         waiting_approvals: waiting,
         conflicts: 0,

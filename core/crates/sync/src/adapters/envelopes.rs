@@ -59,7 +59,22 @@ pub fn named(named: &HashMap<Kind, HashSet<String>>) -> HashSet<String> {
             );
         }
     }
+    // A team connection's secrets, which a publish writes beside it.
+    for id in named.get(&Kind::LibraryConnection).into_iter().flatten() {
+        out.extend(
+            SECRETS
+                .iter()
+                .filter_map(|secret| team_envelope_of(id, secret))
+                .map(|envelope| envelope.to_wire()),
+        );
+    }
     out
+}
+
+// The envelope id of a team connection's secret, its parent the id the team stores (0052, Team scope).
+pub fn team_envelope_of(connection: &str, secret: &SecretKind) -> Option<EnvelopeId> {
+    let secret = SealedKind::parse(&secret.to_string()).ok()?;
+    EnvelopeId::new(ParentKind::LibraryConnection, connection, secret).ok()
 }
 
 // The device's secret store has no identity a restore would change, so nothing here puts the kind into refill.
@@ -398,6 +413,13 @@ impl RecordAdapter for EnvelopeAdapter {
 
     fn store(&self) -> &str {
         SECRETS_STORE
+    }
+
+    // A refill would let the server's copy win over a secret this device holds, as no move of personal data does
+    // (0054, Moving between providers), and would hold a refused envelope as a refill's, never as one waiting for its
+    // record (0076).
+    fn refills(&self) -> bool {
+        false
     }
 
     // A team's envelopes are its library's secrets, which this store does not keep.

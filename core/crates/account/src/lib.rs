@@ -24,7 +24,7 @@ mod share;
 mod share_link;
 mod token_vault;
 
-pub use account::{AccessToken, Account, AccountHosts, REFRESH_INTERVAL, RETRY_INTERVAL, SignOutCause};
+pub use account::{AccessToken, Account, AccountHosts, REFRESH_INTERVAL, RETRY_INTERVAL, SignOutCause, SignedInAs};
 pub use account_error::AccountError;
 pub use account_settings::{
     AccountSettings, AppClient, CallbackPage, DeviceDescription, Endpoints, Redirect, SignInKey,

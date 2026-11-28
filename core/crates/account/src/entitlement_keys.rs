@@ -53,7 +53,11 @@ impl EntitlementKeys {
                 match key.kid.as_deref().is_none_or(|named| named == kid) {
                     true => Some((kid, decoding)),
                     false => {
-                        tracing::warn!(named = ?key.kid, "a JWKS key's kid is not its thumbprint, so it is left out");
+                        tracing::warn!(
+                            code = crate::account_error::ENTITLEMENT,
+                            named = ?key.kid,
+                            "a JWKS key's kid is not its thumbprint, so it is left out"
+                        );
                         None
                     }
                 }
