@@ -130,6 +130,14 @@ public sealed partial class TableTabView : UserControl, ITabContent, ITableTabVi
 
     public bool GridIsTarget => _showsStructure || Results.ShowsGrid;
 
+    public bool CanUndoEdit => _model.CanUndoEdit;
+
+    public bool CanRedoEdit => _model.CanRedoEdit;
+
+    public void UndoEdit() => _model.UndoEdit();
+
+    public void RedoEdit() => _model.RedoEdit();
+
     // The rows wrap, not the structure's grid, so Structure offers no wrap.
     public bool? WrapsText => _showsStructure ? null : _model.WrapsText;
 

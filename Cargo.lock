@@ -7743,6 +7743,7 @@ dependencies = [
  "hmac 0.13.0",
  "icu_decimal",
  "icu_locale_core",
+ "indexmap 2.14.2",
  "num-bigint 0.4.8",
  "percent-encoding",
  "proptest",

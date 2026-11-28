@@ -23,6 +23,15 @@ internal interface ITabContent : IWorkspaceTab
     // Copy and Select All reach the grid when it, not the editor, had focus last.
     bool GridIsTarget { get; }
 
+    // The grid's own row-edit undo and redo (ADR 0068); false and a no-op where the tab has no editable grid.
+    bool CanUndoEdit { get; }
+
+    bool CanRedoEdit { get; }
+
+    void UndoEdit();
+
+    void RedoEdit();
+
     // Copy and Select All reach the run's messages or a definition's text while it is shown and had focus last.
     TextBox? MessagesTarget { get; }
 

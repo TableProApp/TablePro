@@ -9,9 +9,9 @@ use std::sync::Arc;
 
 use secrecy::SecretString;
 use tablepro_ffi::{
-    CellChange, CellEdit, Core, DatabaseSession, EditLock, FileOpenRequest, HostConfig, HostSecretError, HostSecrets,
-    ProfileKindTag, ResultSet, RowEdit, RowSaveOutcome, RunListener, RunOutcome, RunSettings, SecretDeletionTag,
-    SecretItemTag, SecretKindTag,
+    CellEdit, Core, DatabaseSession, EditLock, FileOpenRequest, HostConfig, HostSecretError, HostSecrets,
+    ProfileKindTag, ResultSet, RowSaveOutcome, RunListener, RunOutcome, RunSettings, SecretDeletionTag, SecretItemTag,
+    SecretKindTag, TableEditor,
 };
 
 struct NoSecrets;
@@ -123,6 +123,10 @@ fn row(values: [Option<&str>; 4]) -> Vec<Option<String>> {
     values.iter().map(|value| value.map(str::to_owned)).collect()
 }
 
+fn set(editor: &TableEditor, shown: &Arc<ResultSet>, row: u64, column: u32, edit: CellEdit) {
+    editor.set_cell(shown.clone(), row, column, edit).unwrap();
+}
+
 async fn lock_of(session: &DatabaseSession, sql: &str) -> Option<EditLock> {
     let set = run(session, sql).await.unwrap();
     session.result_editor(sql.to_owned(), set, None).await.unwrap().lock()
@@ -144,26 +148,13 @@ async fn a_result_of_one_keyed_table_saves_an_update_an_insert_and_a_delete() {
     let columns = editor.columns();
     let copies = editor.copies_exactly(shown.clone(), 0);
 
-    let save = editor
-        .plan(
-            shown,
-            vec![
-                RowEdit::Update {
-                    row: 0,
-                    cells: vec![CellChange {
-                        column: 0,
-                        edit: text("Ada Lovelace"),
-                    }],
-                },
-                RowEdit::Insert {
-                    cells: vec![text("Edsger"), CellEdit::Default, CellEdit::Null],
-                },
-                RowEdit::Delete { row: 2 },
-            ],
-        )
-        .unwrap();
-    let statements = save.statements();
-    let outcome = save.run(false, None).await.unwrap();
+    set(&editor, &shown, 0, 0, text("Ada Lovelace"));
+    editor.insert_row().unwrap();
+    set(&editor, &shown, 3, 0, text("Edsger"));
+    set(&editor, &shown, 3, 2, CellEdit::Null);
+    editor.delete_rows(shown.clone(), vec![2]).unwrap();
+    let preview = editor.preview().unwrap();
+    let outcome = editor.save(shown, false, None).await.unwrap();
     let after = rows(&session).await;
     session.close().await.unwrap();
 
@@ -175,12 +166,12 @@ async fn a_result_of_one_keyed_table_saves_an_update_an_insert_and_a_delete() {
         ["name", "id", "age"]
     );
     assert!(columns[0].editable && !columns[1].editable && columns[1].primary_key && columns[2].editable);
-    assert!(statements[0].sql.starts_with("UPDATE"), "{statements:?}");
-    assert_eq!(statements[0].values, ["'Ada Lovelace'", "1"]);
-    assert!(statements[1].sql.starts_with("INSERT"), "{statements:?}");
-    assert!(!statements[1].sql.contains("joined"), "{statements:?}");
-    assert!(statements[2].sql.starts_with("DELETE"), "{statements:?}");
-    assert_eq!(statements[2].values, ["3"]);
+    assert!(preview.statements[0].sql.starts_with("UPDATE"), "{preview:?}");
+    assert_eq!(preview.statements[0].values, ["'Ada Lovelace'", "1"]);
+    assert!(preview.statements[1].sql.starts_with("INSERT"), "{preview:?}");
+    assert!(!preview.statements[1].sql.contains("joined"), "{preview:?}");
+    assert!(preview.statements[2].sql.starts_with("DELETE"), "{preview:?}");
+    assert_eq!(preview.statements[2].values, ["3"]);
     assert_eq!(outcome, RowSaveOutcome::Saved { rows: Some(3) });
     assert_eq!(
         after,
@@ -207,22 +198,17 @@ async fn a_second_copy_of_a_column_is_locked_and_left_out_of_every_statement() {
         .unwrap();
     let columns = editor.columns();
     let refused = editor.check(2, text("x"), false).err().unwrap();
-    let save = editor
-        .plan(
-            shown,
-            vec![RowEdit::Insert {
-                cells: vec![CellEdit::Default, text("Edsger"), text("ignored")],
-            }],
-        )
-        .unwrap();
-    let statements = save.statements();
+    editor.insert_row().unwrap();
+    // The data rows are three; the draft follows them. Only the writable name is set.
+    set(&editor, &shown, 3, 1, text("Edsger"));
+    let preview = editor.preview().unwrap();
     session.close().await.unwrap();
 
     assert_eq!(columns[2].name, "again");
     assert!(!columns[2].editable && !columns[2].editable_in_new_row);
     assert_eq!(refused.code(), "edit.not_editable");
-    assert_eq!(statements.len(), 1);
-    assert_eq!(statements[0].values, ["'Edsger'"], "{statements:?}");
+    assert_eq!(preview.statements.len(), 1);
+    assert_eq!(preview.statements[0].values, ["'Edsger'"], "{preview:?}");
 }
 
 #[tokio::test]
@@ -292,9 +278,9 @@ async fn edits_name_rows_of_the_editor_s_own_result_sorted_or_not() {
     let sorted_lock = editor.lock_for(sorted.clone());
     let again_lock = editor.lock_for(again.clone());
     let other_lock = editor.lock_for(other.clone());
-    let refused = editor.plan(again, vec![RowEdit::Delete { row: 0 }]).err().unwrap();
-    let save = editor.plan(sorted, vec![RowEdit::Delete { row: 0 }]).unwrap();
-    let statements = save.statements();
+    let refused = editor.delete_rows(again, vec![0]).err().unwrap();
+    editor.delete_rows(sorted, vec![0]).unwrap();
+    let preview = editor.preview().unwrap();
     session.close().await.unwrap();
 
     assert_eq!(sorted_lock, None);
@@ -302,5 +288,5 @@ async fn edits_name_rows_of_the_editor_s_own_result_sorted_or_not() {
     assert_eq!(other_lock, Some(EditLock::ColumnsChanged));
     assert_eq!(refused.code(), "edit.columns_changed");
     // Linus sorts first by name, descending.
-    assert_eq!(statements[0].values, ["3"]);
+    assert_eq!(preview.statements[0].values, ["3"]);
 }

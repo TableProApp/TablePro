@@ -17,6 +17,7 @@ getrandom = "0.3"
 hmac.workspace = true
 icu_decimal = { version = "2.3", features = ["alloc"] }
 icu_locale_core = { version = "2.3", features = ["alloc"] }
+indexmap = "2.14"
 num-bigint.workspace = true
 percent-encoding.workspace = true
 regex.workspace = true

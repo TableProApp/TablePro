@@ -40,23 +40,6 @@ public abstract record CellEdit
     }
 }
 
-public sealed record CellChange(int Column, CellEdit Edit);
-
-// A row of the page, by its place in the result set the page was read into.
-public abstract record RowEdit
-{
-    private RowEdit()
-    {
-    }
-
-    public sealed record Update(long Row, IReadOnlyList<CellChange> Cells) : RowEdit;
-
-    // One cell per column, in the table's order.
-    public sealed record Insert(IReadOnlyList<CellEdit> Cells) : RowEdit;
-
-    public sealed record Delete(long Row) : RowEdit;
-}
-
 // A saved row's key and a server-filled column lock; Labels: an enum's or a SET's; NeedsOffset: typed times need one.
 public sealed record EditColumn(
     string Name,
@@ -101,6 +84,41 @@ public enum SaveGate
     Refuse,
 }
 
+// What tints a pending cell, with its text for a value.
+public enum PendingKind
+{
+    Value,
+    Null,
+    Default,
+}
+
+public sealed record PendingCell(PendingKind Kind, string Text);
+
+// One pending cell of a data row, by its place in the result set shown.
+public sealed record OverlayCell(long Row, int Column, PendingCell Cell);
+
+// The pending edits laid over one result set, by place, so the grid draws them with no key of its own.
+public sealed record PendingOverlay(
+    IReadOnlyList<OverlayCell> Cells,
+    IReadOnlyList<long> ModifiedRows,
+    IReadOnlyList<long> DeletedRows,
+    // New rows after the data rows, oldest first, one cell per table column.
+    IReadOnlyList<IReadOnlyList<PendingCell>> Drafts);
+
+// Where the tracker stands after an edit, so the app updates its buttons without a second call.
+public sealed record EditSummary(
+    long PendingCount,
+    long AddedRows,
+    bool HasChanges,
+    bool CanUndo,
+    bool CanRedo,
+    // A save may have landed; saving again is refused until the tab is reloaded or the changes discarded.
+    bool OutcomeUnknown,
+    bool Saving);
+
+// The plan a save would run now, for the confirm sheet and the delete question.
+public sealed record SavePreview(IReadOnlyList<PlannedStatement> Statements, SaveGate Gate, long Deletes, bool IsEmpty);
+
 public abstract record RowSaveOutcome
 {
     private RowSaveOutcome()
@@ -109,9 +127,9 @@ public abstract record RowSaveOutcome
 
     public sealed record Saved(long? Rows) : RowSaveOutcome;
 
-    // Nothing was written. Edit is the place in the edits of the change the save stopped at, when the engine said.
-    public sealed record RolledBack(CoreError Error, int? Edit) : RowSaveOutcome;
+    // Nothing was written. Row is the place of the row the save stopped at, when the engine said.
+    public sealed record RolledBack(CoreError Error, long? Row) : RowSaveOutcome;
 
     // The save may have landed in part or in full, so saving again could write it twice.
-    public sealed record Unknown(CoreError Error, int? Edit) : RowSaveOutcome;
+    public sealed record Unknown(CoreError Error, long? Row) : RowSaveOutcome;
 }

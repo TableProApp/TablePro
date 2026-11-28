@@ -140,7 +140,7 @@ public sealed class RowsJsonTests
     {
         var rows = new TextGridData(["n"], [["old"], ["7"]]);
         var edits = new GridEdits(
-            new Dictionary<(int Row, int Column), PendingCell> { [(0, 0)] = new(PendingKind.Value, "42") },
+            new Dictionary<(int Row, int Column), TablePro.DataGrid.Model.PendingCell> { [(0, 0)] = new(TablePro.DataGrid.Model.PendingKind.Value, "42") },
             new HashSet<int>(),
             []);
         var edited = new EditedGridData(rows, edits);
@@ -158,7 +158,7 @@ public sealed class RowsJsonTests
     {
         var rows = new TextGridData(["b"], [["1"], ["t"], ["maybe"], ["2"]]);
         var edits = new GridEdits(
-            new Dictionary<(int Row, int Column), PendingCell> { [(1, 0)] = new(PendingKind.Value, "off") },
+            new Dictionary<(int Row, int Column), TablePro.DataGrid.Model.PendingCell> { [(1, 0)] = new(TablePro.DataGrid.Model.PendingKind.Value, "off") },
             new HashSet<int>(),
             []);
 
@@ -176,13 +176,13 @@ public sealed class RowsJsonTests
     {
         var rows = new TextGridData(["id", "name", "note"], [["1", "a", "x"], ["2", "b", "y"], ["3", "c", "z"]]);
         var edits = new GridEdits(
-            new Dictionary<(int Row, int Column), PendingCell>
+            new Dictionary<(int Row, int Column), TablePro.DataGrid.Model.PendingCell>
             {
-                [(0, 1)] = new(PendingKind.Value, "renamed"),
-                [(2, 0)] = new(PendingKind.Default, string.Empty),
+                [(0, 1)] = new(TablePro.DataGrid.Model.PendingKind.Value, "renamed"),
+                [(2, 0)] = new(TablePro.DataGrid.Model.PendingKind.Default, string.Empty),
             },
             new HashSet<int> { 1 },
-            [[new(PendingKind.Value, "4"), new(PendingKind.Value, "d"), new(PendingKind.Null, string.Empty)]]);
+            [[new(TablePro.DataGrid.Model.PendingKind.Value, "4"), new(TablePro.DataGrid.Model.PendingKind.Value, "d"), new(TablePro.DataGrid.Model.PendingKind.Null, string.Empty)]]);
         var edited = new EditedGridData(rows, edits);
         edited.Arrange([1, 0]);
         IReadOnlyList<ResultColumn> columns =

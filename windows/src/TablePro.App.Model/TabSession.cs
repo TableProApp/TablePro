@@ -78,7 +78,9 @@ public sealed record TablePageRead(
 // Where a server-paged table's next page starts; only a read of the same table, sort, filter and size takes it.
 public interface IPageResume : IDisposable;
 
-// A table's rows as a save sees them. `rows` is the set a page was read into, null when no set is shown.
+// A table's or a query result's rows as the save sees them, keyed by the primary key (ADR 0068). The editor holds the
+// pending edits and undo; the app records edits by place and reads the overlay by place. `rows` is the set shown, null
+// when none is.
 public interface ITableEditor : IDisposable
 {
     // The connection's and the table's lock, read again on each call: a level saved while connected can make it read only.
@@ -102,7 +104,33 @@ public interface ITableEditor : IDisposable
 
     CoreError? Check(int column, CellEdit edit, bool newRow);
 
-    IRowSave Plan(ResultSet? rows, IReadOnlyList<RowEdit> edits);
+    // Records a cell the user committed; throws a TableProException whose Code the app words when it cannot be held.
+    EditSummary SetCell(ResultSet? rows, long row, int column, CellEdit edit);
+
+    EditSummary InsertRow();
+
+    EditSummary DuplicateRows(ResultSet? rows, IReadOnlyList<long> places);
+
+    EditSummary DeleteRows(ResultSet? rows, IReadOnlyList<long> places);
+
+    EditSummary RestoreRows(ResultSet? rows, IReadOnlyList<long> places);
+
+    EditSummary Undo();
+
+    EditSummary Redo();
+
+    EditSummary Discard();
+
+    EditSummary Pending { get; }
+
+    // The pending edits laid over `rows`, by place, which the grid draws.
+    PendingOverlay Overlay(ResultSet? rows);
+
+    // The statements a save would run now, its Safe Mode gate and how many rows it deletes.
+    SavePreview Preview();
+
+    // Saves the pending changes; the tracker settles on the outcome. Confirmed answers Safe Mode's question.
+    Task<RowSaveOutcome> SaveAsync(ResultSet? rows, bool confirmed, CancellationToken cancellationToken);
 }
 
 // A table's foreign keys both ways, read once; what a row of a page leads to is worked out from them.
@@ -112,19 +140,6 @@ public interface ITableKeys : IDisposable
     RowReferences ReferencesAt(ResultSet? rows, long row, string? column);
 
     FollowedReference Follow(ResultSet? rows, long row, RowReferenceChoice choice);
-}
-
-// One save, which runs only the statements it was planned with.
-public interface IRowSave : IDisposable
-{
-    IReadOnlyList<PlannedStatement> Statements { get; }
-
-    bool IsEmpty { get; }
-
-    SaveGate Gate { get; }
-
-    // Confirmed: the gate runs, or the user answered Safe Mode's question with Execute.
-    Task<RowSaveOutcome> RunAsync(bool confirmed, CancellationToken cancellationToken);
 }
 
 // A tab's own connection, so a transaction holds from one run to the next.
@@ -335,24 +350,39 @@ internal sealed class CoreTableEditor(TableEditor editor) : ITableEditor
 
     public CoreError? Check(int column, CellEdit edit, bool newRow) => editor.Check(column, edit, newRow);
 
-    public IRowSave Plan(ResultSet? rows, IReadOnlyList<RowEdit> edits) =>
-        rows is null ? throw new TableProException(RowsGone) : new CoreRowSave(editor.Plan(rows, edits));
+    public EditSummary SetCell(ResultSet? rows, long row, int column, CellEdit edit) =>
+        rows is null ? throw new TableProException(RowsGone) : editor.SetCell(rows, row, column, edit);
+
+    public EditSummary InsertRow() => editor.InsertRow();
+
+    public EditSummary DuplicateRows(ResultSet? rows, IReadOnlyList<long> places) =>
+        rows is null ? throw new TableProException(RowsGone) : editor.DuplicateRows(rows, places);
+
+    public EditSummary DeleteRows(ResultSet? rows, IReadOnlyList<long> places) =>
+        rows is null ? throw new TableProException(RowsGone) : editor.DeleteRows(rows, places);
+
+    public EditSummary RestoreRows(ResultSet? rows, IReadOnlyList<long> places) =>
+        rows is null ? throw new TableProException(RowsGone) : editor.RestoreRows(rows, places);
+
+    public EditSummary Undo() => editor.Undo();
+
+    public EditSummary Redo() => editor.Redo();
+
+    public EditSummary Discard() => editor.Discard();
+
+    public EditSummary Pending => editor.Pending;
+
+    // No set shown means nothing to lay over, so the overlay is empty.
+    public PendingOverlay Overlay(ResultSet? rows) => rows is null ? EmptyOverlay : editor.Overlay(rows);
+
+    public SavePreview Preview() => editor.Preview();
+
+    public Task<RowSaveOutcome> SaveAsync(ResultSet? rows, bool confirmed, CancellationToken cancellationToken) =>
+        rows is null ? throw new TableProException(RowsGone) : editor.SaveAsync(rows, confirmed, cancellationToken);
 
     public void Dispose() => editor.Dispose();
-}
 
-internal sealed class CoreRowSave(RowSave save) : IRowSave
-{
-    public IReadOnlyList<PlannedStatement> Statements => save.Statements;
-
-    public bool IsEmpty => save.IsEmpty;
-
-    public SaveGate Gate => save.Gate;
-
-    public Task<RowSaveOutcome> RunAsync(bool confirmed, CancellationToken cancellationToken) =>
-        save.RunAsync(confirmed, cancellationToken);
-
-    public void Dispose() => save.Dispose();
+    private static readonly PendingOverlay EmptyOverlay = new([], [], [], []);
 }
 
 internal sealed class CorePageResume(PageResume resume) : IPageResume

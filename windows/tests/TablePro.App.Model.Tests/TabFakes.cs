@@ -891,9 +891,22 @@ internal sealed class FakeTableEditor : ITableEditor
     // The core leaves out cells edited back to their value, so a plan can be empty with changes pending.
     public bool PlansNothing { get; set; }
 
-    public List<IReadOnlyList<RowEdit>> Plans { get; } = [];
+    // The data rows the page shows; a row at or past it is a new row this fake tracks by its place after them.
+    public long DataRows { get; set; } = 3;
 
-    public List<FakeRowSave> Saves { get; } = [];
+    // A spy over the core editor's surface: records the edits it is told by place (the real tracker's PK keying,
+    // undo, touch order and no-change dropping are the core's, tested in core::edits and the ffi tests), and answers
+    // the overlay, preview and save the test configures.
+    private readonly Dictionary<(long Row, int Column), CellEdit> _cells = [];
+    private readonly HashSet<long> _deleted = [];
+    private readonly List<Dictionary<int, CellEdit>> _drafts = [];
+    private bool _outcomeUnknown;
+
+    // Each save asked of the core, with the answer it was given and whether Safe Mode's question was answered.
+    public List<FakeSave> Saves { get; } = [];
+
+    // Each preview the save flow asked for.
+    public List<SavePreview> Previews { get; } = [];
 
     public int Disposals { get; private set; }
 
@@ -912,61 +925,193 @@ internal sealed class FakeTableEditor : ITableEditor
 
     public CoreError? Check(int column, CellEdit edit, bool newRow) => Checker(column, edit, newRow);
 
-    public IRowSave Plan(ResultSet? rows, IReadOnlyList<RowEdit> edits)
+    public EditSummary SetCell(ResultSet? rows, long row, int column, CellEdit edit)
     {
-        Plans.Add(edits);
+        var newRow = row >= DataRows;
+        if (Checker(column, edit, newRow) is { } failure)
+        {
+            throw new TableProException(failure);
+        }
+
+        if (newRow)
+        {
+            var index = (int)(row - DataRows);
+            if (index >= 0 && index < _drafts.Count)
+            {
+                _drafts[index][column] = edit;
+            }
+        }
+        else if (edit is CellEdit.Text text && text.Value == Stored(row, column))
+        {
+            // An edit back to the stored value is no change, as the core tracker drops it.
+            _cells.Remove((row, column));
+        }
+        else
+        {
+            _cells[(row, column)] = edit;
+        }
+
+        return Summary();
+    }
+
+    public EditSummary InsertRow()
+    {
+        _drafts.Add(NewDraft());
+        return Summary();
+    }
+
+    public EditSummary DuplicateRows(ResultSet? rows, IReadOnlyList<long> places)
+    {
+        foreach (var place in places.Distinct().OrderBy(place => place))
+        {
+            var draft = NewDraft();
+            for (var column = 0; column < Columns.Count; column++)
+            {
+                if (!Columns[column].PrimaryKey && Columns[column].EditableInNewRow)
+                {
+                    draft[column] = new CellEdit.Text(Stored(place, column));
+                }
+            }
+
+            _drafts.Add(draft);
+        }
+
+        return Summary();
+    }
+
+    // A new row starts as each column's NewRow value, as the core editor makes it.
+    private Dictionary<int, CellEdit> NewDraft() =>
+        Enumerable.Range(0, Columns.Count).ToDictionary(column => column, column => Columns[column].NewRow);
+
+    public EditSummary DeleteRows(ResultSet? rows, IReadOnlyList<long> places)
+    {
+        foreach (var place in places)
+        {
+            if (place >= DataRows)
+            {
+                var index = (int)(place - DataRows);
+                if (index >= 0 && index < _drafts.Count)
+                {
+                    _drafts.RemoveAt(index);
+                }
+            }
+            else
+            {
+                _deleted.Add(place);
+                _cells.Keys.Where(key => key.Row == place).ToList().ForEach(key => _cells.Remove(key));
+            }
+        }
+
+        return Summary();
+    }
+
+    public EditSummary RestoreRows(ResultSet? rows, IReadOnlyList<long> places)
+    {
+        foreach (var place in places)
+        {
+            _deleted.Remove(place);
+        }
+
+        return Summary();
+    }
+
+    public EditSummary Undo() => Summary();
+
+    public EditSummary Redo() => Summary();
+
+    public EditSummary Discard()
+    {
+        _cells.Clear();
+        _deleted.Clear();
+        _drafts.Clear();
+        _outcomeUnknown = false;
+        return Summary();
+    }
+
+    public EditSummary Pending => Summary();
+
+    public PendingOverlay Overlay(ResultSet? rows)
+    {
+        var cells = _cells
+            .Select(pair => new OverlayCell(pair.Key.Row, pair.Key.Column, Mark(pair.Value)))
+            .ToList();
+        var modified = _cells.Keys.Select(key => key.Row).Distinct().ToList();
+        var drafts = _drafts
+            .Select(draft => (IReadOnlyList<TablePro.Interop.PendingCell>)[.. Columns.Select((_, column) =>
+                Mark(draft.GetValueOrDefault(column) ?? CellEdit.ServerDefault.Instance))])
+            .ToList();
+        return new PendingOverlay(cells, modified, [.. _deleted], drafts);
+    }
+
+    public SavePreview Preview()
+    {
         if (PlanFailure is { } failure)
         {
             throw new TableProException(failure);
         }
 
-        var statements = PlansNothing ? new List<PlannedStatement>() : edits.Select(Statement).ToList();
-        var save = new FakeRowSave(statements, Verdict, Outcome, Saving);
-        Saves.Add(save);
-        return save;
+        var statements = new List<PlannedStatement>();
+        if (!PlansNothing)
+        {
+            statements.AddRange(_cells.Keys.Select(key => key.Row).Distinct().OrderBy(row => row)
+                .Select(_ => new PlannedStatement("UPDATE", [])));
+            statements.AddRange(_deleted.OrderBy(row => row).Select(_ => new PlannedStatement("DELETE", [])));
+            statements.AddRange(_drafts.Select(_ => new PlannedStatement("INSERT", [])));
+        }
+
+        var preview = new SavePreview(statements, Verdict, _deleted.Count, statements.Count == 0);
+        Previews.Add(preview);
+        return preview;
     }
 
-    public void Dispose() => Disposals++;
-
-    private static PlannedStatement Statement(RowEdit edit) => edit switch
+    public async Task<RowSaveOutcome> SaveAsync(ResultSet? rows, bool confirmed, CancellationToken cancellationToken)
     {
-        RowEdit.Delete => new PlannedStatement("DELETE", []),
-        RowEdit.Update => new PlannedStatement("UPDATE", []),
-        _ => new PlannedStatement("INSERT", []),
-    };
-}
-
-internal sealed class FakeRowSave(
-    List<PlannedStatement> statements,
-    SaveGate verdict,
-    Func<RowSaveOutcome> outcome,
-    Gate? saving) : IRowSave
-{
-    public IReadOnlyList<PlannedStatement> Statements => statements;
-
-    public bool IsEmpty => statements.Count == 0;
-
-    public SaveGate Gate => verdict;
-
-    public int Runs { get; private set; }
-
-    public int Disposals { get; private set; }
-
-    public bool Confirmed { get; private set; }
-
-    public async Task<RowSaveOutcome> RunAsync(bool confirmed, CancellationToken cancellationToken)
-    {
-        Runs++;
-        Confirmed = confirmed;
-        if (saving is { } wait)
+        var record = new FakeSave(confirmed);
+        Saves.Add(record);
+        if (Saving is { } wait)
         {
             await wait.PassAsync(cancellationToken);
         }
 
-        return outcome();
+        var outcome = Outcome();
+        switch (outcome)
+        {
+            case RowSaveOutcome.Saved:
+                _cells.Clear();
+                _deleted.Clear();
+                _drafts.Clear();
+                break;
+            case RowSaveOutcome.Unknown:
+                _outcomeUnknown = true;
+                break;
+        }
+
+        return outcome;
     }
 
     public void Dispose() => Disposals++;
+
+    private EditSummary Summary()
+    {
+        var count = _cells.Count + _deleted.Count + _drafts.Count;
+        return new EditSummary(count, _drafts.Count, count > 0, false, false, _outcomeUnknown, false);
+    }
+
+    private static TablePro.Interop.PendingCell Mark(CellEdit edit) => edit switch
+    {
+        CellEdit.Text text => new TablePro.Interop.PendingCell(TablePro.Interop.PendingKind.Value, text.Value),
+        CellEdit.Null => new TablePro.Interop.PendingCell(TablePro.Interop.PendingKind.Null, string.Empty),
+        _ => new TablePro.Interop.PendingCell(TablePro.Interop.PendingKind.Default, string.Empty),
+    };
+}
+
+// One save asked of the core editor, with whether Safe Mode's question was answered.
+internal sealed class FakeSave(bool confirmed)
+{
+    public bool Confirmed => confirmed;
+
+    // Kept for tests that counted a save's runs; one SaveAsync is one run.
+    public int Runs { get; } = 1;
 }
 
 // A query tab's result view, which answers each question as the test set it and keeps what it was asked.

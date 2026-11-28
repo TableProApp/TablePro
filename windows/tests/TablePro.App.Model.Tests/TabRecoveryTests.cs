@@ -182,7 +182,7 @@ public sealed class TabRecoveryTests
         });
 
         Editor.Outcome = () => new RowSaveOutcome.Saved(1);
-        var plans = Editor.Plans.Count;
+        var plans = Editor.Saves.Count;
         var tab = Restored(Assert.Single(Assert.Single(new SessionStore(path).Load().Connections).Tabs).Edits);
         await tab.ShowAsync();
 
@@ -192,7 +192,7 @@ public sealed class TabRecoveryTests
         Assert.False(tab.CanSave);
         Assert.False(await tab.SaveAsync());
         Assert.IsType<EditRefusal.SaveBlocked>(_view.Refusals[^1]);
-        Assert.Equal(plans, Editor.Plans.Count);
+        Assert.Equal(plans, Editor.Saves.Count);
         // Written blocked again, so a second end keeps it so.
         Assert.True(Assert.Single(tab.WithPendingWork(tab.Snapshot()).Edits!.Rows).Uncertain);
 
