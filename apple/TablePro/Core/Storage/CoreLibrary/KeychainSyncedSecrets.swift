@@ -7,7 +7,7 @@ import Foundation
 import TableProFFI
 
 // The secrets TablePro Sync seals that `HostSecrets` does not reach: each SSH and credential profile's, and a
-// connection's TLS key passphrase and TOTP secret, in the items the Mac already reads (core ADR 0069). The Keychain
+// connection's TLS key passphrase and TOTP secret, in the items the Mac already reads (core ADR 0076). The Keychain
 // follows the provider, so on TablePro Sync a pulled secret is this Mac's own item and never an iCloud Keychain one.
 nonisolated internal final class KeychainSyncedSecrets: HostSyncedSecrets, @unchecked Sendable {
     private let keychain: any KeychainStoring
