@@ -98,7 +98,8 @@ async fn the_approver_lists_a_request_with_the_row_that_wrote_it() {
 }
 
 // N signs out: the row that asked for its key device holds none now, yet the key device stays certified until a
-// removal. A lists it with no row, and with the row that asked for it, which only names it.
+// removal. A lists it with no row, and with the row that asked for it, which only names it; a request A never
+// approved does not rename it.
 #[tokio::test]
 async fn a_signed_out_device_s_key_device_keeps_the_row_that_asked_for_it() {
     let server = FakeServer::new();
@@ -111,6 +112,33 @@ async fn a_signed_out_device_s_key_device_keeps_the_row_that_asked_for_it() {
 
     n.service.sign_out().await.unwrap();
     a.pull().await;
+    // Another signed-in device writes a request that names the old key device; A never approves it.
+    let stranger = DeviceKeys::generate().unwrap();
+    let forged = KeyObject {
+        id: KeyRecordId::Request {
+            request: tablepro_keys::encoding::RequestId(uuid::Uuid::from_u128(u128::MAX)),
+        },
+        body: KeyBody::Request(tablepro_keys::body::RequestBody {
+            key_device: old,
+            dek: stranger.dek.public().unwrap(),
+            dsk: stranger.dsk.public().unwrap(),
+            commit: [7; 32],
+        }),
+    };
+    let mut served = pulled(&forged);
+    served.service = Some(tablepro_sync::api::transport::ServiceMeta {
+        version: 1,
+        revision: 1,
+        epoch: server.epoch(),
+        updated_at_us: server.now_us(),
+        taken_at_us: server.now_us(),
+        held_until_us: None,
+        expires_at_us: None,
+        updated_by: None,
+        updated_device: Some(tablepro_sync::api::ids::DeviceRowId("dev_stranger".to_owned())),
+        updated_by_name: None,
+    });
+    a.service.apply_session_objects(arrival(vec![served])).await.unwrap();
     let listed = a.service.account_devices().await.unwrap();
 
     let signed_out = listed.iter().find(|device| device.key_device == old).unwrap();

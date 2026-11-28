@@ -173,6 +173,7 @@ impl KeyService {
     }
 
     // The row that asked for each key device this device approved, from its sessions' rows, which outlive the requests.
+    // Only an approval this device made counts: anyone signed in can write a request that names another key device.
     pub(crate) async fn requesting_rows(
         &self,
         txn: &mut dyn StateTxn,
@@ -181,7 +182,7 @@ impl KeyService {
             .session_records(txn)
             .await?
             .into_iter()
-            .filter(|record| record.role == Role::Approver)
+            .filter(|record| record.role == Role::Approver && record.end == Some(super::session::Ended::Approved))
             .filter_map(|record| record.device.map(|device| (record.n.key_device, device)))
             .collect())
     }
