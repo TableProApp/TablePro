@@ -74,6 +74,7 @@ mod row_limit;
 mod run_options;
 mod safe_mode_level;
 pub mod save;
+pub mod script_run;
 pub mod secret_scan;
 mod server_diagnostics;
 mod server_info;

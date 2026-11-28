@@ -49,6 +49,7 @@ mod runtime;
 mod safe_mode_gate;
 mod saved_queries;
 mod saved_query_database;
+mod script;
 mod session;
 mod sql_import;
 mod statement_at;
@@ -165,6 +166,9 @@ pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TransactionStateTag, 
 pub use safe_mode_gate::RunGate;
 pub use saved_queries::{SavedQueriesInfo, SavedQueryDraft, SavedQueryFolderInfo, SavedQueryInfo, SavedQueryStore};
 pub use saved_query_database::{SavedQueryDatabaseStore, StoreFilesInfo};
+pub use script::{
+    BatchErrorPolicyTag, ScriptBatch, ScriptEntryInfo, ScriptRun, ScriptRunEvent, ScriptRunSummary, VerdictTag,
+};
 pub use session::{
     ColumnSort, DatabaseLayoutTag, DatabaseSession, FailureCauseTag, PageResume, RowEstimate, SessionHealthTag,
     TableInfoRecord, TablePageRead,
