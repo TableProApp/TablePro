@@ -27,7 +27,8 @@ pub(crate) mod license_ask;
 pub mod mcp_clients;
 pub mod mcp_service;
 pub mod mcp_status;
-pub mod pending_structure;
+#[cfg(test)]
+mod pending_structure_tests;
 pub(crate) mod sample_database;
 pub mod save_batch;
 pub mod saved_connection_editor;
@@ -54,7 +55,5 @@ pub mod tab_registry;
 pub mod tab_tracker_handle;
 pub mod telemetry;
 pub mod telemetry_connector;
-pub mod touch;
 pub mod tracker_delta;
 pub mod tracker_edit;
-pub mod undo_op;

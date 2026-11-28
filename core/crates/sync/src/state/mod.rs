@@ -6,5 +6,6 @@ mod file;
 pub mod integrity;
 mod name;
 
+pub(crate) use codec::held_reason_name;
 pub use file::{SCHEMA_VERSION, SqliteState, SqliteStateFiles};
 pub use name::{state_name, state_path};

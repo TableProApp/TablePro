@@ -9,10 +9,10 @@ use std::sync::Arc;
 
 use secrecy::SecretString;
 use tablepro_ffi::{
-    CellChange, CellEdit, ConnectionRecord, ConnectionSecrets, Core, DatabaseSession, EditLock, EditStart,
-    FileOpenRequest, HostConfig, HostSecretError, HostSecrets, ProfileKindTag, ResultSet, RowEdit, RowSaveOutcome,
-    RunListener, RunOutcome, RunSettings, SafeModeTag, SaveGate, SecretDeletionTag, SecretItemTag, SecretKindTag,
-    TableName, TlsModeTag, TlsSettings, ValueKind,
+    CellEdit, ConnectionRecord, ConnectionSecrets, Core, DatabaseSession, EditLock, EditStart, FileOpenRequest,
+    HostConfig, HostSecretError, HostSecrets, ProfileKindTag, ResultSet, RowSaveOutcome, RunListener, RunOutcome,
+    RunSettings, SafeModeTag, SaveGate, SecretDeletionTag, SecretItemTag, SecretKindTag, TableEditor, TableName,
+    TlsModeTag, TlsSettings, ValueKind,
 };
 
 struct NoSecrets;
@@ -146,6 +146,11 @@ fn row(values: [Option<&str>; 4]) -> Vec<Option<String>> {
     values.iter().map(|value| value.map(str::to_owned)).collect()
 }
 
+// Records a cell the user committed, failing the test on a refusal.
+fn set(editor: &TableEditor, shown: &Arc<ResultSet>, row: u64, column: u32, edit: CellEdit) {
+    editor.set_cell(shown.clone(), row, column, edit).unwrap();
+}
+
 async fn saved(core: &Core, path: &Path, safe_mode: SafeModeTag) -> Arc<DatabaseSession> {
     let record = ConnectionRecord {
         id: String::new(),
@@ -204,39 +209,28 @@ async fn an_update_an_insert_and_a_delete_save_as_one_batch() {
     let editor = session.table_editor(people(), false, None).await.unwrap();
     let shown = page(&session).await;
 
-    let save = editor
-        .plan(
-            shown,
-            vec![
-                RowEdit::Update {
-                    row: 0,
-                    cells: vec![CellChange {
-                        column: 1,
-                        edit: text("Ada Lovelace"),
-                    }],
-                },
-                RowEdit::Insert {
-                    cells: vec![CellEdit::Default, text("Edsger"), CellEdit::Null, CellEdit::Default],
-                },
-                RowEdit::Delete { row: 2 },
-            ],
-        )
-        .unwrap();
-    let statements = save.statements();
-    let outcome = save.run(false, None).await.unwrap();
-    let again = save.run(false, None).await.err().unwrap();
+    set(&editor, &shown, 0, 1, text("Ada Lovelace"));
+    editor.insert_row().unwrap();
+    // The draft sits after the three data rows.
+    set(&editor, &shown, 3, 1, text("Edsger"));
+    set(&editor, &shown, 3, 2, CellEdit::Null);
+    editor.delete_rows(shown.clone(), vec![2]).unwrap();
+    let preview = editor.preview().unwrap();
+    let outcome = editor.save(shown.clone(), false, None).await.unwrap();
+    // The tracker settled on the commit, so a second save has nothing to send.
+    let again = editor.save(shown, false, None).await.unwrap();
     let after = rows(&session).await;
     session.close().await.unwrap();
 
-    assert_eq!(again.code(), "edit.already_saved");
-    assert_eq!(save.gate(), SaveGate::Run);
-    assert_eq!(statements.len(), 3);
-    assert!(statements[0].sql.starts_with("UPDATE"), "{statements:?}");
-    assert_eq!(statements[0].values, ["'Ada Lovelace'", "1"]);
-    assert!(statements[1].sql.starts_with("INSERT"), "{statements:?}");
-    assert!(statements[2].sql.starts_with("DELETE"), "{statements:?}");
-    assert_eq!(statements[2].values, ["3"]);
+    assert_eq!(preview.gate, SaveGate::Run);
+    assert_eq!(preview.statements.len(), 3);
+    assert!(preview.statements[0].sql.starts_with("UPDATE"), "{preview:?}");
+    assert_eq!(preview.statements[0].values, ["'Ada Lovelace'", "1"]);
+    assert!(preview.statements[1].sql.starts_with("INSERT"), "{preview:?}");
+    assert!(preview.statements[2].sql.starts_with("DELETE"), "{preview:?}");
+    assert_eq!(preview.statements[2].values, ["3"]);
     assert_eq!(outcome, RowSaveOutcome::Saved { rows: Some(3) });
+    assert_eq!(again, RowSaveOutcome::Saved { rows: Some(0) });
     assert_eq!(
         after,
         [
@@ -257,27 +251,14 @@ async fn a_cell_edited_back_to_its_value_saves_nothing() {
     let editor = session.table_editor(people(), false, None).await.unwrap();
     let shown = page(&session).await;
 
-    let save = editor
-        .plan(
-            shown,
-            vec![RowEdit::Update {
-                row: 1,
-                cells: vec![
-                    CellChange {
-                        column: 1,
-                        edit: text("Grace"),
-                    },
-                    CellChange {
-                        column: 2,
-                        edit: text("45"),
-                    },
-                ],
-            }],
-        )
-        .unwrap();
+    set(&editor, &shown, 1, 1, text("Changed"));
+    set(&editor, &shown, 1, 1, text("Grace"));
+    set(&editor, &shown, 1, 2, text("45"));
+    let preview = editor.preview().unwrap();
     session.close().await.unwrap();
 
-    assert!(save.is_empty());
+    assert!(preview.is_empty);
+    assert_eq!(editor.pending().pending_count, 0);
 }
 
 #[tokio::test]
@@ -356,7 +337,7 @@ async fn a_table_with_no_primary_key_and_a_read_only_file_lock_every_row() {
     let read_only = core.open_file(file(&path, true), None).await.unwrap();
     let locked = read_only.table_editor(people(), false, None).await.unwrap();
     let shown = page(&read_only).await;
-    let refused = locked.plan(shown, vec![RowEdit::Delete { row: 0 }]);
+    let refused = locked.delete_rows(shown, vec![0]);
     read_only.close().await.unwrap();
 
     assert_eq!(no_key, Some(EditLock::NoPrimaryKey));
@@ -365,7 +346,7 @@ async fn a_table_with_no_primary_key_and_a_read_only_file_lock_every_row() {
 }
 
 #[tokio::test]
-async fn confirm_writes_shows_a_save_first_and_a_stricter_level_refuses_it() {
+async fn confirm_writes_asks_first_and_an_unanswered_save_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("people.sqlite");
     let core = core(dir.path());
@@ -373,20 +354,19 @@ async fn confirm_writes_shows_a_save_first_and_a_stricter_level_refuses_it() {
     let session = saved(&core, &path, SafeModeTag::Silent).await;
     let editor = session.table_editor(people(), false, None).await.unwrap();
     let shown = page(&session).await;
-    let delete = vec![RowEdit::Delete { row: 0 }];
 
-    let at_off = editor.plan(shown.clone(), delete.clone()).unwrap();
+    editor.delete_rows(shown.clone(), vec![0]).unwrap();
+    let at_off = editor.preview().unwrap();
     assert!(session.set_safe_mode(SafeModeTag::Alert));
-    let refused = at_off.run(false, None).await.err().unwrap();
-    let asked = editor.plan(shown, delete).unwrap();
-    let unanswered = asked.run(false, None).await.err().unwrap();
-    let outcome = asked.run(true, None).await.unwrap();
+    let asked = editor.preview().unwrap();
+    let unanswered = editor.save(shown.clone(), false, None).await.err().unwrap();
+    let outcome = editor.save(shown, true, None).await.unwrap();
     let after = rows(&session).await;
     session.close().await.unwrap();
 
-    assert_eq!(at_off.gate(), SaveGate::Run);
-    assert_eq!(refused.code(), "edit.safe_mode_changed");
-    assert_eq!(asked.gate(), SaveGate::Confirm);
+    assert_eq!(at_off.gate, SaveGate::Run);
+    assert_eq!(at_off.deletes, 1);
+    assert_eq!(asked.gate, SaveGate::Confirm);
     assert_eq!(unanswered.code(), "edit.not_confirmed");
     assert_eq!(outcome, RowSaveOutcome::Saved { rows: Some(1) });
     assert_eq!(after.len(), 2);
@@ -403,35 +383,16 @@ async fn a_row_that_changed_under_the_save_rolls_every_change_back() {
     let shown = page(&session).await;
     run(&session, "DELETE FROM people WHERE id = 2").await;
 
-    let save = editor
-        .plan(
-            shown,
-            vec![
-                RowEdit::Update {
-                    row: 0,
-                    cells: vec![CellChange {
-                        column: 2,
-                        edit: text("37"),
-                    }],
-                },
-                RowEdit::Update {
-                    row: 1,
-                    cells: vec![CellChange {
-                        column: 2,
-                        edit: text("46"),
-                    }],
-                },
-            ],
-        )
-        .unwrap();
-    let outcome = save.run(false, None).await.unwrap();
+    set(&editor, &shown, 0, 2, text("37"));
+    set(&editor, &shown, 1, 2, text("46"));
+    let outcome = editor.save(shown.clone(), false, None).await.unwrap();
     let after = rows(&session).await;
     session.close().await.unwrap();
 
     match outcome {
-        RowSaveOutcome::RolledBack { error, edit } => {
+        RowSaveOutcome::RolledBack { error, row } => {
             assert_eq!(error.code, "driver.row_guard_failed");
-            assert_eq!(edit, Some(1));
+            assert_eq!(row, Some(1));
         }
         other => panic!("expected a rollback, got {other:?}"),
     }
@@ -451,86 +412,86 @@ async fn a_saved_row_is_written_once_and_its_key_and_default_are_refused() {
     let key = editor.check(0, text("9"), false).unwrap_err();
     let rowid_in_new_row = editor.check(0, text("9"), true).unwrap_err();
     let default = editor.check(3, CellEdit::Default, false).unwrap_err();
-    let save = editor
-        .plan(
-            shown,
-            vec![
-                RowEdit::Update {
-                    row: 0,
-                    cells: vec![CellChange {
-                        column: 1,
-                        edit: text("first"),
-                    }],
-                },
-                RowEdit::Update {
-                    row: 1,
-                    cells: vec![CellChange {
-                        column: 1,
-                        edit: text("gone anyway"),
-                    }],
-                },
-                RowEdit::Delete { row: 1 },
-                RowEdit::Update {
-                    row: 0,
-                    cells: vec![
-                        CellChange {
-                            column: 1,
-                            edit: text("Ada"),
-                        },
-                        CellChange {
-                            column: 2,
-                            edit: text("37"),
-                        },
-                    ],
-                },
-            ],
-        )
-        .unwrap();
-    let statements = save.statements();
+    set(&editor, &shown, 0, 1, text("first"));
+    set(&editor, &shown, 1, 1, text("gone anyway"));
+    editor.delete_rows(shown.clone(), vec![1]).unwrap();
+    // Back to the fetched name, so column 1 drops out and only the age is written.
+    set(&editor, &shown, 0, 1, text("Ada"));
+    set(&editor, &shown, 0, 2, text("37"));
+    let preview = editor.preview().unwrap();
     session.close().await.unwrap();
 
     assert_eq!(key.code(), "edit.not_editable");
     // A rowid alias is the server's to fill, as the Linux grid locks an auto-increment key in a new row.
     assert_eq!(rowid_in_new_row.code(), "edit.not_editable");
     assert_eq!(default.code(), "edit.no_default");
-    assert_eq!(statements.len(), 2, "{statements:?}");
-    assert!(statements[0].sql.starts_with("UPDATE"), "{statements:?}");
-    assert_eq!(statements[0].values, ["37", "1"]);
-    assert!(statements[1].sql.starts_with("DELETE"), "{statements:?}");
+    assert_eq!(preview.statements.len(), 2, "{preview:?}");
+    let update = preview
+        .statements
+        .iter()
+        .find(|statement| statement.sql.starts_with("UPDATE"))
+        .expect("one UPDATE");
+    assert_eq!(update.values, ["37", "1"]);
+    assert!(
+        preview
+            .statements
+            .iter()
+            .any(|statement| statement.sql.starts_with("DELETE")),
+        "{preview:?}"
+    );
 }
 
 #[tokio::test]
-async fn a_page_whose_key_cannot_be_named_exactly_is_locked() {
+async fn deleting_a_row_then_restoring_it_leaves_nothing_to_save() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("people.sqlite");
     let core = core(dir.path());
     seeded(&core, &path).await;
     let session = core.open_file(file(&path, false), None).await.unwrap();
-    run(
-        &session,
-        "CREATE TABLE readings (at REAL PRIMARY KEY, value TEXT); INSERT INTO readings VALUES (0.1, 'a')",
-    )
-    .await;
-    let readings = TableName {
-        schema: None,
-        name: "readings".to_owned(),
-    };
-    let editor = session.table_editor(readings.clone(), false, None).await.unwrap();
-    let shown = page_of(&session, readings).await;
-    let people_editor = session.table_editor(people(), false, None).await.unwrap();
-    let people_page = page(&session).await;
+    let editor = session.table_editor(people(), false, None).await.unwrap();
+    let shown = page(&session).await;
 
-    let lock = editor.lock_for(shown);
-    let open = people_editor.lock_for(people_page);
+    let deleted = editor.delete_rows(shown.clone(), vec![0, 1]).unwrap();
+    let restored = editor.restore_rows(shown.clone(), vec![0, 1]).unwrap();
+    // Undo the restore: both rows are marked for deletion again.
+    let undone = editor.undo();
     session.close().await.unwrap();
 
-    assert_eq!(
-        lock,
-        Some(EditLock::KeyUnreadable {
-            column: "at".to_owned()
-        })
-    );
-    assert_eq!(open, None);
+    assert_eq!(deleted.pending_count, 2);
+    assert_eq!(restored.pending_count, 0);
+    assert!(!restored.has_changes);
+    assert_eq!(undone.pending_count, 2);
+    assert!(undone.can_redo);
+}
+
+#[tokio::test]
+async fn an_edit_survives_a_sort_and_the_overlay_follows_the_row() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("people.sqlite");
+    let core = core(dir.path());
+    seeded(&core, &path).await;
+    let session = core.open_file(file(&path, false), None).await.unwrap();
+    let editor = session.table_editor(people(), false, None).await.unwrap();
+    let ascending = page(&session).await;
+
+    set(&editor, &ascending, 0, 1, text("Ada Lovelace"));
+    // A second page in the other order: id 1 is now last.
+    let descending = page_of_sorted(&session).await;
+    let up = editor.overlay(ascending);
+    let down = editor.overlay(descending);
+    session.close().await.unwrap();
+
+    assert_eq!(up.cells.len(), 1);
+    assert_eq!(up.cells[0].row, 0);
+    assert_eq!(down.cells.len(), 1);
+    assert_eq!(down.cells[0].row, 2, "the edit followed id 1 to the bottom");
+    assert_eq!(down.cells[0].cell.text, "Ada Lovelace");
+}
+
+async fn page_of_sorted(session: &DatabaseSession) -> Arc<ResultSet> {
+    run(session, "SELECT id, name, age, joined FROM people ORDER BY id DESC")
+        .await
+        .unwrap()
 }
 
 #[tokio::test]
@@ -553,15 +514,9 @@ async fn a_new_row_leaves_a_blob_null_and_a_refresh_reads_the_columns_again() {
     let shown = page_of(&session, files.clone()).await;
 
     let typed = editor.check(2, text("0x00"), true).unwrap_err();
-    let save = editor
-        .plan(
-            shown,
-            vec![RowEdit::Insert {
-                cells: vec![CellEdit::Default, text("notes.txt"), CellEdit::Null],
-            }],
-        )
-        .unwrap();
-    let outcome = save.run(false, None).await.unwrap();
+    editor.insert_row().unwrap();
+    set(&editor, &shown, 0, 1, text("notes.txt"));
+    let outcome = editor.save(shown, false, None).await.unwrap();
     run(&session, "ALTER TABLE files ADD COLUMN size INTEGER").await;
     let cached = session.table_editor(files.clone(), false, None).await.unwrap();
     let refreshed = session.table_editor(files, true, None).await.unwrap();

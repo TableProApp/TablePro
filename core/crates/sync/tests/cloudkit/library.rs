@@ -81,11 +81,8 @@ impl Shelf {
             adapters: &adapters,
             fence: &stop,
         };
-        for approval in queue.waiting().await.unwrap() {
-            queue
-                .decide(&approval.key, &approval.field, approval.digest, true)
-                .await
-                .unwrap();
+        for record in queue.waiting().await.unwrap() {
+            queue.decide_record(&record.key, record.digest, true).await.unwrap();
         }
     }
 }

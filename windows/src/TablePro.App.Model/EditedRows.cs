@@ -2,7 +2,7 @@ using TablePro.Interop;
 
 namespace TablePro.App.Model;
 
-// What was typed per row of one set and the editor that reads and saves it: a table tab's page, a query tab's result.
+// What was typed per row of one set and the editor that records and saves it: a table tab's page, a query tab's result.
 internal sealed class EditedRows(ITableEditor editor, TableEdits edits, ResultSet? source)
 {
     // The refusals the core makes before it sends anything, so a save after one cannot write twice.
@@ -11,9 +11,14 @@ internal sealed class EditedRows(ITableEditor editor, TableEdits edits, ResultSe
         "edit.not_confirmed",
         "edit.safe_mode_changed",
         "edit.not_as_planned",
-        "edit.already_saved",
         "edit.read_only_connection",
         "ffi.not_connected",
+        "edit.reject.outcome_unknown",
+        "edit.reject.already_saving",
+        "edit.reject.columns_not_read",
+        "edit.reject.build",
+        "edit.reject.columns_changed",
+        "edit.reject.key_changed",
     };
 
     public ITableEditor Editor => editor;
@@ -73,30 +78,9 @@ internal sealed class EditedRows(ITableEditor editor, TableEdits edits, ResultSe
         };
     }
 
-    // Any failure but one the core makes before it sends anything may follow the batch, so it is an unknown outcome.
-    public static async Task<(RowSaveOutcome? Outcome, CoreError? Failure)> RunSaveAsync(IRowSave save, bool confirmed)
-    {
-        ArgumentNullException.ThrowIfNull(save);
-        try
-        {
-            return (await save.RunAsync(confirmed, CancellationToken.None).ConfigureAwait(true), null);
-        }
-        catch (TableProException exception) when (exception.Error.Codes.Any(NothingSent.Contains))
-        {
-            return (null, exception.Error);
-        }
-        catch (TableProException exception)
-        {
-            return (new RowSaveOutcome.Unknown(exception.Error, null), null);
-        }
-    }
-
-    // The grid row of the change the engine said the save stopped at.
-    public static int? RowOf(PlannedEdits planned, int? edit)
-    {
-        ArgumentNullException.ThrowIfNull(planned);
-        return edit is { } index && index >= 0 && index < planned.Rows.Count ? planned.Rows[index] : null;
-    }
+    // The grid row the save stopped at, as the core named it, clamped into the page.
+    public static int? RowOf(long? row) =>
+        row is { } value && value >= 0 && value <= int.MaxValue ? checked((int)value) : null;
 
     // The text a cell's editor opens with: the pending edit, else the whole stored value, never the grid's cut text.
     public EditRefusal? StartEdit(int row, int column, out string text)
@@ -146,7 +130,7 @@ internal sealed class EditedRows(ITableEditor editor, TableEdits edits, ResultSe
     }
 
     // Each copy starts its key and the columns the server computes as a new row would, as on macOS.
-    public int DuplicateRows(IReadOnlyList<int> rows) => edits.DuplicateRows(rows, StoredEdit);
+    public int DuplicateRows(IReadOnlyList<int> rows) => edits.DuplicateRows(rows);
 
     // A data row copies only when its values do exactly; a new row holds what was typed.
     public EditRefusal? CopyRefusal(IReadOnlyList<int> rows)
@@ -164,23 +148,16 @@ internal sealed class EditedRows(ITableEditor editor, TableEdits edits, ResultSe
         }
     }
 
-    // A data row's edit back to its stored value is no change; a new row has none to compare with.
+    // A data row whose stored value has no editable text is read only; otherwise the core validates the text and
+    // drops an edit back to the stored value, and a refusal says why with an edit.* code.
     public EditRefusal? Apply(int row, int column, CellEdit edit)
     {
-        var newRow = edits.IsAdded(row);
-        string? stored = null;
-        if (!newRow && ReadStored(row, column, out stored) is { } unreadable)
+        if (!edits.IsAdded(row) && ReadStored(row, column, out _) is { } unreadable)
         {
             return unreadable;
         }
 
-        if (editor.Check(column, edit, newRow) is { } failure)
-        {
-            return new EditRefusal.Invalid(failure);
-        }
-
-        edits.SetCell(row, column, edit, stored);
-        return null;
+        return edits.SetCell(row, column, edit) is { } failure ? new EditRefusal.Invalid(failure) : null;
     }
 
     // The stored value as text, null for NULL; a value with no text that writes it back is refused.
@@ -203,19 +180,13 @@ internal sealed class EditedRows(ITableEditor editor, TableEdits edits, ResultSe
         }
     }
 
-    public IRowSave Plan(PlannedEdits planned)
-    {
-        ArgumentNullException.ThrowIfNull(planned);
-        return editor.Plan(source, planned.Edits);
-    }
-
     // The same plan a save makes, with the values it binds, or why the edits cannot be planned.
     public (IReadOnlyList<PlannedStatement> Statements, CoreError? Failure) Preview()
     {
         try
         {
-            using var save = Plan(edits.ToRowEdits());
-            return (save.Statements, null);
+            var preview = edits.Preview();
+            return (preview.Statements, null);
         }
         catch (TableProException exception)
         {
@@ -223,14 +194,20 @@ internal sealed class EditedRows(ITableEditor editor, TableEdits edits, ResultSe
         }
     }
 
-    // What a copy of a data row holds where it was not edited, or null where its value has no text to copy.
-    private CellEdit? StoredEdit(int row, int column)
+    // Any failure but one the core makes before it sends anything may follow the batch, so it is an unknown outcome.
+    public async Task<(RowSaveOutcome? Outcome, CoreError? Failure)> SaveAsync(bool confirmed)
     {
-        if (ReadStored(row, column, out var stored) is not null)
+        try
         {
-            return null;
+            return (await edits.SaveAsync(confirmed, CancellationToken.None).ConfigureAwait(true), null);
         }
-
-        return stored is null ? CellEdit.Null.Instance : new CellEdit.Text(stored);
+        catch (TableProException exception) when (exception.Error.Codes.Any(NothingSent.Contains))
+        {
+            return (null, exception.Error);
+        }
+        catch (TableProException exception)
+        {
+            return (new RowSaveOutcome.Unknown(exception.Error, null), null);
+        }
     }
 }

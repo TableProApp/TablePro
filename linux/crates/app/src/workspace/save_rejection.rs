@@ -3,7 +3,7 @@ use tablepro_core::dml::BuildSqlError;
 use tablepro_session::OperationError;
 
 use super::DirtyTab;
-use crate::services::pending_structure::SaveBlocker;
+use tablepro_core::ddl::SaveBlocker;
 
 /// Why a save did not start. Nothing was sent.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,6 +80,23 @@ impl SaveRejection {
     /// the user just declined.
     pub fn needs_alert(&self) -> bool {
         !matches!(self, Self::AlreadySaving | Self::InReview | Self::ReviewDeclined)
+    }
+}
+
+// The core row tracker refuses a save with a coded rejection (ADR 0068);
+// the app words it. Only the variants the tracker produces are mapped;
+// the structure save adds the rest.
+impl From<tablepro_core::edits::TrackerRejection> for SaveRejection {
+    fn from(rejection: tablepro_core::edits::TrackerRejection) -> Self {
+        use tablepro_core::edits::TrackerRejection as Core;
+        match rejection {
+            Core::OutcomeUnknown => Self::OutcomeUnknown,
+            Core::AlreadySaving => Self::AlreadySaving,
+            Core::ColumnsNotRead => Self::ColumnsNotRead,
+            Core::Build(error) => Self::Build(error),
+            Core::ColumnsChanged(columns) => Self::ColumnsChanged(columns),
+            Core::KeyChanged => Self::KeyChanged,
+        }
     }
 }
 

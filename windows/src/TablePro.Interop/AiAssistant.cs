@@ -62,6 +62,26 @@ public sealed record AiConversationStart(string System, IReadOnlyList<string> De
 // The fields of an ai.* error; the provider's own words are in CoreError.Server. Detail is the transport's English.
 public sealed record AiFailure(string? Host, int? Status, AiProvider? Provider, string? Detail);
 
+// A write the agent wants to run. Database is null for the connection's own; Destructive drops, empties or rewrites
+// a whole table. The pane asks about it, apart from the MCP server's own window consent.
+public sealed record AiWriteRequest(
+    ulong Id,
+    Guid ConnectionId,
+    string ConnectionName,
+    string? Database,
+    string Sql,
+    bool Destructive);
+
+// The core calls each on a thread it lets block, so the pane may wait on its UI thread for the answer.
+public interface IAiApprover
+{
+    // False when the user denies the write, and once Withdraw names the request.
+    bool Approve(AiWriteRequest request);
+
+    // The reply ended before the question was answered, so its card comes down.
+    void Withdraw(ulong requestId);
+}
+
 // The providers, their keys in Credential Manager, and the replies. A key never comes back from the core.
 public sealed class AiAssistant
 {
@@ -157,5 +177,62 @@ public sealed class AiAssistant
             Mapping.Chat(chat),
             wake));
         return new AiReply(reply, wake);
+    }
+
+    // Agent mode: the model runs the MCP tools in rounds until a final answer. host opens connections as the picker
+    // does; approver answers writes in the pane. projectId scopes the connections the tools see, null for all.
+    // Returns at once, like Reply; a refusal or failed request is the reply's Failed event.
+    public AiReply ReplyAgentic(
+        DatabaseSession session,
+        AiSettings settings,
+        AiChat chat,
+        Guid? projectId,
+        IMcpAppHost host,
+        IAiApprover approver)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(chat);
+        ArgumentNullException.ThrowIfNull(host);
+        ArgumentNullException.ThrowIfNull(approver);
+        var wake = new ReplyWake();
+        var reply = CoreCall.Run(() => _assistant.ReplyAgentic(
+            session.Handle,
+            Mapping.Settings(settings),
+            Mapping.Chat(chat),
+            projectId?.ToString(),
+            new McpAppHostAdapter(host),
+            new AiApproverAdapter(approver),
+            wake));
+        return new AiReply(reply, wake);
+    }
+}
+
+// An exception would end the call as a panic in the core, so a denying answer is the safe one.
+internal sealed class AiApproverAdapter(IAiApprover approver) : Native.AiApprover
+{
+    public bool Approve(Native.AiWriteRequest request)
+    {
+        try
+        {
+            return Guid.TryParse(request.ConnectionId, out var id)
+                && approver.Approve(new AiWriteRequest(
+                    request.Id, id, request.ConnectionName, request.Database, request.Sql, request.Destructive));
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return false;
+        }
+    }
+
+    public void Withdraw(ulong requestId)
+    {
+        try
+        {
+            approver.Withdraw(requestId);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+        }
     }
 }

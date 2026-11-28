@@ -1,12 +1,17 @@
-use tablepro_core::sql_syntax::script::BatchErrorPolicy;
-use tablepro_core::{
-    ByteLimit, DriverError, EditorSessionState, ErrorCategory, ResultEvent, RunEnd, RunSummary, TransactionState,
-    Truncation, UserSql,
-};
+use std::sync::{Arc, Mutex, PoisonError};
+
+use tablepro_core::column::ResultColumn;
+use tablepro_core::script_run::{ScriptEntry, ScriptResultStore};
+use tablepro_core::{DriverError, TransactionState, UserSql, Value};
 
 use super::script_runner::sql_preview;
 use crate::ui::result_pane::{ResultSetView, ResultSummary};
 use crate::workspace::WorkOutcome;
+
+// The batch loop, the error policy and the structured log live in the
+// core (`tablepro_core::script_run`); this file words the core's log into
+// the GTK results list.
+pub use tablepro_core::script_run::{Verdict, continues};
 
 /// One line of the results list.
 #[derive(Debug, Clone)]
@@ -55,28 +60,7 @@ pub struct RunLogEntry {
     pub preview: String,
 }
 
-/// How one run of a batch ended, for deciding whether the next is sent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Verdict {
-    Completed,
-    Failed,
-    /// Cancelled, timed out, or the session itself failed: nothing more
-    /// can run, whatever the engine's batch rules say.
-    Stopped,
-}
-
-/// Whether the script goes on after a batch ended this way. A failed
-/// statement stops it, because the statements after it were written
-/// assuming it worked, unless the engine runs batches independently.
-pub fn continues(verdict: Verdict, policy: BatchErrorPolicy) -> bool {
-    match verdict {
-        Verdict::Completed => true,
-        Verdict::Failed => policy == BatchErrorPolicy::ContinueNextBatch,
-        Verdict::Stopped => false,
-    }
-}
-
-/// One batch's run, as the runner hands it to the results list.
+/// One batch's run, worded for the results list.
 #[derive(Debug, Clone)]
 pub struct BatchReport {
     pub batch: usize,
@@ -94,253 +78,104 @@ pub enum RunEvent {
     Finished,
 }
 
-/// The rows a batch may still keep under its run's limit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RowRoom {
-    /// The run's limit, which a result it cuts short names.
-    pub run_limit: u64,
-    pub left: u64,
-    /// The statement was sent with `left` as its row limit, below its
-    /// own, so a result the driver cut short was cut by the run's limit.
-    pub limits_statement: bool,
-    // The run's byte limit, which a result it cuts short names, and the bytes of rows the run can still keep.
-    pub run_bytes: u64,
-    pub bytes_left: u64,
+/// Keeps each result set's rows as the core batch loop sends them, so the
+/// run can word a set's log line from these rows and the core's summary.
+/// ADR 0063 leaves the Linux grid on its own row slots, so the rows stay
+/// here rather than in the core's result store.
+#[derive(Debug, Default)]
+pub(super) struct ResultViews {
+    sets: Mutex<Vec<ResultSetView>>,
 }
 
-impl RowRoom {
-    // A result the session cut for size without a room from the run names the editor's own limit.
-    pub const UNLIMITED: Self = Self {
-        run_limit: u64::MAX,
-        left: u64::MAX,
-        limits_statement: false,
-        run_bytes: ByteLimit::EDITOR_DEFAULT.get(),
-        bytes_left: u64::MAX,
-    };
+impl ResultViews {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Vec<ResultSetView>> {
+        self.sets.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    // The view the loop filled for `set_index`, with the run's summary and the batch's statement.
+    fn view(&self, set_index: usize, summary: ResultSummary, statement: &UserSql) -> ResultSetView {
+        let mut view = self
+            .lock()
+            .get(set_index)
+            .cloned()
+            .unwrap_or_else(|| ResultSetView::new(Arc::from([]), statement.clone()));
+        view.summary = summary;
+        view.statement = statement.clone();
+        view
+    }
 }
 
-/// Turns the events of one run into results list lines, on the runtime,
-/// so only finished lines cross to the GTK thread.
-#[derive(Debug)]
-pub struct BatchCollector {
-    /// The batch's text, which each of its result sets keeps.
-    statement: UserSql,
-    entries: Vec<EntryKind>,
-    /// Where each result set of this run sits in `entries`.
-    sets: Vec<usize>,
-    room: RowRoom,
-}
+impl ScriptResultStore for ResultViews {
+    fn start_set(&self, columns: Arc<[ResultColumn]>) -> usize {
+        let mut sets = self.lock();
+        sets.push(ResultSetView::new(columns, UserSql::new("")));
+        sets.len() - 1
+    }
 
-impl BatchCollector {
-    pub fn new(statement: UserSql) -> Self {
-        Self {
-            statement,
-            entries: Vec::new(),
-            sets: Vec::new(),
-            room: RowRoom::UNLIMITED,
+    fn resolve_columns(&self, set_index: usize, columns: Arc<[ResultColumn]>) {
+        if let Some(view) = self.lock().get_mut(set_index) {
+            view.columns = columns;
         }
     }
 
-    /// Rows past `room` are dropped, and the result says why.
-    pub fn within(self, room: RowRoom) -> Self {
-        Self { room, ..self }
-    }
-
-    pub fn record(&mut self, event: ResultEvent) {
-        match event {
-            ResultEvent::ResultSetStarted { columns } => {
-                self.sets.push(self.entries.len());
-                self.entries.push(EntryKind::ResultSet(ResultSetView::new(
-                    columns,
-                    self.statement.clone(),
-                )));
-            }
-            ResultEvent::ColumnsResolved { set_index, columns } => {
-                if let Some(result) = self.set(set_index) {
-                    result.columns = columns;
-                }
-            }
-            ResultEvent::Rows(rows) => {
-                if self.sets.is_empty() {
-                    // Rows with no columns would draw a grid that cannot
-                    // say what any cell is.
-                    tracing::warn!(rows = rows.len(), "rows arrived before their result set");
-                    return;
-                }
-                // The session keeps the row that crosses its limit, so a statement with no bytes left still brings one.
-                let full = self.room.bytes_left == 0;
-                let room = if full { 0 } else { self.room.left };
-                let kept = usize::try_from(room).unwrap_or(usize::MAX).min(rows.len());
-                self.room.left -= kept as u64;
-                let cut = kept < rows.len();
-                let cut_by = (cut && !full).then_some(self.room.run_limit);
-                let cut_for_size = (cut && full).then_some(self.room.run_bytes);
-                if let Some(result) = self.last_set() {
-                    result.rows.extend(rows.into_iter().take(kept).map(Into::into));
-                    result.summary.retained = result.rows.len() as u64;
-                    result.summary.run_limit = result.summary.run_limit.or(cut_by);
-                    result.summary.size_limit = result.summary.size_limit.or(cut_for_size);
-                }
-            }
-            // Until the set ends and says how far the read went, all
-            // that is known is that more rows were left behind.
-            ResultEvent::RowLimitReached { .. } => {
-                let cut_by = self.room.limits_statement.then_some(self.room.run_limit);
-                if let Some(result) = self.last_set() {
-                    result.summary = ResultSummary {
-                        retained: result.rows.len() as u64,
-                        total_rows: None,
-                        truncation: Truncation::ServerStopped,
-                        run_limit: result.summary.run_limit.or(cut_by),
-                        size_limit: result.summary.size_limit,
-                    };
-                }
-            }
-            ResultEvent::ByteLimitReached { .. } => {
-                let size = self.room.run_bytes;
-                if let Some(result) = self.last_set() {
-                    result.summary = ResultSummary {
-                        retained: result.rows.len() as u64,
-                        total_rows: None,
-                        truncation: Truncation::ByteLimit,
-                        run_limit: result.summary.run_limit,
-                        size_limit: result.summary.size_limit.or(Some(size)),
-                    };
-                }
-            }
-            ResultEvent::ResultSetFinished {
-                total_rows, truncation, ..
-            } => {
-                let cut_by = (self.room.limits_statement && truncation == Truncation::ReadPastLimit)
-                    .then_some(self.room.run_limit);
-                let cut_for_size = (truncation == Truncation::ByteLimit).then_some(self.room.run_bytes);
-                if let Some(result) = self.last_set() {
-                    result.summary = ResultSummary {
-                        retained: result.rows.len() as u64,
-                        total_rows,
-                        truncation,
-                        run_limit: result.summary.run_limit.or(cut_by),
-                        size_limit: result.summary.size_limit.or(cut_for_size),
-                    };
-                }
-            }
-            ResultEvent::CommandCompleted { rows_affected } => {
-                self.entries.push(EntryKind::Command { rows_affected });
-            }
-            ResultEvent::Notice(notice) => self.entries.push(EntryKind::Notice {
-                message: format!("{}: {}", notice.severity, notice.message),
-            }),
-            ResultEvent::NoticeLimitReached { retained } => self.entries.push(EntryKind::Notice {
-                message: crate::i18n::ngettext_f(
-                    "Only the first {n} notice is shown. The server sent more.",
-                    "Only the first {n} notices are shown. The server sent more.",
-                    u32::try_from(retained).unwrap_or(u32::MAX),
-                    &[("n", &retained.to_string())],
-                ),
-            }),
+    fn append(&self, set_index: usize, rows: Vec<Vec<Value>>) {
+        if let Some(view) = self.lock().get_mut(set_index) {
+            view.rows.extend(rows.into_iter().map(Arc::<[Value]>::from));
         }
     }
 
-    /// Close the run with how it ended. `in_transaction` says a
-    /// transaction was open when the batch was sent. `error_base` is
-    /// where the batch starts in the buffer, so a server's error position
-    /// becomes a buffer position.
-    pub fn finish(
-        mut self,
-        outcome: Result<RunSummary, DriverError>,
-        state: EditorSessionState,
-        in_transaction: bool,
-        error_base: usize,
-    ) -> (Vec<EntryKind>, Verdict, Option<TransactionState>) {
-        let lost = SessionLoss {
-            lost: state == EditorSessionState::Lost,
+    fn finish_set(&self, _set_index: usize, _total_rows: Option<u64>, _cut: bool) {}
+}
+
+/// Word one of the core's structured log entries into a results-list line.
+pub(super) fn entry_kind(entry: ScriptEntry, views: &ResultViews, statement: &UserSql) -> EntryKind {
+    match entry {
+        ScriptEntry::ResultSet { set_index, summary } => {
+            EntryKind::ResultSet(views.view(set_index, ResultSummary::from_core(summary), statement))
+        }
+        ScriptEntry::Command { rows_affected } => EntryKind::Command { rows_affected },
+        ScriptEntry::Notice { severity, message, .. } => EntryKind::Notice {
+            message: format!("{severity}: {message}"),
+        },
+        ScriptEntry::NoticeLimitReached { retained } => EntryKind::Notice {
+            message: crate::i18n::ngettext_f(
+                "Only the first {n} notice is shown. The server sent more.",
+                "Only the first {n} notices are shown. The server sent more.",
+                u32::try_from(retained).unwrap_or(u32::MAX),
+                &[("n", &retained.to_string())],
+            ),
+        },
+        ScriptEntry::Failed {
+            error,
+            error_char,
+            lost,
             in_transaction,
-        };
-        let (verdict, transaction) = match outcome {
-            Ok(summary) => {
-                let verdict = match summary.end {
-                    RunEnd::Completed => {
-                        if self.entries.is_empty() {
-                            // Every statement shows up, even one that
-                            // neither returned rows nor counted any.
-                            self.entries.push(EntryKind::Command { rows_affected: None });
-                        }
-                        Verdict::Completed
-                    }
-                    RunEnd::Failed(error) => {
-                        self.entries.push(failed(&error, lost, error_base));
-                        Verdict::Failed
-                    }
-                    RunEnd::Cancelled => {
-                        self.entries.push(EntryKind::Cancelled);
-                        Verdict::Stopped
-                    }
-                    RunEnd::TimedOut { server_cancelled } => {
-                        self.entries.push(EntryKind::TimedOut { server_cancelled });
-                        Verdict::Stopped
-                    }
-                };
-                (verdict, Some(summary.transaction_state))
-            }
-            Err(error) if error.category() == ErrorCategory::Interrupted => {
-                self.entries.push(EntryKind::Cancelled);
-                (Verdict::Stopped, None)
-            }
-            Err(error) => {
-                self.entries.push(failed(&error, lost, error_base));
-                (Verdict::Stopped, None)
-            }
-        };
-        (self.entries, verdict, transaction)
-    }
-
-    fn set(&mut self, set_index: usize) -> Option<&mut ResultSetView> {
-        let index = *self.sets.get(set_index)?;
-        match self.entries.get_mut(index) {
-            Some(EntryKind::ResultSet(result)) => Some(result),
-            _ => None,
-        }
-    }
-
-    fn last_set(&mut self) -> Option<&mut ResultSetView> {
-        let last = self.sets.len().checked_sub(1)?;
-        self.set(last)
+        } => EntryKind::Failed {
+            message: failed_message(&error, lost, in_transaction),
+            error_char,
+        },
+        ScriptEntry::Cancelled => EntryKind::Cancelled,
+        ScriptEntry::TimedOut { server_cancelled } => EntryKind::TimedOut { server_cancelled },
     }
 }
 
-/// Whether the session's connection went with this batch, and whether
-/// a transaction was open on it.
-#[derive(Debug, Clone, Copy)]
-struct SessionLoss {
-    lost: bool,
-    in_transaction: bool,
-}
-
-fn failed(error: &DriverError, lost: SessionLoss, error_base: usize) -> EntryKind {
+fn failed_message(error: &DriverError, lost: bool, in_transaction: bool) -> String {
     let mut message = crate::ui::error_text::driver_message(error);
     // An editor session is never reopened behind the user's back: its
     // open transaction and temporary tables went with it. With a
     // transaction open, the next run is refused rather than reopening.
-    if lost.lost && lost.in_transaction {
+    if lost && in_transaction {
         message = crate::i18n::gettext_f(
             "{error} This tab's connection was lost, so the server rolled back its open transaction.",
             &[("error", &message)],
         );
-    } else if lost.lost {
+    } else if lost {
         message = crate::i18n::gettext_f(
             "{error} This tab's connection was lost; the next run opens a new one.",
             &[("error", &message)],
         );
     }
-    let error_char = match error {
-        DriverError::Server(diagnostics) => diagnostics
-            .position
-            .and_then(|position| usize::try_from(position).ok())
-            .filter(|position| *position > 0)
-            .map(|position| error_base + position - 1),
-        _ => None,
-    };
-    EntryKind::Failed { message, error_char }
+    message
 }
 
 /// The results list of one run, built as the batches report.
@@ -551,35 +386,19 @@ impl RunLog {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-    use std::time::Duration;
 
     use tablepro_core::column::{ColumnType, ResultColumn};
-    use tablepro_core::{ServerCode, ServerDiagnostics, ServerNotice, Value};
+    use tablepro_core::sql_syntax::script::BatchErrorPolicy;
+    use tablepro_core::{TransactionState, Truncation, UserSql};
 
     use super::*;
+    use crate::ui::result_pane::ResultSummary;
 
     fn columns(names: &[&str]) -> Arc<[ResultColumn]> {
         names
             .iter()
             .map(|name| ResultColumn::new(*name, ColumnType::untyped_text("text")))
             .collect()
-    }
-
-    fn summary(end: RunEnd) -> Result<RunSummary, DriverError> {
-        Ok(RunSummary {
-            elapsed: Duration::from_millis(3),
-            end,
-            transaction_state: TransactionState::Idle,
-        })
-    }
-
-    fn collect(events: Vec<ResultEvent>, end: RunEnd) -> (Vec<EntryKind>, Verdict) {
-        let mut collector = BatchCollector::new(UserSql::new("SELECT a FROM t"));
-        for event in events {
-            collector.record(event);
-        }
-        let (entries, verdict, _) = collector.finish(summary(end), EditorSessionState::Ready, false, 0);
-        (entries, verdict)
     }
 
     fn report(batch: usize, entries: Vec<EntryKind>, verdict: Verdict) -> RunEvent {
@@ -591,223 +410,6 @@ mod tests {
             lost: false,
             elapsed_ms: 2,
         })
-    }
-
-    #[test]
-    fn run_log_maps_events() {
-        let (entries, verdict) = collect(
-            vec![
-                ResultEvent::ResultSetStarted {
-                    columns: columns(&["a"]),
-                },
-                ResultEvent::Rows(vec![vec![Value::Int(1)], vec![Value::Int(2)]]),
-                ResultEvent::RowLimitReached { retained: 2 },
-                ResultEvent::ResultSetFinished {
-                    retained: 2,
-                    total_rows: Some(5),
-                    truncation: Truncation::ServerStopped,
-                },
-                ResultEvent::Notice(ServerNotice {
-                    severity: "NOTICE".to_owned(),
-                    message: "vacuumed".to_owned(),
-                    code: None,
-                }),
-                ResultEvent::CommandCompleted { rows_affected: Some(4) },
-            ],
-            RunEnd::Completed,
-        );
-
-        assert_eq!(verdict, Verdict::Completed);
-        assert_eq!(entries.len(), 3, "{entries:?}");
-        let EntryKind::ResultSet(result) = &entries[0] else {
-            panic!("expected rows: {entries:?}");
-        };
-        assert_eq!(result.row_count(), 2);
-        assert_eq!(
-            result.summary,
-            ResultSummary {
-                retained: 2,
-                total_rows: Some(5),
-                truncation: Truncation::ServerStopped,
-                run_limit: None,
-                size_limit: None,
-            }
-        );
-        assert_eq!(result.statement.as_str(), "SELECT a FROM t");
-        assert!(matches!(&entries[1], EntryKind::Notice { message } if message.contains("vacuumed")));
-        assert!(matches!(entries[2], EntryKind::Command { rows_affected: Some(4) }));
-    }
-
-    #[test]
-    fn notices_past_the_runs_limit_end_in_one_line_that_says_so() {
-        let notice = |message: &str| {
-            ResultEvent::Notice(ServerNotice {
-                severity: "NOTICE".to_owned(),
-                message: message.to_owned(),
-                code: None,
-            })
-        };
-
-        let (entries, _) = collect(
-            vec![
-                notice("row 1"),
-                notice("row 2"),
-                ResultEvent::NoticeLimitReached { retained: 2 },
-                ResultEvent::CommandCompleted { rows_affected: None },
-            ],
-            RunEnd::Completed,
-        );
-
-        let messages: Vec<&str> = entries
-            .iter()
-            .filter_map(|entry| match entry {
-                EntryKind::Notice { message } => Some(message.as_str()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(
-            messages,
-            [
-                "NOTICE: row 1",
-                "NOTICE: row 2",
-                "Only the first 2 notices are shown. The server sent more."
-            ]
-        );
-        assert!(matches!(
-            entries.last(),
-            Some(EntryKind::Command { rows_affected: None })
-        ));
-    }
-
-    #[test]
-    fn a_set_the_driver_cut_at_the_runs_room_names_the_run_limit() {
-        let room = RowRoom {
-            run_limit: 100,
-            left: 1,
-            limits_statement: true,
-            ..RowRoom::UNLIMITED
-        };
-        let mut collector = BatchCollector::new(UserSql::new("SELECT a FROM t")).within(room);
-        for event in [
-            ResultEvent::ResultSetStarted {
-                columns: columns(&["a"]),
-            },
-            ResultEvent::Rows(vec![vec![Value::Int(1)]]),
-            ResultEvent::RowLimitReached { retained: 1 },
-            ResultEvent::ResultSetFinished {
-                retained: 1,
-                total_rows: None,
-                truncation: Truncation::ReadPastLimit,
-            },
-        ] {
-            collector.record(event);
-        }
-        let (entries, _, _) = collector.finish(summary(RunEnd::Completed), EditorSessionState::Ready, false, 0);
-
-        let EntryKind::ResultSet(result) = &entries[0] else {
-            panic!("expected rows: {entries:?}");
-        };
-        assert_eq!(result.row_count(), 1);
-        assert_eq!(result.summary.run_limit, Some(100));
-    }
-
-    fn first_summary(entries: &[EntryKind]) -> ResultSummary {
-        match entries.first() {
-            Some(EntryKind::ResultSet(result)) => result.summary,
-            other => panic!("expected rows: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn a_set_cut_for_size_says_so_before_and_after_it_ends() {
-        let cut = || {
-            vec![
-                ResultEvent::ResultSetStarted {
-                    columns: columns(&["a"]),
-                },
-                ResultEvent::Rows(vec![vec![Value::Int(1)], vec![Value::Int(2)]]),
-                ResultEvent::ByteLimitReached { retained: 2 },
-            ]
-        };
-        let mut finished = cut();
-        finished.push(ResultEvent::ResultSetFinished {
-            retained: 2,
-            total_rows: Some(9),
-            truncation: Truncation::ByteLimit,
-        });
-
-        let (stopped, _) = collect(cut(), RunEnd::Cancelled);
-        let (ended, _) = collect(finished, RunEnd::Completed);
-
-        let size_limit = Some(ByteLimit::EDITOR_DEFAULT.get());
-        assert_eq!(
-            first_summary(&stopped),
-            ResultSummary {
-                retained: 2,
-                total_rows: None,
-                truncation: Truncation::ByteLimit,
-                run_limit: None,
-                size_limit,
-            }
-        );
-        assert_eq!(
-            first_summary(&ended),
-            ResultSummary {
-                retained: 2,
-                total_rows: Some(9),
-                truncation: Truncation::ByteLimit,
-                run_limit: None,
-                size_limit,
-            }
-        );
-    }
-
-    #[test]
-    fn a_batch_with_no_bytes_left_keeps_no_rows_and_says_why() {
-        let room = RowRoom {
-            run_bytes: 1_000,
-            bytes_left: 0,
-            ..RowRoom::UNLIMITED
-        };
-        let mut collector = BatchCollector::new(UserSql::new("SELECT a FROM t")).within(room);
-        for event in [
-            ResultEvent::ResultSetStarted {
-                columns: columns(&["a"]),
-            },
-            ResultEvent::Rows(vec![vec![Value::Int(1)]]),
-            ResultEvent::ByteLimitReached { retained: 1 },
-            ResultEvent::ResultSetFinished {
-                retained: 1,
-                total_rows: Some(3),
-                truncation: Truncation::ByteLimit,
-            },
-        ] {
-            collector.record(event);
-        }
-        let (entries, _, _) = collector.finish(summary(RunEnd::Completed), EditorSessionState::Ready, false, 0);
-
-        let kept = first_summary(&entries);
-        assert_eq!((kept.retained, kept.size_limit, kept.run_limit), (0, Some(1_000), None));
-    }
-
-    #[test]
-    fn a_set_cut_by_the_limit_and_then_stopped_stays_truncated() {
-        let (entries, _) = collect(
-            vec![
-                ResultEvent::ResultSetStarted {
-                    columns: columns(&["a"]),
-                },
-                ResultEvent::Rows(vec![vec![Value::Int(1)]]),
-                ResultEvent::RowLimitReached { retained: 1 },
-            ],
-            RunEnd::Cancelled,
-        );
-
-        let EntryKind::ResultSet(result) = &entries[0] else {
-            panic!("expected rows: {entries:?}");
-        };
-        assert!(result.summary.is_truncated());
-        assert_eq!(result.summary.total_rows, None);
     }
 
     #[test]
@@ -893,44 +495,6 @@ mod tests {
 
         assert!(log.was_stopped());
         assert_eq!(log.outcome(), WorkOutcome::Cancelled);
-    }
-
-    #[test]
-    fn a_statement_with_nothing_to_say_still_gets_a_line() {
-        let (entries, _) = collect(Vec::new(), RunEnd::Completed);
-
-        assert!(matches!(
-            entries.as_slice(),
-            [EntryKind::Command { rows_affected: None }]
-        ));
-    }
-
-    #[test]
-    fn a_server_error_position_becomes_a_buffer_position() {
-        let diagnostics = ServerDiagnostics {
-            position: Some(8),
-            ..ServerDiagnostics::new(Some(ServerCode::SqlState("42601".to_owned())), "syntax error")
-        };
-        let collector = BatchCollector::new(UserSql::new("SELECT"));
-
-        let (entries, verdict, _) = collector.finish(
-            summary(RunEnd::Failed(DriverError::reported(diagnostics))),
-            EditorSessionState::Ready,
-            false,
-            100,
-        );
-
-        assert_eq!(verdict, Verdict::Failed);
-        assert!(
-            matches!(
-                entries.as_slice(),
-                [EntryKind::Failed {
-                    error_char: Some(107),
-                    ..
-                }]
-            ),
-            "{entries:?}"
-        );
     }
 
     #[test]

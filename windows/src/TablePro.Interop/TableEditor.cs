@@ -2,7 +2,8 @@ using Native = TablePro.Interop.Native;
 
 namespace TablePro.Interop;
 
-// A table tab's rows as a save sees them: the catalog's columns, keyed by the primary key.
+// A table tab's or a query result's rows as the save sees them: keyed by the primary key (ADR 0068). The editor holds
+// the pending edits and undo; the app records edits by place, reads the overlay by place, and saves through here.
 public sealed class TableEditor : IDisposable
 {
     private readonly Native.TableEditor _editor;
@@ -80,53 +81,115 @@ public sealed class TableEditor : IDisposable
         }
     }
 
-    // At the connection's Safe Mode level now; a cell edited back to its value is left out, so the save can be empty.
-    public RowSave Plan(ResultSet rows, IReadOnlyList<RowEdit> edits)
+    // Records a cell the user committed. A data row is named by its primary key; a new row by its place after the data.
+    // Throws a TableProException whose Code the app words when the text cannot be held.
+    public EditSummary SetCell(ResultSet rows, long row, int column, CellEdit edit)
     {
         ArgumentNullException.ThrowIfNull(rows);
-        ArgumentNullException.ThrowIfNull(edits);
-        var native = edits.Select(Mapping.Edit).ToArray();
-        return new RowSave(CoreCall.Run(() => _editor.Plan(rows.Handle, native)));
+        ArgumentOutOfRangeException.ThrowIfNegative(row);
+        ArgumentOutOfRangeException.ThrowIfNegative(column);
+        ArgumentNullException.ThrowIfNull(edit);
+        return Summary(CoreCall.Run(() =>
+            _editor.SetCell(rows.Handle, checked((ulong)row), checked((uint)column), Mapping.Edit(edit))));
     }
 
-    public void Dispose() => _editor.Dispose();
-}
+    // A new row after the data rows, holding the server's value where it fills the column, else NULL.
+    public EditSummary InsertRow() => Summary(CoreCall.Run(_editor.InsertRow));
 
-// One save, which runs only the statements it was planned with.
-public sealed class RowSave : IDisposable
-{
-    private readonly Native.RowSave _save;
-
-    internal RowSave(Native.RowSave save)
+    // Each row copied once, in the order given; a data row copies only where its value reads back exactly.
+    public EditSummary DuplicateRows(ResultSet rows, IReadOnlyList<long> places)
     {
-        _save = save;
-        Statements = [.. save.Statements().Select(statement => new PlannedStatement(statement.Sql, [.. statement.Values]))];
-        IsEmpty = save.IsEmpty();
-        Gate = Mapping.Gate(save.Gate());
+        ArgumentNullException.ThrowIfNull(rows);
+        return Summary(CoreCall.Run(() => _editor.DuplicateRows(rows.Handle, Places(places))));
     }
 
-    public IReadOnlyList<PlannedStatement> Statements { get; }
-
-    public bool IsEmpty { get; }
-
-    public SaveGate Gate { get; }
-
-    // Confirmed says Safe Mode's question was answered; nothing is sent when the level or the plan moved since.
-    public async Task<RowSaveOutcome> RunAsync(bool confirmed, CancellationToken cancellationToken = default)
+    // A new row is dropped; a data row is marked for the save to delete, with its edits.
+    public EditSummary DeleteRows(ResultSet rows, IReadOnlyList<long> places)
     {
-        var outcome = await CoreCall.RunAsync(token => _save.Run(confirmed, token), cancellationToken).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(rows);
+        return Summary(CoreCall.Run(() => _editor.DeleteRows(rows.Handle, Places(places))));
+    }
+
+    // Un-delete data rows marked for deletion.
+    public EditSummary RestoreRows(ResultSet rows, IReadOnlyList<long> places)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        return Summary(CoreCall.Run(() => _editor.RestoreRows(rows.Handle, Places(places))));
+    }
+
+    public EditSummary Undo() => Summary(CoreCall.Run(_editor.Undo));
+
+    public EditSummary Redo() => Summary(CoreCall.Run(_editor.Redo));
+
+    public EditSummary Discard() => Summary(CoreCall.Run(_editor.Discard));
+
+    public EditSummary Pending => Summary(CoreCall.Run(_editor.Pending));
+
+    // The pending edits laid over `rows`, by place, so the grid draws them with no key of its own.
+    public PendingOverlay Overlay(ResultSet rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        return Overlay(CoreCall.Run(() => _editor.Overlay(rows.Handle)));
+    }
+
+    // The statements the save would run now, the Safe Mode gate and how many rows it deletes.
+    public SavePreview Preview() => Preview(CoreCall.Run(_editor.Preview));
+
+    // Saves the pending changes; the tracker settles on the outcome. Confirmed answers Safe Mode's question.
+    public async Task<RowSaveOutcome> SaveAsync(ResultSet rows, bool confirmed, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        var outcome = await CoreCall.RunAsync(token => _editor.Save(rows.Handle, confirmed, token), cancellationToken)
+            .ConfigureAwait(false);
         return outcome switch
         {
-            Native.RowSaveOutcome.Saved saved => new RowSaveOutcome.Saved(saved.Rows is { } rows ? Mapping.Count(rows) : null),
+            Native.RowSaveOutcome.Saved saved => new RowSaveOutcome.Saved(saved.Rows is { } count ? Mapping.Count(count) : null),
             Native.RowSaveOutcome.RolledBack rolledBack => new RowSaveOutcome.RolledBack(
                 Mapping.Error(rolledBack.Error),
-                rolledBack.Edit is { } edit ? checked((int)edit) : null),
+                rolledBack.Row is { } row ? checked((long)row) : null),
             Native.RowSaveOutcome.Unknown unknown => new RowSaveOutcome.Unknown(
                 Mapping.Error(unknown.Error),
-                unknown.Edit is { } edit ? checked((int)edit) : null),
+                unknown.Row is { } row ? checked((long)row) : null),
             _ => throw new InvalidOperationException("The core reported a save outcome this build does not know."),
         };
     }
 
-    public void Dispose() => _save.Dispose();
+    public void Dispose() => _editor.Dispose();
+
+    private static ulong[] Places(IReadOnlyList<long> places)
+    {
+        ArgumentNullException.ThrowIfNull(places);
+        return [.. places.Select(place => checked((ulong)place))];
+    }
+
+    private static EditSummary Summary(Native.PendingSummary summary) => new(
+        checked((long)summary.PendingCount),
+        checked((long)summary.AddedRows),
+        summary.HasChanges,
+        summary.CanUndo,
+        summary.CanRedo,
+        summary.OutcomeUnknown,
+        summary.Saving);
+
+    private static PendingOverlay Overlay(Native.GridOverlay overlay) => new(
+        [.. overlay.Cells.Select(cell =>
+            new OverlayCell(checked((long)cell.Row), checked((int)cell.Column), CellOf(cell.Cell)))],
+        [.. overlay.ModifiedRows.Select(row => checked((long)row))],
+        [.. overlay.DeletedRows.Select(row => checked((long)row))],
+        [.. overlay.Drafts.Select(draft => (IReadOnlyList<PendingCell>)[.. draft.Cells.Select(CellOf)])]);
+
+    private static PendingCell CellOf(Native.PendingCell cell) => new(PendingKindOf(cell.Kind), cell.Text);
+
+    private static PendingKind PendingKindOf(Native.PendingKind kind) => kind switch
+    {
+        Native.PendingKind.Value => PendingKind.Value,
+        Native.PendingKind.Null => PendingKind.Null,
+        _ => PendingKind.Default,
+    };
+
+    private static SavePreview Preview(Native.SavePreview preview) => new(
+        [.. preview.Statements.Select(statement => new PlannedStatement(statement.Sql, [.. statement.Values]))],
+        Mapping.Gate(preview.Gate),
+        checked((long)preview.Deletes),
+        preview.IsEmpty);
 }

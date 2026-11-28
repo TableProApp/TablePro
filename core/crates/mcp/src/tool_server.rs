@@ -62,22 +62,32 @@ impl ToolServer {
         context: &RequestContext<RoleServer>,
     ) -> Result<String, ToolError> {
         let arguments = serde_json::Value::Object(request.arguments.unwrap_or_default());
-        let tools = &self.context;
-        let cancel = context.ct.clone();
-        match request.name.as_ref() {
-            "list_connections" => connection_tools::list_connections(tools, parse(arguments)?).await,
-            "connect" => connection_tools::connect(tools, parse(arguments)?).await,
-            "list_databases" => schema_tools::list_databases(tools, parse(arguments)?, cancel).await,
-            "list_schemas" => schema_tools::list_schemas(tools, parse(arguments)?, cancel).await,
-            "list_tables" => schema_tools::list_tables(tools, parse(arguments)?, cancel).await,
-            "describe_table" => schema_tools::describe_table(tools, parse(arguments)?, cancel).await,
-            "get_table_ddl" => schema_tools::get_table_ddl(tools, parse(arguments)?, cancel).await,
-            "browse_table" => query_tools::browse_table(tools, parse(arguments)?, cancel).await,
-            "count_rows" => query_tools::count_rows(tools, parse(arguments)?, cancel).await,
-            "execute_query" => query_tools::execute_query(tools, parse(arguments)?, cancel).await,
-            "export_data" => export_tools::export_data(tools, parse(arguments)?, cancel).await,
-            other => Err(ToolError::NotFound(format!("there is no tool named {other}"))),
-        }
+        dispatch_tool(&self.context, request.name.as_ref(), arguments, context.ct.clone()).await
+    }
+}
+
+/// Run one tool against the context, as the HTTP handler does but without
+/// a protocol request. The in-app agent loop reaches the same tools and
+/// the same gate this way instead of over the HTTP server.
+pub async fn dispatch_tool(
+    context: &ToolContext,
+    name: &str,
+    arguments: serde_json::Value,
+    cancel: tokio_util::sync::CancellationToken,
+) -> Result<String, ToolError> {
+    match name {
+        "list_connections" => connection_tools::list_connections(context, parse(arguments)?).await,
+        "connect" => connection_tools::connect(context, parse(arguments)?).await,
+        "list_databases" => schema_tools::list_databases(context, parse(arguments)?, cancel).await,
+        "list_schemas" => schema_tools::list_schemas(context, parse(arguments)?, cancel).await,
+        "list_tables" => schema_tools::list_tables(context, parse(arguments)?, cancel).await,
+        "describe_table" => schema_tools::describe_table(context, parse(arguments)?, cancel).await,
+        "get_table_ddl" => schema_tools::get_table_ddl(context, parse(arguments)?, cancel).await,
+        "browse_table" => query_tools::browse_table(context, parse(arguments)?, cancel).await,
+        "count_rows" => query_tools::count_rows(context, parse(arguments)?, cancel).await,
+        "execute_query" => query_tools::execute_query(context, parse(arguments)?, cancel).await,
+        "export_data" => export_tools::export_data(context, parse(arguments)?, cancel).await,
+        other => Err(ToolError::NotFound(format!("there is no tool named {other}"))),
     }
 }
 

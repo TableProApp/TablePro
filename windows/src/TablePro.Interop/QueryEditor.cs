@@ -12,6 +12,9 @@ public sealed class QueryEditor : IAsyncDisposable
         _editor = editor;
     }
 
+    // The raw editor, for the interop tests that drive run_script before a high-level wrapper exists.
+    internal Native.QueryEditor NativeEditor => _editor;
+
     // Returns at once. The token stops the statement on the engine, and the run then ends Cancelled.
     public QueryRun Run(string sql, QueryOptions? options = null, CancellationToken cancellationToken = default)
     {
