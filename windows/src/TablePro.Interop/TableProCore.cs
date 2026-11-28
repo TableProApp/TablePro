@@ -144,7 +144,16 @@ public sealed class TableProCore : IDisposable
         var native = Mapping.Sync(configuration);
         var signIn = account?.Handle;
         var wake = new SyncWake();
-        var service = await CoreCall.RunAsync(() => _core.OpenSync(native, signIn, null, null, null, null, wake))
+        // No synced secrets store yet: the core sends each connection's secrets as envelopes on its own (core #4665).
+        var service = await CoreCall.RunAsync(() => _core.OpenSync(
+                native,
+                signIn,
+                cloudkit: null,
+                settings: null,
+                deviceStore: null,
+                legacyMirror: null,
+                syncedSecrets: null,
+                listener: wake))
             .ConfigureAwait(false);
         return new TableProSync(service, wake);
     }
