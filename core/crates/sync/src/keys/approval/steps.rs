@@ -2,18 +2,19 @@
 // `key_comparisons` once it is taken and before it goes up, so a retry after a timeout sends the same body and never
 // draws new randomness for a step already taken.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use tablepro_keys::KeysError;
 use tablepro_keys::body::{CancelReason, KeyBody, KeyObject, RequestBody, SasBody};
-use tablepro_keys::encoding::{RequestId, Version};
+use tablepro_keys::encoding::{KeyDeviceId, RequestId, Version};
 use tablepro_keys::keys::DeviceKeys;
 use tablepro_keys::record_id::{KeyRecordId, SasStep};
 use tablepro_keys::sas::{Comparison, Role, SasDevice};
 
 use super::session::SessionRecord;
 use crate::api::error::SyncError;
-use crate::api::ids::ScopeName;
+use crate::api::ids::{DeviceRowId, ScopeName};
 use crate::api::key_flows::{ApprovalSession, KeyState, LockCause, SessionEnd, SessionPhase, SessionRole};
 use crate::api::state::{KeyPendingRow, PendingFlow, Row, RowKey, RowRange, StateTxn, Table};
 use crate::api::transport::{ChangeOutcome, DpopKey, RejectedCode};
@@ -169,6 +170,20 @@ impl KeyService {
                 && record.end == Some(super::session::Ended::Approved)
                 && !record.sent.approval
         }))
+    }
+
+    // The row that asked for each key device this device approved, from its sessions' rows, which outlive the requests.
+    pub(crate) async fn requesting_rows(
+        &self,
+        txn: &mut dyn StateTxn,
+    ) -> Result<HashMap<KeyDeviceId, DeviceRowId>, SyncError> {
+        Ok(self
+            .session_records(txn)
+            .await?
+            .into_iter()
+            .filter(|record| record.role == Role::Approver)
+            .filter_map(|record| record.device.map(|device| (record.n.key_device, device)))
+            .collect())
     }
 
     pub(super) async fn session_record(

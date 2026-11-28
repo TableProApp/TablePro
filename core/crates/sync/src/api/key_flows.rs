@@ -698,6 +698,9 @@ pub struct ApprovalSession {
 pub struct AccountDevice {
     pub key_device: KeyDeviceId,
     pub device: Option<DeviceRowId>,
+    // The row that asked for this key device's approval, as a session this device approved recorded it. The row may
+    // hold another key device by now, so it names the key device and never stands for the row that holds it.
+    pub requested_by: Option<DeviceRowId>,
     pub name: Option<String>,
     pub platform: Option<String>,
     pub added_at_us: Option<i64>,

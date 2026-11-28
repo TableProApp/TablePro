@@ -325,7 +325,11 @@ fn settled(
             LocalChange::Delete { record_id } => (record_id, None),
         };
         let Some(id) = parse_uuid(&record_id) else {
-            tracing::warn!(kind = kind.as_str(), "a record whose id is not a UUID was left out");
+            tracing::warn!(
+                code = crate::api::error::SyncError::Malformed { what: "record id" }.code(),
+                kind = kind.as_str(),
+                "a record whose id is not a UUID was left out"
+            );
             continue;
         };
         settled.push(match fields {

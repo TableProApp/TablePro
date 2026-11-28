@@ -317,11 +317,13 @@ impl KeyService {
         let Some(own) = own else {
             return Ok(Vec::new());
         };
+        let requesting = self.requesting_rows(txn).await?;
         let mut devices = Vec::new();
         for key_device in self.certified_devices(txn, own.av).await? {
             devices.push(AccountDevice {
                 key_device,
                 device: (Some(key_device) == this).then(|| self.device_row().clone()),
+                requested_by: requesting.get(&key_device).cloned(),
                 name: None,
                 platform: None,
                 added_at_us: None,

@@ -197,6 +197,7 @@ async fn run(pass: Arc<dyn Pass>, wake: Wake, stop: StopSignal, mut backoff: Bac
         match pass.pass(why).await {
             Ok(()) => backoff.succeeded(),
             Err(error) if retryable(&error) => {
+                tracing::warn!(code = error.code(), "sync pass failed; trying again after a backoff");
                 let wait = backoff.failed(retry_after_ms(&error));
                 pass.waiting(Some(wait));
                 tokio::select! {
@@ -207,7 +208,7 @@ async fn run(pass: Arc<dyn Pass>, wake: Wake, stop: StopSignal, mut backoff: Bac
                 wake.pass_soon(why);
             }
             Err(error) => {
-                tracing::debug!(code = error.code(), "sync pass ended; waiting for the next trigger");
+                tracing::warn!(code = error.code(), "sync pass failed; waiting for the next trigger");
             }
         }
     }
