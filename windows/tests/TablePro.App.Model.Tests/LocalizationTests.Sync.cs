@@ -33,7 +33,9 @@ public sealed partial class LocalizationTests
             .Concat(["SyncProviderOffSummary", "SyncProviderTableProSyncSummary", "SyncPasswordsEncrypted"])
             .Concat(["SyncPasswordsOffOnServer", "SyncUploadButton", "AccountTryAgain"]);
 
-        Assert.Empty(names.Where(name => !s_strings.Value.ContainsKey(name)));
+        var missing = names.Where(name => !s_strings.Value.ContainsKey(name)).ToList();
+
+        Assert.Empty(missing);
     }
 
     [Fact]
@@ -49,7 +51,8 @@ public sealed partial class LocalizationTests
         Assert.Contains("sync.network", codes);
         Assert.Contains("keys.recovery_key", codes);
         Assert.Contains("account.step_up_required", codes);
-        Assert.Empty(codes.Where(code => !s_strings.Value.ContainsKey("Error_" + code.Replace('.', '_'))));
+        var unworded = codes.Where(code => !s_strings.Value.ContainsKey("Error_" + code.Replace('.', '_'))).ToList();
+        Assert.Empty(unworded);
     }
 
     // A code as a match arm, a worded refusal's pair or a failure the FFI builds names it; a bare string is a detail.
