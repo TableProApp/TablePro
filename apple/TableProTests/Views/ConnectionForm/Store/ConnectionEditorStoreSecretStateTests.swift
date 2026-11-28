@@ -37,7 +37,7 @@ struct ConnectionEditorStoreSecretStateTests {
         connection: DatabaseConnection
     ) -> ConnectionEditorStore {
         let storage = ConnectionStorage(
-            fileURL: fixture.directory.appendingPathComponent("scripted-connections.json"),
+            fileURL: fixture.directory.appendingPathComponent("scripted", isDirectory: true).appendingPathComponent("connections.json"),
             userDefaults: fixture.suite.defaults,
             keychain: ScriptedKeychain(result)
         )
@@ -245,14 +245,13 @@ private extension AppServices {
             sshProfileStorage: sshProfileStorage,
             credentialProfileStorage: credentialProfileStorage,
             featureAccess: featureAccess,
-            syncMetadataStorage: syncMetadataStorage,
             favoritesExpansionState: favoritesExpansionState,
             linkedFolderWatcher: linkedFolderWatcher,
             queryHistoryManager: queryHistoryManager,
             dateFormattingService: dateFormattingService,
             copilotService: copilotService,
             mcpServerManager: mcpServerManager,
-            syncTracker: syncTracker,
+            syncJournal: syncJournal,
             welcomeRouter: welcomeRouter,
             telemetry: telemetry
         )

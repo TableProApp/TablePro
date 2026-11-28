@@ -41,10 +41,10 @@ private actor RecordingHistoryReader: QueryHistoryReading {
             return true
         }
 
-        if let cursor {
+        if case .local(let executedAt, let id)? = cursor {
             matching = matching.filter { entry in
-                entry.executedAt < cursor.executedAt
-                    || (entry.executedAt == cursor.executedAt && entry.id.uuidString < cursor.id.uuidString)
+                entry.executedAt < executedAt
+                    || (entry.executedAt == executedAt && entry.id.uuidString < id.uuidString)
             }
         }
 

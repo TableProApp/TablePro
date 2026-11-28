@@ -5,26 +5,6 @@ import SQLite3
 // write of this build's that reached the core before the app ended. Nothing is written when a row moved since the
 // mirror read it.
 internal extension SQLFavoriteStorage {
-    // The write runs only when `isStopped` says no here, on the store's actor, and SQLite asks it again as the write
-    // commits, so a stop that lands while the write waits for the store or for SQLite's lock turns the commit into a
-    // rollback and the write reports a failure.
-    func unlessStopped<Value: Sendable>(
-        _ isStopped: @escaping @Sendable () -> Bool,
-        _ write: @Sendable (isolated SQLFavoriteStorage) -> Value
-    ) -> Value? {
-        guard !isStopped(), let db else { return nil }
-        let check = Unmanaged.passRetained(CommitStop(isStopped)).toOpaque()
-        sqlite3_commit_hook(db, { context in
-            guard let context else { return 0 }
-            return Unmanaged<CommitStop>.fromOpaque(context).takeUnretainedValue().isStopped() ? 1 : 0
-        }, check)
-        defer {
-            sqlite3_commit_hook(db, nil, nil)
-            Unmanaged<CommitStop>.fromOpaque(check).release()
-        }
-        return write(self)
-    }
-
     func applyCoreRecords(
         favorites: [SQLFavorite],
         folders: [SQLFavoriteFolder],
@@ -131,13 +111,5 @@ internal extension SQLFavoriteStorage {
 
     private static func placeholders(count: Int) -> String {
         Array(repeating: "?", count: count).joined(separator: ",")
-    }
-}
-
-private final class CommitStop {
-    let isStopped: @Sendable () -> Bool
-
-    init(_ isStopped: @escaping @Sendable () -> Bool) {
-        self.isStopped = isStopped
     }
 }

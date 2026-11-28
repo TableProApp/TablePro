@@ -33,24 +33,22 @@ struct DriverOpenSecretReadTests {
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("driver-open-secrets-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: suite.defaults))
+        let tracker = SyncJournalRecorder()
         // Its own keychain, so the store's integrity reads stay out of the reads under test.
         let integrity = ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: InMemoryKeychain()))
         let connectionStorage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
             userDefaults: suite.defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: keychain,
             appEvents: AppEvents(),
             integrity: integrity
         )
         connections = connectionStorage
         profiles = CredentialProfileStorage(
-            fileURL: directory.appendingPathComponent("credentialProfiles.json"),
             keychain: keychain,
-            syncTracker: tracker,
-            connectionStorage: connectionStorage,
-            integrity: integrity
+            syncJournal: tracker.journal,
+            connectionStorage: connectionStorage
         )
     }
 

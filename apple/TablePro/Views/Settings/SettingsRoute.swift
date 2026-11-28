@@ -16,6 +16,7 @@ enum SettingsPage: CaseIterable, Hashable, Sendable {
     case accountFeatures
     case accountDevices
     case accountTeams
+    case accountEncryption
     case accountOffline
 
     var parent: SettingsPane {
@@ -27,7 +28,7 @@ enum SettingsPage: CaseIterable, Hashable, Sendable {
         case .filters, .queryHistory, .dataRewind: .data
         case .slashCommands: .ai
         case .mcpApprovals, .mcpTokens: .mcp
-        case .accountFeatures, .accountDevices, .accountTeams, .accountOffline: .account
+        case .accountFeatures, .accountDevices, .accountTeams, .accountEncryption, .accountOffline: .account
         }
     }
 
@@ -48,6 +49,7 @@ enum SettingsPage: CaseIterable, Hashable, Sendable {
         case .accountFeatures: String(localized: "Features")
         case .accountDevices: String(localized: "Devices")
         case .accountTeams: String(localized: "Teams")
+        case .accountEncryption: String(localized: "End-to-End Encryption")
         case .accountOffline: String(localized: "Offline File and License Key")
         }
     }
@@ -70,6 +72,7 @@ enum SettingsPage: CaseIterable, Hashable, Sendable {
         case .accountFeatures: "features"
         case .accountDevices: "devices"
         case .accountTeams: "teams"
+        case .accountEncryption: "encryption"
         case .accountOffline: "offline"
         }
     }
@@ -93,12 +96,15 @@ enum SettingsRoute: Hashable, Sendable {
     // A rejected bundle can carry the id of a loaded plugin, so it is told apart by its URL.
     case rejectedPlugin(URL)
     case aiProvider(UUID)
+    // A team's keys, by its scope name, with the name the Teams page listed it under.
+    case team(id: String, name: String)
 
     var pane: SettingsPane {
         switch self {
         case .page(let page): page.parent
         case .plugin, .rejectedPlugin: .plugins
         case .aiProvider: .ai
+        case .team: .account
         }
     }
 
@@ -113,12 +119,19 @@ enum SettingsRoute: Hashable, Sendable {
         case .plugin: String(localized: "Extension")
         case .rejectedPlugin(let url): url.deletingPathExtension().lastPathComponent
         case .aiProvider: String(localized: "AI Provider")
+        case .team(_, let name): name
         }
     }
 }
 
 extension SettingsRoute: SettingsDrillIdentifying {
-    var settingsDrillIdentifier: String? { page?.drillIdentifier }
+    var settingsDrillIdentifier: String? {
+        switch self {
+        case .page(let page): page.drillIdentifier
+        case .team(let id, _): "settings-drill-team-\(id)"
+        case .plugin, .rejectedPlugin, .aiProvider: nil
+        }
+    }
 }
 
 struct SettingsLocation: Hashable, Sendable {

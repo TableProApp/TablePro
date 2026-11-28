@@ -8,25 +8,27 @@ import os
 import TableProFFI
 import TableProLogRedaction
 
-// The core's query stores under `TablePro/Core/` (core ADR 0060 as amended): history.db holds the history, and
-// saved_queries.db the saved queries and their folders, the favourite tables and databases and the table folders.
-// Each opens on first use; a failed open is tried again on the next call.
+// The core's query stores under `TablePro/Core/`, on the core every store there shares (core ADR 0060 as amended): the
+// history in its own folder, and the saved queries and their folders, the favourite tables and databases and the table
+// folders in `saved_queries.db`. Each opens on first use; a failed open is tried again on the next call.
 internal actor CoreHistoryDatabase {
-    internal static let shared = CoreHistoryDatabase(
-        folder: AppStorageEnvironment.shared.supportDirectory.appendingPathComponent("Core", isDirectory: true)
-    )
+    internal static let shared = CoreHistoryDatabase(host: .shared)
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "CoreHistoryDatabase")
 
-    nonisolated internal let folder: URL
-    private let clientVersion: String
-    private var core: Core?
+    private let host: CoreStoreHost
     private var store: QueryHistoryStore?
-    private var savedQueryStore: SavedQueryDatabaseStore?
+    private var savedQueryStores: SavedQueryDatabaseStore?
 
+    nonisolated internal var folder: URL { host.folder }
+
+    internal init(host: CoreStoreHost) {
+        self.host = host
+    }
+
+    // A core of its own over `folder`, for a store nothing else opens.
     internal init(folder: URL, clientVersion: String = CoreHistoryDatabase.appVersion) {
-        self.folder = folder
-        self.clientVersion = clientVersion
+        self.init(host: CoreStoreHost(folder: folder, makeSecrets: { NoHistorySecrets() }, clientVersion: clientVersion))
     }
 
     nonisolated internal static var appVersion: String {
@@ -36,11 +38,23 @@ internal actor CoreHistoryDatabase {
     internal func history() async throws -> QueryHistoryStore {
         if let store { return store }
         do {
-            let opened = try await openedCore().history()
+            let opened = try await host.core().history()
             store = opened
             return opened
         } catch {
             Self.logger.error("The core's history store did not open: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+            throw error
+        }
+    }
+
+    private func savedQueryDatabase() async throws -> SavedQueryDatabaseStore {
+        if let savedQueryStores { return savedQueryStores }
+        do {
+            let opened = try await host.core().savedQueryDatabase()
+            savedQueryStores = opened
+            return opened
+        } catch {
+            Self.logger.error("The core's saved queries store did not open: \(LogRedaction.publicDescription(of: error), privacy: .public)")
             throw error
         }
     }
@@ -56,34 +70,6 @@ internal actor CoreHistoryDatabase {
     internal func tableFolders() async throws -> TableFolderStore {
         try await savedQueryDatabase().tableFolders()
     }
-
-    private func savedQueryDatabase() async throws -> SavedQueryDatabaseStore {
-        if let savedQueryStore { return savedQueryStore }
-        do {
-            let opened = try await openedCore().savedQueryDatabase()
-            savedQueryStore = opened
-            return opened
-        } catch {
-            Self.logger.error("The core's saved query store did not open: \(LogRedaction.publicDescription(of: error), privacy: .public)")
-            throw error
-        }
-    }
-
-    private func openedCore() throws -> Core {
-        if let core { return core }
-        // Private as the core keeps its own folders, since history.db holds the SQL a person ran.
-        try FileManager.default.createDirectory(
-            at: folder,
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700]
-        )
-        let opened = try Core(
-            config: HostConfig(clientVersion: clientVersion, storageDir: folder.path),
-            secrets: NoHistorySecrets()
-        )
-        core = opened
-        return opened
-    }
 }
 
 // A whole-store write the core refused because the store moved since it was read (storage.import_outdated).
@@ -95,7 +81,7 @@ internal func refusingOutdated(_ work: () async throws -> Void) async throws {
     }
 }
 
-// Nothing in the query stores is a secret, and this core is opened for those files alone.
+// Nothing in the query stores is a secret, and a core opened for them alone keeps none.
 private final class NoHistorySecrets: HostSecrets, Sendable {
     func load(connectionId: String, kind: SecretKindTag) throws -> String? { nil }
 

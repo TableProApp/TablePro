@@ -1,175 +1,77 @@
-import Combine
 import Foundation
 @testable import TablePro
+import TableProFFI
 import TableProSyncTransport
-import TableProTestSupport
 import Testing
 
 @MainActor
 struct SyncProviderPolicyTests {
-    @Test("No key leaves the person's switch as it is")
-    func absentKeyKeepsTheSwitch() {
+    @Test("No key leaves the person's provider as it is", arguments: SyncProviderSetting.allCases)
+    func absentKeyKeepsTheProvider(provider: SyncProviderSetting) {
         let open = ManagedPolicySnapshot()
 
-        #expect(SyncProviderPolicy.settledEnabled(true, under: open))
-        #expect(!SyncProviderPolicy.settledEnabled(false, under: open))
+        #expect(SyncProviderPolicy.settledProvider(provider, under: open) == provider)
         #expect(SyncProviderPolicy.iCloud(open) == .init(isAllowed: true, isLocked: false))
         #expect(SyncProviderPolicy.disableReason(open) == nil)
+        #expect(SyncProviderPolicy.choices(open).providers == [.off, .icloud, .tableproSync])
     }
 
-    @Test("A profile that names only iCloud turns sync on as the person's switch would, and locks it")
+    @Test("A profile that names only iCloud turns iCloud on as the person would, and locks it")
     func forcedICloudTurnsSyncOn() {
-        for list in [["icloud"], ["icloud", "tablepro-sync"]] {
-            let forced = ManagedPolicySnapshot(personalSyncProvider: list)
+        let forced = ManagedPolicySnapshot(personalSyncProvider: ["icloud"])
 
-            #expect(SyncProviderPolicy.settledEnabled(false, under: forced), "\(list)")
-            #expect(SyncProviderPolicy.iCloud(forced) == .init(isAllowed: true, isLocked: true), "\(list)")
-        }
+        #expect(SyncProviderPolicy.settledProvider(.off, under: forced) == .iCloud)
+        #expect(SyncProviderPolicy.settledProvider(.iCloud, under: forced) == .iCloud)
+        // Data on TablePro Sync goes back only through the move back the person confirms.
+        #expect(SyncProviderPolicy.settledProvider(.tableproSync, under: forced) == .tableproSync)
+        #expect(SyncProviderPolicy.iCloud(forced) == .init(isAllowed: true, isLocked: true))
     }
 
-    @Test("iCloud taken away turns sync off and locks the switch, whichever key does it")
-    func iCloudTakenAwayTurnsSyncOff() {
+    @Test("A profile that names only TablePro Sync stops iCloud and keeps a Mac that has not moved off until it does")
+    func forcedTableProSync() {
+        let forced = ManagedPolicySnapshot(personalSyncProvider: ["tablepro-sync"])
+
+        #expect(SyncProviderPolicy.settledProvider(.iCloud, under: forced) == .off)
+        #expect(SyncProviderPolicy.settledProvider(.off, under: forced) == .off)
+        #expect(SyncProviderPolicy.settledProvider(.tableproSync, under: forced) == .tableproSync)
+        #expect(SyncProviderPolicy.iCloud(forced) == .init(isAllowed: false, isLocked: true))
+        #expect(SyncProviderPolicy.disableReason(forced) == .managedPolicy)
+    }
+
+    @Test("iCloud taken away turns it off and leaves TablePro Sync where the profile allows it")
+    func iCloudTakenAway() {
         let profiles = [
             ManagedPolicySnapshot(personalSyncProvider: ["off"]),
-            ManagedPolicySnapshot(personalSyncProvider: ["tablepro-sync"]),
             ManagedPolicySnapshot(personalSyncProvider: []),
             ManagedPolicySnapshot(iCloudSyncAllowed: false),
-            ManagedPolicySnapshot(personalSyncProvider: ["icloud"], iCloudSyncAllowed: false)
+            ManagedPolicySnapshot(personalSyncProvider: ["icloud"], iCloudSyncAllowed: false),
+            ManagedPolicySnapshot(personalSyncProvider: ["off", "tablepro-sync"])
         ]
         for profile in profiles {
-            #expect(!SyncProviderPolicy.settledEnabled(true, under: profile), "\(profile)")
-            #expect(SyncProviderPolicy.iCloud(profile) == .init(isAllowed: false, isLocked: true), "\(profile)")
+            #expect(SyncProviderPolicy.settledProvider(.iCloud, under: profile) == .off, "\(profile)")
+            #expect(!SyncProviderPolicy.iCloud(profile).isAllowed, "\(profile)")
             #expect(SyncProviderPolicy.disableReason(profile) == .managedPolicy, "\(profile)")
         }
+        let iCloudOff = ManagedPolicySnapshot(iCloudSyncAllowed: false)
+        #expect(SyncProviderPolicy.settledProvider(.tableproSync, under: iCloudOff) == .tableproSync)
+        #expect(SyncProviderPolicy.iCloud(iCloudOff) == .init(isAllowed: false, isLocked: false))
     }
 
-    @Test("Off and iCloud both allowed leave the choice to the person")
-    func bothAllowedLeaveTheChoice() {
+    @Test("TablePro Sync taken away turns it off, and never moves the Mac to iCloud")
+    func tableProSyncTakenAway() {
         let both = ManagedPolicySnapshot(personalSyncProvider: ["off", "icloud"])
 
-        #expect(SyncProviderPolicy.settledEnabled(true, under: both))
-        #expect(!SyncProviderPolicy.settledEnabled(false, under: both))
+        #expect(SyncProviderPolicy.settledProvider(.tableproSync, under: both) == .off)
+        #expect(SyncProviderPolicy.settledProvider(.iCloud, under: both) == .iCloud)
         #expect(SyncProviderPolicy.iCloud(both) == .init(isAllowed: true, isLocked: false))
     }
-}
 
-@MainActor
-struct SyncCoordinatorPolicyTests {
-    private let environment: SyncTestEnvironment
+    @Test("A profile whose list is empty leaves no provider, whatever was chosen")
+    func emptyListLeavesNone() {
+        let none = ManagedPolicySnapshot(personalSyncProvider: [])
 
-    init() throws {
-        environment = try SyncTestEnvironment(label: "sync-policy")
-        var settings = SyncSettings.default
-        settings.enabled = true
-        AppSettingsStorage(userDefaults: environment.defaults).saveSync(settings)
+        #expect(SyncProviderPolicy.choices(none).providers.isEmpty)
+        #expect(SyncProviderPolicy.choices(none).locked)
+        #expect(SyncProviderPolicy.settledProvider(.tableproSync, under: none) == .off)
     }
-
-    @Test("A profile that leaves iCloud out keeps sync off from launch, with the organization as the reason")
-    func managedAtLaunch() async throws {
-        let transport = ScriptedSyncTransport(zoneID: SyncTestEnvironment.zoneID)
-        let coordinator = environment.makeCoordinator(transport: transport, policyGate: { .managedPolicy })
-
-        coordinator.start()
-        await coordinator.sync(.userRequest)
-        coordinator.disableSync()
-
-        #expect(coordinator.syncStatus == .disabled(.managedPolicy))
-        #expect(await transport.pullCount == 0)
-        #expect(await transport.pushCount == 0)
-    }
-
-    @Test("A profile that arrives during a run stops it at once: nothing more is downloaded or kept")
-    func stopsARunInFlight() async throws {
-        let gate = PolicyGate()
-        let transport = ScriptedSyncTransport(zoneID: SyncTestEnvironment.zoneID)
-        let coordinator = environment.makeCoordinator(transport: transport, policyGate: { gate.reason })
-        // The first read of the zone comes before the run's upload and download.
-        await transport.whileZoneIsRead {
-            gate.reason = .managedPolicy
-        }
-
-        await coordinator.sync(.userRequest)
-
-        #expect(gate.reason == .managedPolicy)
-        #expect(await transport.pullCount == 0)
-        #expect(await transport.pushCount == 0)
-        #expect(coordinator.syncStatus == .disabled(.managedPolicy))
-        #expect(coordinator.lastSyncDate == nil)
-    }
-
-    @Test("A run the organization stopped keeps nothing, even when iCloud is allowed again before it goes on")
-    func stoppedRunStaysStoppedWhenAllowedAgain() async throws {
-        let gate = PolicyGate()
-        let transport = ScriptedSyncTransport(zoneID: SyncTestEnvironment.zoneID)
-        let coordinator = environment.makeCoordinator(transport: transport, policyGate: { gate.reason })
-        await transport.whileZoneIsRead {
-            guard !gate.fired else { return }
-            gate.fired = true
-            gate.reason = .managedPolicy
-            coordinator.disableSync()
-            gate.reason = nil
-        }
-
-        await coordinator.sync(.userRequest)
-
-        #expect(gate.fired)
-        #expect(await transport.pullCount == 0)
-        #expect(await transport.pushCount == 0)
-        #expect(coordinator.lastSyncDate == nil)
-    }
-
-    @Test("A stop followed at once by an allow still stops sync before it waits for the switch again")
-    func stopThenAllowStillStops() async throws {
-        let changes = PassthroughSubject<DisableReason?, Never>()
-        var settings = SyncSettings.default
-        settings.enabled = false
-        AppSettingsStorage(userDefaults: environment.defaults).saveSync(settings)
-        let coordinator = environment.makeCoordinator(
-            transport: ScriptedSyncTransport(zoneID: SyncTestEnvironment.zoneID),
-            policyChanges: changes.eraseToAnyPublisher()
-        )
-        coordinator.start()
-        let seen = StatusLog()
-        let watching = coordinator.$syncStatus.sink { seen.statuses.append($0) }
-
-        changes.send(.managedPolicy)
-        changes.send(nil)
-        try await waitUntil { seen.statuses.count >= 3 && seen.statuses.last == .disabled(.userDisabled) }
-        watching.cancel()
-
-        #expect(seen.statuses.contains(.disabled(.managedPolicy)))
-    }
-
-    @Test("Allowed again, sync waits for the switch")
-    func allowedAgainFollowsTheSwitch() async throws {
-        let gate = PolicyGate()
-        gate.reason = .managedPolicy
-        let changes = PassthroughSubject<DisableReason?, Never>()
-        var settings = SyncSettings.default
-        settings.enabled = false
-        AppSettingsStorage(userDefaults: environment.defaults).saveSync(settings)
-        let coordinator = environment.makeCoordinator(
-            transport: ScriptedSyncTransport(zoneID: SyncTestEnvironment.zoneID),
-            policyGate: { gate.reason },
-            policyChanges: changes.eraseToAnyPublisher()
-        )
-        coordinator.start()
-
-        #expect(coordinator.syncStatus == .disabled(.managedPolicy))
-        gate.reason = nil
-        changes.send(nil)
-
-        try await waitUntil { coordinator.syncStatus == .disabled(.userDisabled) }
-    }
-}
-
-@MainActor
-private final class PolicyGate {
-    var reason: DisableReason?
-    var fired = false
-}
-
-@MainActor
-private final class StatusLog {
-    var statuses: [SyncStatus] = []
 }

@@ -27,6 +27,8 @@ internal final class SettingsWindowModels {
     )
 
     internal private(set) lazy var account = AccountSettingsModel(services: .shared)
+
+    internal private(set) lazy var accountKeys = AccountKeysModel(environment: .live)
 }
 
 // A class, so a pane entry holding it compares equal across renders and keeps its body.

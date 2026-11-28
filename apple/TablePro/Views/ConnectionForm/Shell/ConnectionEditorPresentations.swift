@@ -90,8 +90,8 @@ struct ConnectionEditorPresentations: ViewModifier {
     static func alertsSaveError(_ error: ConnectionEditorSaveError?) -> Bool {
         guard let error else { return false }
         switch error {
-        case .invalid: return false
-        case .libraryUnreadable, .recordMissing, .keychainWriteFailed, .recordWriteFailed: return true
+        case .invalid, .teamPublishInFlight: return false
+        case .libraryUnreadable, .recordMissing, .keychainWriteFailed, .recordWriteFailed, .teamPublish: return true
         }
     }
 

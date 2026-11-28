@@ -70,7 +70,7 @@ struct QueryHistoryEntry: Identifiable, Codable, Hashable, Sendable {
     }
 
     var cursor: QueryHistoryCursor {
-        QueryHistoryCursor(executedAt: executedAt, id: id)
+        .local(executedAt: executedAt, id: id)
     }
 
     var hasKnownRowCount: Bool { rowCount >= 0 }

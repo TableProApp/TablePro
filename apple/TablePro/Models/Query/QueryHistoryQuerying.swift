@@ -61,9 +61,11 @@ struct QueryHistoryFilter: Sendable, Equatable {
     }
 }
 
-struct QueryHistoryCursor: Sendable, Equatable {
-    let executedAt: Date
-    let id: UUID
+enum QueryHistoryCursor: Sendable, Equatable {
+    // After a run of `query_history.db`, by time then id.
+    case local(executedAt: Date, id: UUID)
+    // After a run of the core's history, as its page named it: pinned runs first, then by time and row.
+    case core(pinned: Bool, executedAtSecs: Int64, row: Int64)
 }
 
 struct QueryHistoryPage: Sendable {

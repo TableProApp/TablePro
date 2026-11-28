@@ -166,6 +166,11 @@ internal final class TabRouter {
             /// installed for the whole of a connect, so asking the driver restarted one in flight.
             if let host = existing.contentViewController as? MainSplitViewController {
                 if host.workspaces.contains(id) {
+                    // A team row the team moved since dials where it points now, never where the window last dialed.
+                    if let transientConnection, let workspace = host.workspaces.workspace(for: id),
+                       ConnectionWindowPhaseMachine.allowsManualConnect(phase: workspace.phase) {
+                        workspace.payloadConnection = transientConnection
+                    }
                     host.reconnectWorkspaceIfIdle(id, adoptsSSHProfileEdits: false)
                 } else {
                     // Dialed by a workspace of its own, so a failure lands inline in its pane, not as an alert.
@@ -185,9 +190,14 @@ internal final class TabRouter {
         }
         let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
         if transientConnection != nil {
+            // The seeded entry reads as a connect in flight, so a window opened over it never dials on its own.
             DatabaseManager.shared.registerPendingSession(connection)
+            WindowManager.shared.openTab(payload: payload, autoConnect: false)
+            (WindowManager.shared.window(for: id)?.contentViewController as? MainSplitViewController)?
+                .reconnectWorkspace(id, adoptsSSHProfileEdits: false)
+        } else {
+            WindowManager.shared.openTab(payload: payload, autoConnect: true)
         }
-        WindowManager.shared.openTab(payload: payload, autoConnect: true)
         AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         WindowOpener.shared.closeWelcome()
     }

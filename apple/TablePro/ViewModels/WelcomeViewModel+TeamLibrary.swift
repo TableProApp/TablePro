@@ -2,25 +2,22 @@
 //  WelcomeViewModel+TeamLibrary.swift
 //  TablePro
 //
-//  Publishing connections to the team library. Credentials are never sent: the export envelope strips passwords,
-//  passphrases, TOTP secrets and secure plugin fields.
-//
 
 import AppKit
-import TableProImport
 
 extension WelcomeViewModel {
     func publishConnectionsToTeamLibrary(_ connectionsToPublish: [DatabaseConnection], teamID: String) {
         guard !connectionsToPublish.isEmpty else { return }
 
-        let sync = TeamLibrarySync.shared
-        let destination = sync.destination(teamID)
+        let library = TeamLibrary.shared
+        let destination = library.destination(teamID)
+        let syncsPasswords = library.writableTeams.first { $0.id == teamID }?.syncsPasswords ?? true
         Task { @MainActor in
             let outcome = await Self.publishConnections(
                 connectionsToPublish,
                 to: destination,
-                through: sync,
-                confirm: Self.confirmPublishToTeamLibrary
+                through: library,
+                confirm: { await Self.confirmPublishToTeamLibrary($0, syncsPasswords: syncsPasswords) }
             )
             TeamLibraryPublishing.present(outcome) {
                 self.activeSheet = .teamLibraryConflicts
@@ -28,54 +25,60 @@ extension WelcomeViewModel {
         }
     }
 
+    // The form opens on the team's copy with what its envelopes hold, so the person sees the password the team uses.
+    func editTeamConnection(rowID: UUID) {
+        let library = TeamLibrary.shared
+        guard let original = library.content.connection(rowID: rowID), original.canWrite else { return }
+        let destination = library.destination(original.teamID)
+        Task { @MainActor in
+            let secrets = await library.secrets(for: original)
+            TeamCopyEditStage.shared.stage(TeamCopyTarget(original: original, secrets: secrets, destination: destination))
+            WindowOpener.shared.openTeamConnectionForm(teamID: original.teamID, itemID: original.id)
+        }
+    }
+
     func presentTeamLibraryConflicts() {
-        guard !TeamLibrarySync.shared.conflicts.isEmpty else { return }
+        guard !TeamLibrary.shared.conflicts.conflicts.isEmpty else { return }
         activeSheet = .teamLibraryConflicts
     }
 
     static func publishConnections(
         _ connections: [DatabaseConnection],
-        to teamID: String,
-        through sync: TeamLibrarySync,
-        exporter: ConnectionBundleExporter = ConnectionBundleExporter(),
-        confirm: @MainActor ([DatabaseConnection]) async -> Bool
-    ) async -> TeamLibraryPublishOutcome {
-        await publishConnections(connections, to: sync.destination(teamID), through: sync, exporter: exporter, confirm: confirm)
-    }
-
-    static func publishConnections(
-        _ connections: [DatabaseConnection],
         to destination: TeamLibraryDestination,
-        through sync: TeamLibrarySync,
-        exporter: ConnectionBundleExporter = ConnectionBundleExporter(),
+        through library: TeamLibrary,
         confirm: @MainActor ([DatabaseConnection]) async -> Bool
     ) async -> TeamLibraryPublishOutcome {
         guard await confirm(connections) else { return .declined }
-        let plan = connections.map {
-            TeamLibraryPublishPlan.Connection(id: $0.id, settings: exporter.teamShareableSettings(for: $0))
-        }
         do throws(TeamLibraryPublishError) {
-            return .finished(try await sync.publishConnections(plan, to: destination))
+            return .finished(try await library.publishConnections(connections, to: destination))
         } catch {
             return .failed(error)
         }
     }
 
-    private static func confirmPublishToTeamLibrary(_ connections: [DatabaseConnection]) async -> Bool {
+    private static func confirmPublishToTeamLibrary(_ connections: [DatabaseConnection], syncsPasswords: Bool) async -> Bool {
         await AlertHelper.confirm(
             title: teamLibraryPublishConfirmationTitle(for: connections),
-            message: teamLibraryPublishConfirmationMessage,
+            message: teamLibraryPublishConfirmationMessage(syncsPasswords: syncsPasswords),
             confirmButton: String(localized: "Publish")
         )
     }
 
-    static var teamLibraryPublishConfirmationMessage: String {
-        String(
-            localized: """
-                Everyone on your team will see the host, port, user, database and SSH settings. \
-                Publishing again updates the team's copy. Passwords are not included.
-                """
-        )
+    static func teamLibraryPublishConfirmationMessage(syncsPasswords: Bool) -> String {
+        syncsPasswords
+            ? String(
+                localized: """
+                    Everyone on your team will see the host, port, user, database and SSH settings, and can use the \
+                    passwords, which are encrypted so only the team's members can read them. Publishing again \
+                    updates the team's copy.
+                    """
+            )
+            : String(
+                localized: """
+                    Everyone on your team will see the host, port, user, database and SSH settings. Publishing again \
+                    updates the team's copy. Your team doesn't sync passwords, so they are not included.
+                    """
+            )
     }
 
     static func teamLibraryPublishConfirmationTitle(for connections: [DatabaseConnection]) -> String {

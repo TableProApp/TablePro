@@ -18,26 +18,25 @@ struct SafeModeMigrationTests {
     private let pool = EphemeralDefaultsPool()
     private let storage: ConnectionStorage
     private let defaults: UserDefaults
-    private let tracker: SyncChangeTracker
+    private let tracker: SyncJournalRecorder
 
     init() throws {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
-            .appendingPathComponent("connections_\(unique).json")
+            .appendingPathComponent("connections_\(unique)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         try? FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
         let defaults = try pool.make().defaults
-        let syncDefaults = try pool.make().defaults
         self.defaults = defaults
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        self.tracker = SyncChangeTracker(metadataStorage: metadata)
+        self.tracker = SyncJournalRecorder()
         self.storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: InMemoryKeychain()
         )
     }
@@ -149,7 +148,7 @@ struct SafeModeMigrationTests {
         )
 
         storage.addConnection(connection)
-        tracker.clearDirty(.connection, id: id.uuidString)
+        tracker.clearDirty(type: .connection)
 
         let manager = DatabaseManager(connectionStorage: storage)
         manager.injectSession(ConnectionSession(connection: connection), for: id)
@@ -163,7 +162,7 @@ struct SafeModeMigrationTests {
         #expect(session?.safeModeLevel == .readOnly)
         #expect(session?.connection.safeModeLevel == .readOnly)
         #expect(saved?.safeModeLevel == .readOnly)
-        #expect(tracker.dirtyRecords(for: .connection).contains(id.uuidString))
+        #expect(tracker.dirtyIds(for: .connection).contains(id.uuidString))
     }
 
     @Test("resolvedConnectionDefinition prefers the persisted safe mode over a stale caller copy")
@@ -270,7 +269,7 @@ struct SafeModeMigrationTests {
         )
 
         storage.addConnection(connection, password: "secret")
-        tracker.clearDirty(.connection, id: id.uuidString)
+        tracker.clearDirty(type: .connection)
         defer { storage.deletePassword(for: id) }
 
         let updated = storage.updateSafeModeLevel(.safeModeFull, for: id)
@@ -278,7 +277,7 @@ struct SafeModeMigrationTests {
         #expect(updated)
         #expect(storage.loadPassword(for: id) == "secret")
         #expect(storage.loadConnection(id: id)?.safeModeLevel == .safeModeFull)
-        #expect(tracker.dirtyRecords(for: .connection).contains(id.uuidString))
+        #expect(tracker.dirtyIds(for: .connection).contains(id.uuidString))
     }
 
     @Test("updateSafeModeLevel skips sync dirtiness for local-only connections")
@@ -297,13 +296,13 @@ struct SafeModeMigrationTests {
         )
 
         storage.addConnection(connection)
-        tracker.clearDirty(.connection, id: id.uuidString)
+        tracker.clearDirty(type: .connection)
 
         let updated = storage.updateSafeModeLevel(.readOnly, for: id)
 
         #expect(updated)
         #expect(storage.loadConnection(id: id)?.safeModeLevel == .readOnly)
-        #expect(!tracker.dirtyRecords(for: .connection).contains(id.uuidString))
+        #expect(!tracker.dirtyIds(for: .connection).contains(id.uuidString))
     }
 
     // MARK: - Live Session Reconciliation

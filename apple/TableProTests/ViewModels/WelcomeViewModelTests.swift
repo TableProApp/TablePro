@@ -27,7 +27,7 @@ final class WelcomeViewModelTests {
         syncSuite = try EphemeralDefaults()
         defaults = suite.defaults
         syncDefaults = syncSuite.defaults
-        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults))
+        let tracker = SyncJournalRecorder()
         connectionFileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("welcome-\(unique)", isDirectory: true)
@@ -39,18 +39,17 @@ final class WelcomeViewModelTests {
         let connectionStorage = ConnectionStorage(
             fileURL: connectionFileURL,
             userDefaults: defaults,
-            syncTracker: tracker
+            syncJournal: tracker.journal
         )
         self.connectionStorage = connectionStorage
         // The parameter is an @escaping @autoclosure: `self.connectionStorage` would capture self.
         groupStorage = GroupStorage(
-            userDefaults: defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             connectionStorage: connectionStorage
         )
         welcomeRouter = WelcomeRouter()
         recents = RecentConnectionsStore(defaults: defaults, appEvents: AppEvents())
-        preferences = ConnectionListPreferences(defaults: defaults, appEvents: AppEvents())
+        preferences = ConnectionListPreferences(defaults: defaults, connectionStorage: connectionStorage, appEvents: AppEvents())
         viewModel = makeViewModel()
     }
 
@@ -96,14 +95,13 @@ final class WelcomeViewModelTests {
             sshProfileStorage: live.sshProfileStorage,
             credentialProfileStorage: live.credentialProfileStorage,
             featureAccess: live.featureAccess,
-            syncMetadataStorage: live.syncMetadataStorage,
             favoritesExpansionState: live.favoritesExpansionState,
             linkedFolderWatcher: live.linkedFolderWatcher,
             queryHistoryManager: live.queryHistoryManager,
             dateFormattingService: live.dateFormattingService,
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
-            syncTracker: live.syncTracker,
+            syncJournal: live.syncJournal,
             welcomeRouter: welcomeRouter,
             telemetry: live.telemetry
         )
@@ -823,11 +821,9 @@ final class WelcomeViewModelTests {
         #expect(connectionStorage.loadConnection(id: moving.id)?.groupId == nil)
     }
 
-    // Two projects over the suite the group store reads its project ids from.
+    // Two projects in the library the group store reads its project ids from.
     private func makeProjects() throws -> (acme: ConnectionProject, globex: ConnectionProject) {
         let projects = ProjectStorage(
-            userDefaults: defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults)),
             connectionStorage: self.connectionStorage,
             groupStorage: self.groupStorage,
             appEvents: AppEvents()
@@ -1035,10 +1031,8 @@ final class WelcomeViewModelTests {
         #expect(viewModel.connections.map(\.id) == [connection.id])
 
         let directory = connectionFileURL.deletingLastPathComponent()
-        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
-        defer {
-            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
-        }
+        try LibraryWriteRefusal.set(true, in: directory)
+        defer { try? LibraryWriteRefusal.set(false, in: directory) }
 
         connectionStorage.invalidateCache()
         viewModel.connectionsToDelete = [connection]

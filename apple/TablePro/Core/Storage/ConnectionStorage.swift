@@ -23,49 +23,54 @@ final class ConnectionStorage {
     private let migratedToFileKey = "com.TablePro.connectionsMigratedToFile"
     private let defaults: UserDefaults
     private static let sshRoutePublisherKey = "com.TablePro.sshRoutePublisherId"
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
     private let appSettingsProvider: () -> AppSettingsStorage
 
-    private var cachedConnections: [DatabaseConnection]?
+    // The library's revision this store last recorded standing for.
+    private var revisionSeen = -1
 
     private(set) var lastLoadFailed = false
-    private(set) var fileReadCount = 0
-    private(set) var fileWriteCount = 0
+    var fileReadCount: Int { library.readCount }
+    var fileWriteCount: Int { library.writeCount }
 
-    // False once something else edited the file, so a connection's password source does not run.
-    var storeIsTrusted: Bool { file.isTrusted }
+    // False once something else edited the store, so a connection's password source does not run.
+    var storeIsTrusted: Bool { library.isTrusted }
 
     // Records this build cannot read; what belongs to them is kept. Loads first, as `isLibraryUnreadable` does.
     var unreadableConnectionIds: Set<UUID> {
         _ = loadConnections()
-        return file.unreadableIds
+        return library.unreadableIds
     }
 
-    private let file: IntegrityStampedFileStore<StoredConnection>
-    private var fileURL: URL { file.fileURL }
+    // The groups, tags and favourites share it, since the core writes the library in one commit.
+    let library: CoreLibraryStore
+    private var fileURL: URL { library.mirror.file.fileURL }
 
     private let keychain: any KeychainStoring
+
+    // A team library row is never saved, so what it signs in with is opened from the team's envelopes at connect and
+    // read here when the Keychain holds no item for it, in memory only. A form's Test stages its own items, which win.
+    private var sharedRowSecrets: [String: String] = [:]
 
     private let appEventsProvider: () -> AppEvents
 
     init(
         fileURL: URL = ConnectionStorage.defaultFileURL(),
         userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        syncTracker: SyncChangeTracker = .shared,
+        syncJournal: SyncHostJournal = .shared,
         appSettings: @escaping @autoclosure () -> AppSettingsStorage = .shared,
         keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain,
         appEvents: @escaping @autoclosure () -> AppEvents = .shared,
         integrity: ConnectionStoreIntegrity = .shared
     ) {
-        self.file = IntegrityStampedFileStore(
-            fileURL: fileURL,
-            label: "connections.json",
-            logger: Self.logger,
-            userSaveEstablishesTrust: true,
+        self.library = CoreLibraryStore(
+            legacyFileURL: fileURL,
+            defaults: userDefaults,
+            keychain: keychain,
             integrity: integrity
         )
         self.defaults = userDefaults
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
         self.appSettingsProvider = appSettings
         self.keychain = keychain
         self.appEventsProvider = appEvents
@@ -96,29 +101,17 @@ final class ConnectionStorage {
     // MARK: - Connection CRUD
 
     func loadConnections() -> [DatabaseConnection] {
-        if let cached = cachedConnections { return cached }
-
-        fileReadCount += 1
-        guard let storedConnections = file.load() else {
+        guard let image = library.current() else {
             lastLoadFailed = true
             return []
         }
         lastLoadFailed = false
+        guard library.revision != revisionSeen else { return image.connections }
+        revisionSeen = library.revision
 
-        let connections = storedConnections.map { stored in
-            stored.toConnection()
-        }
-        syncTracker.recordConnectionStanding(
-            syncing: Set(connections.filter(\.participatesInSync).map(\.id)),
-            keptOff: Set(connections.filter { !$0.participatesInSync }.map(\.id)),
-            unreadable: file.unreadableIds
-        )
-
+        let connections = image.connections
         let migrated = Self.numberingUnrankedGroups(connections)
-        if migrated != connections, storeIsTrusted {
-            persist(migrated)
-        }
-        cachedConnections = migrated
+        guard migrated != connections, storeIsTrusted, persist(migrated, byUser: false) else { return connections }
         return migrated
     }
 
@@ -132,7 +125,7 @@ final class ConnectionStorage {
         return lastLoadFailed
     }
 
-    // False refuses dependent writes (sync marks, keychain items), or a password goes while its record stays.
+    // False refuses dependent writes (journal entries, keychain items), or a password goes while its record stays.
     // `byUser` false is a write the app makes itself, which never clears a failed integrity check.
     // `removingUnreadable` drops records this build cannot read, by id, as a deletion another device made does.
     @discardableResult
@@ -161,21 +154,57 @@ final class ConnectionStorage {
         removingSecrets: Bool = false,
         removingUnreadable removedIds: Set<UUID> = []
     ) -> Bool {
-        guard file.save(
-            connections.map { StoredConnection(from: $0) },
+        guard var image = library.current() else { return false }
+        image.connections = connections
+        return library.commit(
+            image,
             byUser: byUser,
             removingSecrets: removingSecrets,
             removingUnreadable: removedIds
-        ) else {
-            return false
-        }
-        fileWriteCount += 1
-        cachedConnections = nil
-        return true
+        )
     }
 
+    // Reads the stores again, so a change another build made to them since is taken in.
     func invalidateCache() {
-        cachedConnections = nil
+        library.invalidate()
+    }
+
+    // After a sync pass, what the core's engine wrote into the library.
+    func readCoreWrites() {
+        let before = library.current()
+        guard library.readCoreWrites() else { return }
+        if let before, let after = library.current() {
+            handOverPulledProfileDeletions(before: before, after: after)
+        }
+        appEventsProvider().connectionUpdated.send(nil)
+    }
+
+    // A profile another device deleted hands its settings and secrets to the connections here still using it, as that
+    // device did for its own: a Local only connection gets no update from it, and a password that does not sync stays
+    // behind. The pull removed the record and left the profile's Keychain items for this.
+    private func handOverPulledProfileDeletions(before: LibraryImage, after: LibraryImage) {
+        let held = library.unreadableProfileIds
+        let sshKept = Set(after.sshProfiles.map(\.id)).union(held)
+        let credentialsKept = Set(after.credentialProfiles.map(\.id)).union(held)
+        let goneSSH = before.sshProfiles.filter { !sshKept.contains($0.id) }
+        let goneCredentials = before.credentialProfiles.filter { !credentialsKept.contains($0.id) }
+        guard !goneSSH.isEmpty || !goneCredentials.isEmpty else { return }
+        let sshProfiles = SSHProfileStorage(keychain: keychain, syncJournal: syncJournal, connectionStorage: self)
+        for profile in goneSSH {
+            guard sshProfiles.unlinkConnections(fromProfile: profile, byUser: false) else {
+                Self.logger.error("Kept SSH profile \(profile.id.uuidString, privacy: .public)'s secrets: its connections could not take them")
+                continue
+            }
+            sshProfiles.deleteSecrets(for: profile.id)
+        }
+        let credentialProfiles = CredentialProfileStorage(keychain: keychain, syncJournal: syncJournal, connectionStorage: self)
+        for profile in goneCredentials {
+            guard credentialProfiles.unlinkConnections(from: profile, byUser: false) else {
+                Self.logger.error("Kept credential profile \(profile.id.uuidString, privacy: .public)'s secrets: its connections could not take them")
+                continue
+            }
+            credentialProfiles.deleteSecrets(for: profile)
+        }
     }
 
     @discardableResult
@@ -189,7 +218,7 @@ final class ConnectionStorage {
             return false
         }
         if connection.participatesInSync {
-            syncTracker.markDirty(.connection, id: connection.id.uuidString)
+            syncJournal.recorded(.connection, written: [connection.id.uuidString])
         }
 
         if let password = password, !password.isEmpty {
@@ -235,7 +264,7 @@ final class ConnectionStorage {
         }
 
         // A record this build cannot read keeps its id, so the import leaves it alone.
-        var knownIds = Set(connections.map(\.id)).union(file.unreadableIds)
+        var knownIds = Set(connections.map(\.id)).union(library.unreadableIds)
         var added: [DatabaseConnection] = []
         for incoming in adding {
             guard knownIds.insert(incoming.id).inserted else { continue }
@@ -256,21 +285,22 @@ final class ConnectionStorage {
         let dirtyIds = (replaced + added)
             .filter(\.participatesInSync)
             .map { $0.id.uuidString }
-        syncTracker.markDirty(.connection, ids: dirtyIds)
+        syncJournal.recorded(.connection, written: dirtyIds)
         appEventsProvider().connectionUpdated.send(nil)
         return ConnectionImportWrite(added: added.map(\.id), replaced: replaced.map(\.id))
     }
 
-    func updateConnection(_ connection: DatabaseConnection, password: String? = nil) {
+    // `byUser` false for a write the app makes itself, which never vouches for the store.
+    func updateConnection(_ connection: DatabaseConnection, password: String? = nil, byUser: Bool = true) {
         var connections = loadConnections()
         if let index = connections.firstIndex(where: { $0.id == connection.id }) {
             connections[index] = connection
-            guard saveConnections(connections) else {
+            guard saveConnections(connections, byUser: byUser) else {
                 Self.logger.error("Aborted updateConnection: persistence failed for \(connection.id, privacy: .public)")
                 return
             }
             if connection.participatesInSync {
-                syncTracker.markDirty(.connection, id: connection.id.uuidString)
+                syncJournal.recorded(.connection, written: [connection.id.uuidString])
             }
 
             if let password = password {
@@ -301,7 +331,7 @@ final class ConnectionStorage {
         let dirtyIds = updatesById.values
             .filter(\.participatesInSync)
             .map { $0.id.uuidString }
-        syncTracker.markDirty(.connection, ids: dirtyIds)
+        syncJournal.recorded(.connection, written: dirtyIds)
         return true
     }
 
@@ -348,7 +378,7 @@ final class ConnectionStorage {
         let dirtyIds = changed
             .filter(\.participatesInSync)
             .map { $0.id.uuidString }
-        syncTracker.markDirty(.connection, ids: dirtyIds)
+        syncJournal.recorded(.connection, written: dirtyIds)
         appEventsProvider().connectionUpdated.send(changed.count == 1 ? changed.first?.id : nil)
         return true
     }
@@ -371,7 +401,7 @@ final class ConnectionStorage {
             Self.logger.error("Aborted rewriteMembership: persistence failed for \(changed.count, privacy: .public) connection(s)")
             return false
         }
-        syncTracker.markDirty(.connection, ids: changed.filter(\.participatesInSync).map { $0.id.uuidString })
+        syncJournal.recorded(.connection, written: changed.filter(\.participatesInSync).map { $0.id.uuidString })
         return true
     }
 
@@ -486,7 +516,7 @@ final class ConnectionStorage {
 
         let updatedConnection = connections[index]
         if updatedConnection.participatesInSync {
-            syncTracker.markDirty(.connection, id: updatedConnection.id.uuidString)
+            syncJournal.recorded(.connection, written: [updatedConnection.id.uuidString])
         }
 
         return true
@@ -501,16 +531,10 @@ final class ConnectionStorage {
             return false
         }
         if connection.participatesInSync {
-            syncTracker.markDeleted(.connection, id: connection.id.uuidString)
+            syncJournal.recorded(.connection, deleted: [connection.id.uuidString])
         }
-        let origin: ConnectionLocalState.Origin = connection.participatesInSync ? .local : .localOnly
-        deleteSecrets(of: [connection], origin: origin)
-        ConnectionLocalState.purge(
-            connectionIds: [connection.id],
-            origin: origin,
-            appSettings: appSettingsProvider(),
-            syncTracker: syncTracker
-        )
+        deleteSecrets(of: [connection], origin: connection.participatesInSync ? .local : .localOnly)
+        ConnectionLocalState.purge(connectionIds: [connection.id], appSettings: appSettingsProvider())
         return true
     }
 
@@ -523,24 +547,11 @@ final class ConnectionStorage {
             Self.logger.error("Aborted deleteConnections: persistence failed for \(idsToDelete.count, privacy: .public) connection(s)")
             return false
         }
-        for conn in connectionsToDelete where conn.participatesInSync {
-            syncTracker.markDeleted(.connection, id: conn.id.uuidString)
-        }
         let syncedIds = Set(connectionsToDelete.filter(\.participatesInSync).map(\.id))
+        syncJournal.recorded(.connection, deleted: syncedIds.map(\.uuidString))
         deleteSecrets(of: connectionsToDelete.filter { syncedIds.contains($0.id) }, origin: .local)
         deleteSecrets(of: connectionsToDelete.filter { !syncedIds.contains($0.id) }, origin: .localOnly)
-        ConnectionLocalState.purge(
-            connectionIds: syncedIds,
-            origin: .local,
-            appSettings: appSettingsProvider(),
-            syncTracker: syncTracker
-        )
-        ConnectionLocalState.purge(
-            connectionIds: idsToDelete.subtracting(syncedIds),
-            origin: .localOnly,
-            appSettings: appSettingsProvider(),
-            syncTracker: syncTracker
-        )
+        ConnectionLocalState.purge(connectionIds: idsToDelete, appSettings: appSettingsProvider())
         return true
     }
 
@@ -612,7 +623,7 @@ final class ConnectionStorage {
         let dirtyIds = ([placedDuplicate] + renumbered)
             .filter(\.participatesInSync)
             .map { $0.id.uuidString }
-        syncTracker.markDirty(.connection, ids: dirtyIds)
+        syncJournal.recorded(.connection, written: dirtyIds)
 
         /// A duplicate that shares a credential profile takes the link, not a copy of the secret.
         /// Copying it would put the connection straight back into the N-copies-of-one-password
@@ -666,22 +677,22 @@ final class ConnectionStorage {
 
     @discardableResult
     func savePassword(_ password: String, for connectionId: UUID) -> Bool {
-        let key = "com.TablePro.password.\(connectionId.uuidString)"
+        let key = Self.secretKey(.password, for: connectionId)
         return writeSecret(password, forKey: key, connectionId: connectionId)
     }
 
     func loadPassword(for connectionId: UUID) -> String? {
-        let key = "com.TablePro.password.\(connectionId.uuidString)"
+        let key = Self.secretKey(.password, for: connectionId)
         return resolveString(.init(label: "Database password", connectionId: connectionId), forKey: key)
     }
 
     func passwordRead(for connectionId: UUID) -> DeferredSecretRead {
-        let key = "com.TablePro.password.\(connectionId.uuidString)"
+        let key = Self.secretKey(.password, for: connectionId)
         return deferredRead(.init(label: "Database password", connectionId: connectionId), forKey: key)
     }
 
     func deletePassword(for connectionId: UUID) {
-        let key = "com.TablePro.password.\(connectionId.uuidString)"
+        let key = Self.secretKey(.password, for: connectionId)
         deleteSecret(forKey: key, connectionId: connectionId)
     }
 
@@ -689,22 +700,22 @@ final class ConnectionStorage {
 
     @discardableResult
     func saveSSHPassword(_ password: String, for connectionId: UUID) -> Bool {
-        let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sshPassword, for: connectionId)
         return writeSecret(password, forKey: key, connectionId: connectionId)
     }
 
     func loadSSHPassword(for connectionId: UUID) -> String? {
-        let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sshPassword, for: connectionId)
         return resolveString(.init(label: "SSH password", connectionId: connectionId), forKey: key)
     }
 
     func sshPasswordRead(for connectionId: UUID) -> DeferredSecretRead {
-        let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sshPassword, for: connectionId)
         return deferredRead(.init(label: "SSH password", connectionId: connectionId), forKey: key)
     }
 
     func deleteSSHPassword(for connectionId: UUID) {
-        let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sshPassword, for: connectionId)
         deleteSecret(forKey: key, connectionId: connectionId)
     }
 
@@ -712,22 +723,22 @@ final class ConnectionStorage {
 
     @discardableResult
     func saveKeyPassphrase(_ passphrase: String, for connectionId: UUID) -> Bool {
-        let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sshKeyPassphrase, for: connectionId)
         return writeSecret(passphrase, forKey: key, connectionId: connectionId)
     }
 
     func loadKeyPassphrase(for connectionId: UUID) -> String? {
-        let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sshKeyPassphrase, for: connectionId)
         return resolveString(.init(label: "Key passphrase", connectionId: connectionId), forKey: key)
     }
 
     func keyPassphraseRead(for connectionId: UUID) -> DeferredSecretRead {
-        let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sshKeyPassphrase, for: connectionId)
         return deferredRead(.init(label: "Key passphrase", connectionId: connectionId), forKey: key)
     }
 
     func deleteKeyPassphrase(for connectionId: UUID) {
-        let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sshKeyPassphrase, for: connectionId)
         deleteSecret(forKey: key, connectionId: connectionId)
     }
 
@@ -735,22 +746,22 @@ final class ConnectionStorage {
 
     @discardableResult
     func saveSSLClientKeyPassphrase(_ passphrase: String, for connectionId: UUID) -> Bool {
-        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sslClientKeyPassphrase, for: connectionId)
         return writeSecret(passphrase, forKey: key, connectionId: connectionId)
     }
 
     func loadSSLClientKeyPassphrase(for connectionId: UUID) -> String? {
-        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sslClientKeyPassphrase, for: connectionId)
         return resolveString(.init(label: "SSL client key passphrase", connectionId: connectionId), forKey: key)
     }
 
     func sslClientKeyPassphraseRead(for connectionId: UUID) -> DeferredSecretRead {
-        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sslClientKeyPassphrase, for: connectionId)
         return deferredRead(.init(label: "SSL client key passphrase", connectionId: connectionId), forKey: key)
     }
 
     func deleteSSLClientKeyPassphrase(for connectionId: UUID) {
-        let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
+        let key = Self.secretKey(.sslClientKeyPassphrase, for: connectionId)
         deleteSecret(forKey: key, connectionId: connectionId)
     }
 
@@ -787,22 +798,22 @@ final class ConnectionStorage {
 
     @discardableResult
     func saveTOTPSecret(_ secret: String, for connectionId: UUID) -> Bool {
-        let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
+        let key = Self.secretKey(.totpSecret, for: connectionId)
         return writeSecret(secret, forKey: key, connectionId: connectionId)
     }
 
     func loadTOTPSecret(for connectionId: UUID) -> String? {
-        let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
+        let key = Self.secretKey(.totpSecret, for: connectionId)
         return resolveString(.init(label: "TOTP secret", connectionId: connectionId), forKey: key)
     }
 
     func totpSecretRead(for connectionId: UUID) -> DeferredSecretRead {
-        let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
+        let key = Self.secretKey(.totpSecret, for: connectionId)
         return deferredRead(.init(label: "TOTP secret", connectionId: connectionId), forKey: key)
     }
 
     func deleteTOTPSecret(for connectionId: UUID) {
-        let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
+        let key = Self.secretKey(.totpSecret, for: connectionId)
         deleteSecret(forKey: key, connectionId: connectionId)
     }
 
@@ -910,7 +921,7 @@ final class ConnectionStorage {
     func deleteSecrets(of connections: [DatabaseConnection], origin: ConnectionLocalState.Origin) {
         for connection in connections {
             for key in secretKeys(for: connection) {
-                if origin.leavesTombstones {
+                if origin.isFollowedEverywhere {
                     deleteSecret(forKey: key, connectionId: connection.id)
                 } else {
                     keychain.delete(forKey: key, deviceOnly: true)
@@ -1134,15 +1145,15 @@ final class ConnectionStorage {
     }
 
     func passwordState(for connectionId: UUID) -> StoredSecretState {
-        secretState(forKey: "com.TablePro.password.\(connectionId.uuidString)", connectionId: connectionId)
+        secretState(forKey: Self.secretKey(.password, for: connectionId), connectionId: connectionId)
     }
 
     func sshPasswordState(for connectionId: UUID) -> StoredSecretState {
-        secretState(forKey: "com.TablePro.sshpassword.\(connectionId.uuidString)", connectionId: connectionId)
+        secretState(forKey: Self.secretKey(.sshPassword, for: connectionId), connectionId: connectionId)
     }
 
     func keyPassphraseState(for connectionId: UUID) -> StoredSecretState {
-        secretState(forKey: "com.TablePro.keypassphrase.\(connectionId.uuidString)", connectionId: connectionId)
+        secretState(forKey: Self.secretKey(.sshKeyPassphrase, for: connectionId), connectionId: connectionId)
     }
 
     private func secretState(forKey key: String, connectionId: UUID) -> StoredSecretState {
@@ -1157,7 +1168,10 @@ final class ConnectionStorage {
     }
 
     private func readSecret(forKey key: String, connectionId: UUID) -> KeychainStringResult {
-        let result = keychain.readStringResult(forKey: key, deviceOnly: readsOwnItemFirst(connectionId))
+        var result = keychain.readStringResult(forKey: key, deviceOnly: readsOwnItemFirst(connectionId))
+        if case .notFound = result, let shared = sharedRowSecrets[key] {
+            result = .found(shared)
+        }
         switch result {
         case .found(let value):
             loadedSecretsSeen?[key] = value
@@ -1185,9 +1199,29 @@ final class ConnectionStorage {
     private func deferredRead(_ context: SecretContext, forKey key: String) -> DeferredSecretRead {
         let keychain = keychain
         let deviceOnly = readsOwnItemFirst(context.connectionId)
+        let shared = sharedRowSecrets[key]
         return DeferredSecretRead(key: key, label: context.logLabel, logger: Self.logger) {
-            keychain.readStringResult(forKey: key, deviceOnly: deviceOnly)
+            let result = keychain.readStringResult(forKey: key, deviceOnly: deviceOnly)
+            if case .notFound = result, let shared { return .found(shared) }
+            return result
         }
+    }
+
+    // MARK: - Shared Row Secrets
+
+    nonisolated static func secretKey(_ item: ConnectionSecretItem, for connectionId: UUID) -> String {
+        "\(item.keyPrefix).\(connectionId.uuidString)"
+    }
+
+    // Replaces what the row had: a secret the team no longer holds is never read again.
+    func setSharedRowSecrets(_ secrets: [ConnectionSecretItem: String], for connectionId: UUID) {
+        for item in ConnectionSecretItem.allCases {
+            sharedRowSecrets[Self.secretKey(item, for: connectionId)] = secrets[item]
+        }
+    }
+
+    func removeSharedRowSecrets() {
+        sharedRowSecrets.removeAll()
     }
 
     // MARK: - Plugin Secure Field Migration

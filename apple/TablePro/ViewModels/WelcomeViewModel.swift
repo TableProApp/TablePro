@@ -73,7 +73,6 @@ internal protocol WelcomeOutlineControlling: AnyObject {
 @MainActor
 final class WelcomeViewModel: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "WelcomeViewModel")
-    private static let teamLibraryNamespace = UUID(uuidString: "00000000-0000-0000-0000-000000000000") ?? UUID()
     private static let searchDebounceNanoseconds: UInt64 = 150_000_000
 
     let services: AppServices
@@ -107,7 +106,7 @@ final class WelcomeViewModel: ObservableObject {
     @Published var linkedConnections: [LinkedConnection] = [] {
         didSet { rebuildOutline() }
     }
-    @Published var teamLibraryConnections: [LinkedConnection] = [] {
+    @Published var teamLibraryConnections: [DatabaseConnection] = [] {
         didSet { rebuildOutline() }
     }
 
@@ -140,6 +139,8 @@ final class WelcomeViewModel: ObservableObject {
     @Published var showDeleteConfirmation = false
     @Published var connectionsToExcludeFromSync: [DatabaseConnection] = []
     @Published var showExcludeFromSyncConfirmation = false
+    // The provider the Exclude question names, read when it is asked.
+    @Published var excludeFromSyncProvider: SyncProviderSetting = .iCloud
     @Published var pendingDeleteHasFavorites = false
     private var deleteRequestToken = UUID()
     @Published var showDeleteGroupConfirmation = false
@@ -268,14 +269,15 @@ final class WelcomeViewModel: ObservableObject {
         return linkedConnections
     }
 
-    var presentableTeamLibraryConnections: [LinkedConnection] {
+    var presentableTeamLibraryConnections: [DatabaseConnection] {
         guard services.featureAccess.isAvailable(.teamLibrary) else { return [] }
         return teamLibraryConnections
     }
 
-    var sharedConnectionsById: [UUID: LinkedConnection] {
+    var sharedConnectionsById: [UUID: WelcomeSharedConnection] {
         Dictionary(
-            (presentableLinkedConnections + presentableTeamLibraryConnections).map { ($0.id, $0) },
+            presentableLinkedConnections.map { ($0.id, WelcomeSharedConnection.linked($0)) }
+                + presentableTeamLibraryConnections.map { ($0.id, WelcomeSharedConnection.team($0)) },
             uniquingKeysWith: { first, _ in first }
         )
     }
@@ -351,7 +353,7 @@ final class WelcomeViewModel: ObservableObject {
             includesRecent: showsRecent,
             externalSections: [
                 LibraryExternalSection(kind: .linkedFolders, entries: presentableLinkedConnections.map(\.libraryEntry)),
-                LibraryExternalSection(kind: .teamLibrary, entries: presentableTeamLibraryConnections.map(\.libraryEntry)),
+                LibraryExternalSection(kind: .teamLibrary, entries: presentableTeamLibraryConnections.map(\.libraryExternalEntry)),
             ]
         )
     }
@@ -680,11 +682,9 @@ final class WelcomeViewModel: ObservableObject {
         connectToDatabase(connection)
     }
 
-    func connectToLinkedConnection(_ linked: LinkedConnection) {
-        let connection = linked.databaseConnection(
-            origin: linked.folderId == Self.teamLibraryNamespace ? .teamLibrary : .linkedFolder
-        )
+    func connectToSharedConnection(_ shared: WelcomeSharedConnection) {
         Task {
+            let connection = await signInReady(shared)
             do {
                 try await TabRouter.shared.openTransientConnection(connection)
             } catch {
@@ -693,20 +693,20 @@ final class WelcomeViewModel: ObservableObject {
         }
     }
 
-    private static func buildTeamLibraryConnections() -> [LinkedConnection] {
-        guard FeatureAccess.shared.isAvailable(.teamLibrary) else { return [] }
-        let placeholderURL = URL(fileURLWithPath: "/")
-        var seen: Set<UUID> = []
-        return TeamLibrarySync.shared.content.connections.compactMap { connection in
-            let id = LinkedFolderWatcher.stableId(namespace: teamLibraryNamespace, key: connection.id)
-            guard seen.insert(id).inserted else { return nil }
-            return LinkedConnection(
-                id: id,
-                connection: connection.settings,
-                folderId: teamLibraryNamespace,
-                sourceFileURL: placeholderURL
-            )
+    // A team row signs in with what the team's envelopes hold for where it points now, read at each connect so a
+    // password a teammate changed since is the one used.
+    private func signInReady(_ shared: WelcomeSharedConnection) async -> DatabaseConnection {
+        guard case .team(let row) = shared, let team = TeamLibrary.shared.content.connection(rowID: row.id) else {
+            return shared.databaseConnection()
         }
+        let secrets = await TeamLibrary.shared.secrets(for: team) ?? [:]
+        storage.setSharedRowSecrets(secrets, for: row.id)
+        return row.sharedCopy(from: .teamLibrary, holdsPassword: secrets[.password] != nil)
+    }
+
+    private static func buildTeamLibraryConnections() -> [DatabaseConnection] {
+        guard FeatureAccess.shared.isAvailable(.teamLibrary) else { return [] }
+        return TeamLibrary.shared.content.connections.map(\.connection)
     }
 
     // MARK: - Import / Export

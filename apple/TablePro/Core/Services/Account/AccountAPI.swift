@@ -12,14 +12,13 @@ internal enum AccountAPI {
     static func client(
         backend: any AccountBackend,
         transport: any ClientTransport,
-        onlyTo: URL? = nil,
-        session: String? = nil
+        onlyTo: URL? = nil
     ) -> Client {
         Client(
             serverURL: AccountServer.production.apiBaseURL,
             configuration: Configuration(dateTranscoder: RFC3339DateTranscoder()),
             transport: transport,
-            middlewares: [AccountBearerMiddleware(backend: backend, onlyTo: onlyTo, session: session)]
+            middlewares: [AccountBearerMiddleware(backend: backend, onlyTo: onlyTo)]
         )
     }
 
@@ -43,8 +42,6 @@ internal struct AccountBearerMiddleware: ClientMiddleware {
     let backend: any AccountBackend
     // A sign-in on any other server reads as signed out, and nothing is sent.
     var onlyTo: URL?
-    // The core's sign-in a body was kept for: a bearer of any other is never sent with it.
-    var session: String?
 
     func intercept(
         _ request: HTTPRequest,
@@ -57,7 +54,6 @@ internal struct AccountBearerMiddleware: ClientMiddleware {
         if let onlyTo, access.apiBaseURL != onlyTo {
             throw AccountError.signedOut
         }
-        guard session == nil || access.sessionID == session else { throw AccountError.signedOut }
         var request = request
         request.headerFields[.authorization] = "Bearer \(access.token)"
         let (response, responseBody) = try await next(request, body, access.apiBaseURL)

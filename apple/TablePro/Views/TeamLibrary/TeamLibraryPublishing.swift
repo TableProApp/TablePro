@@ -24,6 +24,12 @@ internal enum TeamLibraryPublishing {
         switch result {
         case .published, .unchanged, .conflicts:
             return nil
+        case .publishedWithoutPasswords(_, let leftOut):
+            return Message(
+                title: String(localized: "Published without passwords"),
+                text: passwordsText(leftOut),
+                isError: false
+            )
         case .queued(let failure):
             return Message(
                 title: String(localized: "Not published yet"),
@@ -50,6 +56,19 @@ internal enum TeamLibraryPublishing {
         }
     }
 
+    static func passwordsText(_ leftOut: TeamPasswordsLeftOut) -> String {
+        switch leftOut {
+        case .off:
+            return String(localized: "Your team doesn't sync passwords, so teammates enter their own.")
+        case .notConfirmed:
+            return String(localized: "Passwords go to the team once an owner or admin confirms your keys. Publish again after that.")
+        case .rotationDue:
+            return String(localized: "The team's key is being replaced, so passwords wait. Publish again in a moment.")
+        case .role:
+            return String(localized: "Your role in this team doesn't share passwords.")
+        }
+    }
+
     static func failureText(_ failure: TeamLibraryFailure) -> String {
         switch failure {
         case .offline:
@@ -66,15 +85,12 @@ internal enum TeamLibraryPublishing {
             return String(localized: "Only the team's owner, admins and editors publish to its library.")
         case .licenseExpired:
             return String(localized: "The server's TablePro license has expired, so it takes no changes. They stay on this Mac until your administrator renews the license.")
-        case .cursorRefused:
-            return String(localized: "The team library asked TablePro to download it again.")
-        case .refused(let item?):
-            return String(
-                format: String(localized: "The team library refused “%@”. It may be too large or hold a field the library never stores."),
-                item
-            )
-        case .refused(nil):
+        case .refused:
             return String(localized: "The team library refused the change. It may be too large or hold a field the library never stores.")
+        case .deletePending:
+            return String(localized: "TablePro is still deleting the Team Library data of the last account on this Mac. Team Library stays off until it is gone.")
+        case .unavailable:
+            return String(localized: "Team Library isn't available on this Mac right now.")
         }
     }
 

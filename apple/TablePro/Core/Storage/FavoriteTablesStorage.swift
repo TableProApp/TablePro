@@ -44,11 +44,6 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         }
     }
 
-    private enum SyncTracking {
-        case track
-        case discard
-    }
-
     private struct StateChange {
         var removed: Set<FavoriteEntry> = []
         var added: Set<FavoriteEntry> = []
@@ -57,7 +52,7 @@ final class FavoriteTablesStorage: @unchecked Sendable {
     }
 
     private let defaults: UserDefaults
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
     private let key = "com.TablePro.favoriteTables"
     private let syncIdentityVersionKey = "com.TablePro.favoriteTables.syncIdentityVersion"
     private var cache: Set<FavoriteEntry>?
@@ -67,11 +62,11 @@ final class FavoriteTablesStorage: @unchecked Sendable {
 
     init(
         userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        syncTracker: SyncChangeTracker = .shared,
+        syncJournal: SyncHostJournal = .shared,
         core: CoreHistoryDatabase? = nil
     ) {
         self.defaults = userDefaults
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
         if let core {
             coreMirror = CoreMirror(adapter: FavoriteTablesCoreAdapter(store: self, database: core), defaults: userDefaults)
         }
@@ -100,7 +95,7 @@ final class FavoriteTablesStorage: @unchecked Sendable {
     @MainActor
     func toggle(name: String, schema: String?, database: String?, connectionId: UUID) {
         let entry = FavoriteEntry(connectionId: connectionId, database: database, schema: schema, name: name)
-        commit(sync: .track) { favorites in
+        commit { favorites in
             guard favorites.remove(entry) == nil else { return }
             favorites.insert(entry)
         }
@@ -110,18 +105,18 @@ final class FavoriteTablesStorage: @unchecked Sendable {
     @discardableResult
     func addFavorite(name: String, schema: String?, database: String?, connectionId: UUID) -> Bool {
         let entry = FavoriteEntry(connectionId: connectionId, database: database, schema: schema, name: name)
-        return commit(sync: .track) { $0.insert(entry) }.changesEntries
+        return commit { $0.insert(entry) }.changesEntries
     }
 
     @MainActor
     func removeFavorite(name: String, schema: String?, database: String?, connectionId: UUID) {
         let entry = FavoriteEntry(connectionId: connectionId, database: database, schema: schema, name: name)
-        commit(sync: .track) { $0.remove(entry) }
+        commit { $0.remove(entry) }
     }
 
     @MainActor
     func retarget(connectionId: UUID, _ transform: (FavoriteEntry) -> FavoriteEntry?) {
-        commit(sync: .track) { favorites in
+        commit { favorites in
             let scoped = favorites.filter { $0.connectionId == connectionId }
             favorites.subtract(scoped)
             favorites.formUnion(scoped.compactMap(transform))
@@ -133,7 +128,7 @@ final class FavoriteTablesStorage: @unchecked Sendable {
     func removeFavorites(inDatabase database: String?, schema: String?, connectionId: UUID) -> [FavoriteEntry] {
         let database = database?.nilIfEmpty
         let schema = schema?.nilIfEmpty
-        let change = commit(sync: .track) { favorites in
+        let change = commit { favorites in
             favorites = favorites.filter { entry in
                 guard entry.connectionId == connectionId, entry.database == database else { return true }
                 guard let schema else { return false }
@@ -146,37 +141,10 @@ final class FavoriteTablesStorage: @unchecked Sendable {
     @MainActor
     @discardableResult
     func removeFavorites(for connectionId: UUID) -> [FavoriteEntry] {
-        removeFavorites(for: connectionId, sync: .track)
-    }
-
-    @MainActor
-    @discardableResult
-    func removeFavoritesWithoutSync(for connectionId: UUID) -> [FavoriteEntry] {
-        removeFavorites(for: connectionId, sync: .discard)
-    }
-
-    @MainActor
-    private func removeFavorites(for connectionId: UUID, sync: SyncTracking) -> [FavoriteEntry] {
-        let change = commit(sync: sync) { favorites in
+        let change = commit { favorites in
             favorites = favorites.filter { entry in entry.connectionId != connectionId }
         }
         return Array(change.removed)
-    }
-
-    @MainActor
-    @discardableResult
-    func applyRemote(saved: [FavoriteEntry], deletedIds: Set<String>) -> [UUID: Set<String>] {
-        var removedThroughAliases: Set<FavoriteEntry> = []
-        let change = mutateState { favorites in
-            favorites.formUnion(saved)
-            removedThroughAliases = Self.remove(deletedIds, from: &favorites)
-        }
-        syncTracker.discardDirty(.tableFavorite, ids: Array(deletedIds.union(Self.recordIds(of: change.removed))))
-        if change.changesEntries {
-            coreMirror?.schedulePush()
-            NotificationCenter.default.post(name: .favoriteTablesDidChange, object: self)
-        }
-        return Self.syncIdsByConnection(of: removedThroughAliases)
     }
 
     @MainActor
@@ -184,7 +152,7 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         guard defaults.integer(forKey: syncIdentityVersionKey) < Self.currentSyncIdentityVersion else { return }
         let rekeyed = loadFavorites().filter { Self.legacyAlias(of: $0) != nil }
         let rekeyedIds = Array(Self.recordIds(of: rekeyed))
-        syncTracker.markDirty(.tableFavorite, ids: rekeyedIds)
+        syncJournal.recorded(.tableFavorite, written: rekeyedIds)
         defaults.set(Self.currentSyncIdentityVersion, forKey: syncIdentityVersionKey)
         guard !rekeyed.isEmpty else { return }
         Self.logger.info("Re-keyed \(rekeyed.count, privacy: .public) favorite tables to escaped sync ids")
@@ -224,15 +192,6 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         Set(favorites.compactMap(legacyAlias(of:)))
     }
 
-    static func aliasClaims(in favorites: Set<FavoriteEntry>) -> [String: [FavoriteEntry]] {
-        var claims: [String: [FavoriteEntry]] = [:]
-        for entry in favorites {
-            guard let alias = legacyAlias(of: entry) else { continue }
-            claims[alias, default: []].append(entry)
-        }
-        return claims
-    }
-
     private static func identityComponents(of entry: FavoriteEntry) -> [String] {
         [entry.connectionId.uuidString, entry.database ?? "", entry.schema ?? "", entry.name]
     }
@@ -243,22 +202,19 @@ final class FavoriteTablesStorage: @unchecked Sendable {
 
     @MainActor
     @discardableResult
-    private func commit(sync: SyncTracking, _ edit: (inout Set<FavoriteEntry>) -> Void) -> StateChange {
+    private func commit(_ edit: (inout Set<FavoriteEntry>) -> Void) -> StateChange {
         var remaining: Set<FavoriteEntry> = []
         let change = mutateState { favorites in
             edit(&favorites)
             remaining = favorites
         }
         guard change.changesEntries else { return change }
-        let removedIds = Self.recordIdsByConnection(of: change.removed, keepingAliasesOf: remaining)
-        switch sync {
-        case .track:
-            let reclaimedAliases = Self.legacyAliases(of: change.removed).intersection(Self.legacyAliases(of: remaining))
-            syncTracker.markDeleted(.tableFavorite, idsByOwner: removedIds)
-            syncTracker.markDirty(.tableFavorite, ids: Array(Self.recordIds(of: change.added).union(reclaimedAliases)))
-        case .discard:
-            syncTracker.discardDirty(.tableFavorite, ids: removedIds.values.flatMap { $0 })
-        }
+        let reclaimedAliases = Self.legacyAliases(of: change.removed).intersection(Self.legacyAliases(of: remaining))
+        syncJournal.recorded(
+            .tableFavorite,
+            written: Array(Self.recordIds(of: change.added).union(reclaimedAliases)),
+            deleted: Array(Self.recordIds(ofRemoved: change.removed, keepingAliasesOf: remaining))
+        )
         coreMirror?.schedulePush()
         NotificationCenter.default.post(name: .favoriteTablesDidChange, object: self)
         return change
@@ -282,43 +238,18 @@ final class FavoriteTablesStorage: @unchecked Sendable {
         Set(favorites.map(syncId(for:))).union(legacyAliases(of: favorites))
     }
 
-    private static func recordIdsByConnection(
-        of removed: Set<FavoriteEntry>,
+    private static func recordIds(
+        ofRemoved removed: Set<FavoriteEntry>,
         keepingAliasesOf remaining: Set<FavoriteEntry>
-    ) -> [UUID: Set<String>] {
+    ) -> Set<String> {
         let claimedAliases = legacyAliases(of: remaining)
-        var ids: [UUID: Set<String>] = [:]
+        var ids: Set<String> = []
         for entry in removed {
-            ids[entry.connectionId, default: []].insert(syncId(for: entry))
+            ids.insert(syncId(for: entry))
             guard let alias = legacyAlias(of: entry), !claimedAliases.contains(alias) else { continue }
-            ids[entry.connectionId, default: []].insert(alias)
+            ids.insert(alias)
         }
         return ids
-    }
-
-    private static func syncIdsByConnection(of entries: Set<FavoriteEntry>) -> [UUID: Set<String>] {
-        Dictionary(grouping: entries, by: \.connectionId).mapValues { Set($0.map(syncId(for:))) }
-    }
-
-    private static func remove(_ deletedIds: Set<String>, from favorites: inout Set<FavoriteEntry>) -> Set<FavoriteEntry> {
-        guard !deletedIds.isEmpty else { return [] }
-        let entriesById = Dictionary(favorites.map { (syncId(for: $0), $0) }, uniquingKeysWith: { first, _ in first })
-        let claims = aliasClaims(in: favorites)
-        var removedThroughAliases: Set<FavoriteEntry> = []
-        for id in deletedIds {
-            if let entry = entriesById[id] {
-                favorites.remove(entry)
-                continue
-            }
-            guard let claimants = claims[id] else { continue }
-            guard claimants.count == 1, let entry = claimants.first else {
-                logger.warning("Kept \(claimants.count, privacy: .public) favorite tables sharing one retired sync id")
-                continue
-            }
-            favorites.remove(entry)
-            removedThroughAliases.insert(entry)
-        }
-        return removedThroughAliases.filter { !deletedIds.contains(syncId(for: $0)) }
     }
 
     private func _loadFavorites() -> Set<FavoriteEntry> {

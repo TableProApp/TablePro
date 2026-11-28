@@ -78,17 +78,6 @@ struct ProjectStorageTests {
         #expect(projects.loadProjects().map(\.sortOrder) == [0, 1, 2])
     }
 
-    @Test("Two projects of one name arriving from another device are both kept")
-    func remoteDuplicateTolerated() throws {
-        try projects.createProject(name: "Acme")
-        let remote = ConnectionProject(name: "Acme", sortOrder: 5)
-
-        #expect(projects.applyRemoteProject(remote) == .applied)
-        #expect(projects.applyRemoteProject(remote) == .skipped)
-
-        #expect(projects.loadProjects().map(\.name) == ["Acme", "Acme"])
-    }
-
     @Test("Deleting a project keeps its groups and connections and takes them out of it")
     func deleteClearsMembership() throws {
         let acme = try projects.createProject(name: "Acme")
@@ -113,43 +102,17 @@ struct ProjectStorageTests {
         #expect(fixture.dirty(.group) == [group.id.uuidString])
     }
 
-    @Test("A project whose groups cannot be saved is kept, with no tombstone sent")
+    @Test("A project whose members cannot be saved is kept, with no tombstone sent")
     func deleteReportsAMembershipFailure() throws {
         let acme = try projects.createProject(name: "Acme")
         try fixture.addGroup("Production", projectId: acme.id)
-        fixture.defaults.set(Data("not json".utf8), forKey: "com.TablePro.groups")
-        let unreadableGroups = GroupStorage(
-            userDefaults: fixture.defaults,
-            syncTracker: fixture.tracker,
-            connectionStorage: fixture.connections,
-            appEvents: fixture.appEvents
-        )
-        let storage = ProjectStorage(
-            userDefaults: fixture.defaults,
-            syncTracker: fixture.tracker,
-            connectionStorage: fixture.connections,
-            groupStorage: unreadableGroups,
-            appEvents: fixture.appEvents
-        )
+        try LibraryWriteRefusal.set(true, in: fixture.directory)
+        defer { try? LibraryWriteRefusal.set(false, in: fixture.directory) }
 
         #expect(throws: ProjectStorageError.membershipNotSaved) {
-            try storage.deleteProject(id: acme.id)
+            try projects.deleteProject(id: acme.id)
         }
-        #expect(storage.project(for: acme.id) != nil)
-        #expect(fixture.tombstones(.project).isEmpty)
-    }
-
-    @Test("A deletion another device made clears the members and sends no tombstone")
-    func remoteDeletionClearsMembership() throws {
-        let acme = try projects.createProject(name: "Acme")
-        let group = try fixture.addGroup("Production", projectId: acme.id)
-        let loose = fixture.addConnection("loose", projectId: acme.id, localOnly: true)
-
-        #expect(projects.applyRemoteDeletions([acme.id]))
-
-        #expect(projects.loadProjects().isEmpty)
-        #expect(fixture.groups.group(for: group.id)?.projectId == nil)
-        #expect(fixture.stored(loose)?.projectId == nil)
+        #expect(projects.project(for: acme.id) != nil)
         #expect(fixture.tombstones(.project).isEmpty)
     }
 
@@ -190,39 +153,15 @@ struct ProjectStorageTests {
         #expect(fixture.groups.group(for: production.id)?.projectId == acme.id)
     }
 
-    @Test("A payload with one entry this build cannot read keeps the others")
-    func salvagesReadableEntries() throws {
-        let id = UUID()
-        let payload = #"[{"id":"\#(id.uuidString)","name":"Acme"},{"name":"no id"}]"#
-        fixture.defaults.set(Data(payload.utf8), forKey: "com.TablePro.projects")
-        let storage = ProjectStorage(
-            userDefaults: fixture.defaults,
-            syncTracker: fixture.tracker,
-            connectionStorage: fixture.connections,
-            groupStorage: fixture.groups,
-            appEvents: fixture.appEvents
-        )
-
-        #expect(storage.loadProjects() == [ConnectionProject(id: id, name: "Acme")])
-        #expect(!storage.storeIsUnreadable)
-    }
-
-    @Test("A payload that cannot be read at all is never written over")
+    @Test("A library that cannot be read is never written over")
     func unreadableStoreRefusesWrites() throws {
-        fixture.defaults.set(Data("not json".utf8), forKey: "com.TablePro.projects")
-        let storage = ProjectStorage(
-            userDefaults: fixture.defaults,
-            syncTracker: fixture.tracker,
-            connectionStorage: fixture.connections,
-            groupStorage: fixture.groups,
-            appEvents: fixture.appEvents
-        )
+        let unreadable = try ProjectLibraryFixture(unreadableConnections: true)
 
-        #expect(storage.loadProjects().isEmpty)
+        #expect(unreadable.projects.loadProjects().isEmpty)
         #expect(throws: ProjectStorageError.storeUnreadable) {
-            try storage.createProject(name: "Acme")
+            try unreadable.projects.createProject(name: "Acme")
         }
-        #expect(fixture.defaults.data(forKey: "com.TablePro.projects") == Data("not json".utf8))
+        #expect(try Data(contentsOf: unreadable.connectionsURL) == Data("not json".utf8))
     }
 
     @Test("An import matches a project by id, then by name, and makes the rest")
@@ -255,100 +194,5 @@ struct ProjectStorageTests {
         try projects.deleteProject(id: acme.id)
 
         #expect(count == 2)
-    }
-
-    // MARK: - A record this build cannot read
-
-    private static let unreadableId = UUID()
-    private static let unreadableJSON =
-        #"{"id":"\#(unreadableId.uuidString)","name":7,"shape":2,"extra":{"kept":[1,2.5,null,"text"]}}"#
-
-    // A fresh store over a payload holding one readable project and one this build cannot decode.
-    private func storageHoldingAnUnreadableProject() throws -> (storage: ProjectStorage, readable: ConnectionProject) {
-        let readable = ConnectionProject(name: "Acme")
-        let encoded = String(decoding: try JSONEncoder().encode(readable), as: UTF8.self)
-        fixture.defaults.set(Data("[\(encoded),\(Self.unreadableJSON)]".utf8), forKey: "com.TablePro.projects")
-        let storage = ProjectStorage(
-            userDefaults: fixture.defaults,
-            syncTracker: fixture.tracker,
-            connectionStorage: fixture.connections,
-            groupStorage: fixture.groups,
-            appEvents: fixture.appEvents
-        )
-        return (storage, readable)
-    }
-
-    private func storedRows() throws -> [NSDictionary] {
-        let data = try #require(fixture.defaults.data(forKey: "com.TablePro.projects"))
-        return try #require(try JSONSerialization.jsonObject(with: data) as? [NSDictionary])
-    }
-
-    private func unreadableRow() throws -> NSDictionary? {
-        try storedRows().first { $0["id"] as? String == Self.unreadableId.uuidString }
-    }
-
-    private var originalRow: NSDictionary? {
-        try? JSONSerialization.jsonObject(with: Data(Self.unreadableJSON.utf8)) as? NSDictionary
-    }
-
-    @Test("A project this build cannot read is kept as it was through a create, rename, reorder and delete of others")
-    func unreadableRecordSurvivesEdits() throws {
-        let (storage, acme) = try storageHoldingAnUnreadableProject()
-        #expect(storage.loadProjects().map(\.id) == [acme.id])
-        #expect(storage.unreadableProjectIds == [Self.unreadableId])
-        #expect(!storage.storeIsUnreadable)
-
-        let globex = try storage.createProject(name: "Globex")
-        #expect(try unreadableRow() == originalRow)
-
-        try storage.renameProject(id: acme.id, to: "Acme Corp")
-        #expect(try unreadableRow() == originalRow)
-
-        try storage.reorderProjects([globex.id, acme.id])
-        #expect(try unreadableRow() == originalRow)
-
-        try storage.deleteProject(id: acme.id)
-        #expect(try unreadableRow() == originalRow)
-
-        #expect(storage.loadProjects().map(\.id) == [globex.id])
-        #expect(try storedRows().count == 2)
-        #expect(storage.unreadableProjectIds == [Self.unreadableId])
-        #expect(!fixture.dirty(.project).contains(Self.unreadableId.uuidString))
-    }
-
-    @Test("The id of a project this build cannot read is taken: a save, a pulled record and an import cannot use it")
-    func unreadableIdIsRefused() throws {
-        let (storage, acme) = try storageHoldingAnUnreadableProject()
-        let impostor = ConnectionProject(id: Self.unreadableId, name: "Impostor")
-
-        #expect(!storage.saveProjects([acme, impostor]))
-        #expect(storage.applyRemoteProject(impostor) == .failed)
-        #expect(throws: ProjectStorageError.projectNotFound) {
-            try storage.renameProject(id: Self.unreadableId, to: "Renamed")
-        }
-
-        let ids = try storage.ensureProjects([
-            PlannedProject(ref: BundleRef("p1"), id: Self.unreadableId, name: "Initech", color: nil, iconName: nil),
-        ])
-        let imported = try #require(ids[BundleRef("p1")])
-
-        #expect(imported != Self.unreadableId)
-        #expect(storage.loadProjects().map(\.name) == ["Acme", "Initech"])
-        #expect(try unreadableRow() == originalRow)
-        #expect(try storedRows().count == 3)
-    }
-
-    @Test("A deletion another device made removes a project this build cannot read by its id")
-    func remoteDeletionRemovesAnUnreadableProject() throws {
-        let (storage, acme) = try storageHoldingAnUnreadableProject()
-        let member = fixture.addConnection("member", projectId: Self.unreadableId)
-
-        #expect(storage.applyRemoteDeletions([Self.unreadableId]))
-
-        #expect(try unreadableRow() == nil)
-        #expect(storage.unreadableProjectIds.isEmpty)
-        #expect(storage.loadProjects().map(\.id) == [acme.id])
-        #expect(fixture.stored(member)?.projectId == nil)
-        #expect(fixture.tombstones(.project).isEmpty)
     }
 }

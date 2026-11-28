@@ -95,10 +95,9 @@ final class ConnectionEditorStoreFixture {
             appEvents: events
         )
         self.storage = storage
-        let groups = GroupStorage(userDefaults: defaults, connectionStorage: storage, appEvents: events)
+        let groups = GroupStorage(connectionStorage: storage, appEvents: events)
         self.groups = groups
         let projects = ProjectStorage(
-            userDefaults: defaults,
             connectionStorage: storage,
             groupStorage: groups,
             appEvents: events
@@ -111,9 +110,8 @@ final class ConnectionEditorStoreFixture {
             projectStorage: projects,
             appEvents: events
         )
-        sshProfiles = SSHProfileStorage(userDefaults: defaults, keychain: keychain, connectionStorage: storage)
+        sshProfiles = SSHProfileStorage(keychain: keychain, connectionStorage: storage)
         credentialProfiles = CredentialProfileStorage(
-            fileURL: directory.appendingPathComponent("credentialProfiles.json"),
             keychain: keychain,
             connectionStorage: storage
         )
@@ -128,7 +126,7 @@ final class ConnectionEditorStoreFixture {
             kind: .localCredentials, defaults: defaults, savedConnections: { [] }, dialedDestination: dialed
         )
         recents = RecentConnectionsStore(defaults: defaults, appEvents: events)
-        listPreferences = ConnectionListPreferences(defaults: defaults, appEvents: events)
+        listPreferences = ConnectionListPreferences(defaults: defaults, connectionStorage: storage, appEvents: events)
         let live = AppServices.live
         services = AppServices(
             appEvents: events,
@@ -153,14 +151,13 @@ final class ConnectionEditorStoreFixture {
             sshProfileStorage: sshProfiles,
             credentialProfileStorage: credentialProfiles,
             featureAccess: live.featureAccess,
-            syncMetadataStorage: live.syncMetadataStorage,
             favoritesExpansionState: live.favoritesExpansionState,
             linkedFolderWatcher: live.linkedFolderWatcher,
             queryHistoryManager: live.queryHistoryManager,
             dateFormattingService: live.dateFormattingService,
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
-            syncTracker: live.syncTracker,
+            syncJournal: live.syncJournal,
             welcomeRouter: live.welcomeRouter,
             telemetry: live.telemetry
         )
@@ -171,7 +168,7 @@ final class ConnectionEditorStoreFixture {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    func makeStore(_ request: ConnectionEditorStore.Request) -> ConnectionEditorStore {
+    func makeStore(_ request: ConnectionEditorStore.Request, teamLibrary: TeamLibrary = .shared) -> ConnectionEditorStore {
         ConnectionEditorStore(
             request: request,
             services: services,
@@ -179,7 +176,8 @@ final class ConnectionEditorStoreFixture {
             listPreferences: listPreferences,
             managedPolicy: NoManagedPolicy(),
             approvalStores: [envVarApprovals, localCredentialApprovals],
-            scope: scope
+            scope: scope,
+            teamLibrary: teamLibrary
         )
     }
 
@@ -189,10 +187,7 @@ final class ConnectionEditorStoreFixture {
     }
 
     func makeLibraryReadOnly(_ readOnly: Bool) throws {
-        try FileManager.default.setAttributes(
-            [.posixPermissions: readOnly ? 0o555 : 0o755],
-            ofItemAtPath: directory.path
-        )
+        try LibraryWriteRefusal.set(readOnly, in: directory)
         storage.invalidateCache()
     }
 

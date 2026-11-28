@@ -25,14 +25,14 @@ private final class WelcomeLibraryFixture {
             .appendingPathComponent("welcome-toolbar-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let events = AppEvents()
-        let tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: defaults))
+        let tracker = SyncJournalRecorder()
         let connectionStorage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
             userDefaults: defaults,
-            syncTracker: tracker
+            syncJournal: tracker.journal
         )
-        let groupStorage = GroupStorage(userDefaults: defaults, syncTracker: tracker, connectionStorage: connectionStorage)
-        let tagStorage = TagStorage(userDefaults: defaults, syncTracker: tracker, appEvents: events)
+        let groupStorage = GroupStorage(syncJournal: tracker.journal, connectionStorage: connectionStorage)
+        let tagStorage = TagStorage(syncJournal: tracker.journal, connectionStorage: connectionStorage, appEvents: events)
         let prod = ConnectionTag(name: "prod", color: .red)
         let euWest = ConnectionTag(name: "eu-west", color: .blue)
         let unused = ConnectionTag(name: "unused-prod", color: .gray)
@@ -49,8 +49,7 @@ private final class WelcomeLibraryFixture {
         #expect(connectionStorage.saveConnections([alpha, beta, gamma]))
 
         let projects = ProjectStorage(
-            userDefaults: defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             connectionStorage: connectionStorage,
             groupStorage: groupStorage,
             appEvents: events
@@ -89,14 +88,13 @@ private final class WelcomeLibraryFixture {
             sshProfileStorage: live.sshProfileStorage,
             credentialProfileStorage: live.credentialProfileStorage,
             featureAccess: live.featureAccess,
-            syncMetadataStorage: live.syncMetadataStorage,
             favoritesExpansionState: live.favoritesExpansionState,
             linkedFolderWatcher: live.linkedFolderWatcher,
             queryHistoryManager: live.queryHistoryManager,
             dateFormattingService: live.dateFormattingService,
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             welcomeRouter: WelcomeRouter(),
             telemetry: live.telemetry
         )
@@ -106,7 +104,7 @@ private final class WelcomeLibraryFixture {
             importableAppDetector: { false },
             groupExpansionStore: WelcomeGroupExpansionStore(defaults: defaults),
             recentConnections: RecentConnectionsStore(defaults: defaults, appEvents: events),
-            listPreferences: ConnectionListPreferences(defaults: defaults, appEvents: events),
+            listPreferences: ConnectionListPreferences(defaults: defaults, connectionStorage: connectionStorage, appEvents: events),
             scope: scope
         )
         viewModel.loadConnections()

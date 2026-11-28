@@ -1,5 +1,4 @@
 import SwiftUI
-import TableProSyncTransport
 
 @MainActor
 struct AppServices {
@@ -25,14 +24,13 @@ struct AppServices {
     let sshProfileStorage: SSHProfileStorage
     let credentialProfileStorage: CredentialProfileStorage
     let featureAccess: FeatureAccess
-    let syncMetadataStorage: SyncMetadataStorage
     let favoritesExpansionState: FavoritesExpansionState
     let linkedFolderWatcher: LinkedFolderWatcher
     let queryHistoryManager: QueryHistoryManager
     let dateFormattingService: DateFormattingService
     let copilotService: CopilotService
     let mcpServerManager: MCPServerManager
-    let syncTracker: SyncChangeTracker
+    let syncJournal: SyncHostJournal
     let welcomeRouter: WelcomeRouter
     let telemetry: Telemetry
     // Defaulted, so a fixture that never touches projects builds without one.
@@ -61,14 +59,13 @@ struct AppServices {
         sshProfileStorage: .shared,
         credentialProfileStorage: .shared,
         featureAccess: .shared,
-        syncMetadataStorage: .appDefault,
         favoritesExpansionState: .shared,
         linkedFolderWatcher: .shared,
         queryHistoryManager: .shared,
         dateFormattingService: .shared,
         copilotService: .shared,
         mcpServerManager: .shared,
-        syncTracker: .shared,
+        syncJournal: .shared,
         welcomeRouter: .shared,
         telemetry: .shared
     )

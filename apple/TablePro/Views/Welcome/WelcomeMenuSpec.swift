@@ -13,6 +13,8 @@ internal enum WelcomeMenuCommand: Equatable {
     /// way in. Its own command rather than a mode on Connect, because they land somewhere different.
     case startAgentSession(UUID)
     case edit(UUID)
+    // A Team Library row, edited in the connection form and published back to its team.
+    case editTeamConnection(UUID)
     case rename(LibraryRowID)
     case duplicate(UUID)
     case compareAndSync(UUID)
@@ -69,12 +71,15 @@ internal struct WelcomeMenuContext {
     internal let linkedFolderConnectionIds: Set<UUID>
     internal let disconnectableConnectionIds: Set<UUID>
     internal let reconnectableConnectionIds: Set<UUID>
-    internal let isSyncEnabled: Bool
+    // Off hides Include and Exclude: a connection's Local only state only matters to a provider that syncs it.
+    internal let syncProvider: SyncProviderSetting
     internal let isCompareSyncEnabled: Bool
     internal let canPublishToTeamCatalog: Bool
     internal let teamLibraryTeams: [TeamLibraryTeam]
     internal let hasTeamLibraryConflicts: Bool
     internal var projects: [ConnectionProject] = []
+    // Team Library rows of teams whose library this account writes, by the role the core reports.
+    internal var editableTeamConnectionIds: Set<UUID> = []
 }
 
 @MainActor
@@ -197,8 +202,8 @@ internal enum WelcomeMenuSpec {
         if let move = moveToProjectSubmenu(connectionIds: [id], groupIds: [], context: context) {
             organize.append(move)
         }
-        if context.isSyncEnabled {
-            organize.append(syncItem([id], allLocalOnly: connection.localOnly))
+        if let item = syncItem([id], allLocalOnly: connection.localOnly, provider: context.syncProvider) {
+            organize.append(item)
         }
 
         let deleteTitle = section == .connections ? Titles.delete(count: 1) : Titles.deleteConnection
@@ -229,8 +234,8 @@ internal enum WelcomeMenuSpec {
         if let move = moveToProjectSubmenu(connectionIds: ids, groupIds: [], context: context) {
             organize.append(move)
         }
-        if context.isSyncEnabled {
-            organize.append(syncItem(ids, allLocalOnly: connections.allSatisfy(\.localOnly)))
+        if let item = syncItem(ids, allLocalOnly: connections.allSatisfy(\.localOnly), provider: context.syncProvider) {
+            organize.append(item)
         }
 
         return [
@@ -245,6 +250,9 @@ internal enum WelcomeMenuSpec {
         var sections = [WelcomeMenuSection([.command(Titles.connect(count: ids.count), .connect(context.rows))])]
         if ids.count == 1, let id = ids.first, context.linkedFolderConnectionIds.contains(id) {
             sections.append(WelcomeMenuSection([.command(Titles.showInFinder, .showInFinder(id))]))
+        }
+        if ids.count == 1, let id = ids.first, context.editableTeamConnectionIds.contains(id) {
+            sections.append(WelcomeMenuSection([.command(Titles.edit, .editTeamConnection(id))]))
         }
         let inTeamLibrary = context.rows.contains { row in
             if case .connection(_, .teamLibrary) = row { return true }
@@ -302,11 +310,9 @@ internal enum WelcomeMenuSpec {
         ])
     }
 
-    private static func syncItem(_ ids: [UUID], allLocalOnly: Bool) -> WelcomeMenuItem {
-        .command(
-            allLocalOnly ? Titles.includeInSync : Titles.excludeFromSync,
-            .setIncludedInSync(ids, allLocalOnly)
-        )
+    private static func syncItem(_ ids: [UUID], allLocalOnly: Bool, provider: SyncProviderSetting) -> WelcomeMenuItem? {
+        guard let title = allLocalOnly ? Titles.includeInSync(provider) : Titles.excludeFromSync(provider) else { return nil }
+        return .command(title, .setIncludedInSync(ids, allLocalOnly))
     }
 
     // MARK: - Groups
@@ -461,8 +467,21 @@ internal extension WelcomeMenuSpec {
         static var moveToProject: String { String(localized: "Move to Project") }
         static var noProject: String { String(localized: "None") }
         static var removeFromGroup: String { String(localized: "Remove from Group") }
-        static var includeInSync: String { String(localized: "Include in iCloud Sync") }
-        static var excludeFromSync: String { String(localized: "Exclude from iCloud Sync") }
+        static func includeInSync(_ provider: SyncProviderSetting) -> String? {
+            switch provider {
+            case .off: nil
+            case .iCloud: String(localized: "Include in iCloud Sync")
+            case .tableproSync: String(localized: "Include in TablePro Sync")
+            }
+        }
+
+        static func excludeFromSync(_ provider: SyncProviderSetting) -> String? {
+            switch provider {
+            case .off: nil
+            case .iCloud: String(localized: "Exclude from iCloud Sync")
+            case .tableproSync: String(localized: "Exclude from TablePro Sync")
+            }
+        }
         static var deleteConnection: String { String(localized: "Delete Connection…") }
         static var showInFinder: String { String(localized: "Show in Finder") }
         static var newSubgroup: String { String(localized: "New Subgroup…") }

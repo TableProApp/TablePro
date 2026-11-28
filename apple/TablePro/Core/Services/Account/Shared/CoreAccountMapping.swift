@@ -127,6 +127,11 @@ nonisolated internal enum CoreAccountMapping {
             return .signedOut
         case "account.device_revoked":
             return .server(status: 403, code: "device_revoked")
+        case "account.step_up_required":
+            return .server(status: 401, code: "step_up_required")
+        // The browser stepped up another account's sign-in, whose tokens the core revoked.
+        case "account.step_up_other_account":
+            return .server(status: 403, code: "step_up_other_account")
         case "account.unreachable", "account.sign_in_timed_out", "account.browser":
             return .network(info.message)
         case "account.rate_limited":

@@ -72,7 +72,7 @@ internal enum SampleDatabaseLauncher {
             if existing.database != installedURL.path {
                 var updated = existing
                 updated.database = installedURL.path
-                connectionStorage.updateConnection(updated)
+                connectionStorage.updateConnection(updated, byUser: false)
                 return updated
             }
             return existing

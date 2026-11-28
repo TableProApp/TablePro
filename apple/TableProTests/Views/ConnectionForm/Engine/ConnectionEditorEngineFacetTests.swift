@@ -82,11 +82,28 @@ struct ConnectionEditorEngineFacetTests {
         #expect(!layout.contains(.builtIn(.aiRules)))
         #expect(!layout.contains(.builtIn(.localOnly)))
         context.aiEnabled = true
-        context.syncEnabled = true
+        context.syncProvider = .iCloud
         layout = ConnectionEditorEngine.layout(draft, mysql, context)
         #expect(layout.contains(.builtIn(.aiPolicy)))
         #expect(layout.contains(.builtIn(.aiRules)))
         #expect(layout.contains(.builtIn(.localOnly)))
+    }
+
+    @Test("Local Only shows under the provider that syncs the connection, and not with sync off")
+    func localOnlyFollowsTheProvider() {
+        let mysql = traits(.mysql)
+        let draft = ConnectionDraft.new(type: .mysql, traits: mysql)
+        var context = EditorContext()
+        let title = { (context: EditorContext) -> String? in
+            ConnectionEditorEngine.layout(draft, mysql, context).facet(.advanced)?
+                .section(containing: .builtIn(.localOnly))?.title
+        }
+
+        #expect(title(context) == nil)
+        context.syncProvider = .iCloud
+        #expect(title(context) == String(localized: "iCloud Sync"))
+        context.syncProvider = .tableproSync
+        #expect(title(context) == "TablePro Sync")
     }
 
     @Test("Socket clears the transport in the same edit")

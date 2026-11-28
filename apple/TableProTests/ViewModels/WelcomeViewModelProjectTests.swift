@@ -16,9 +16,13 @@ struct WelcomeViewModelProjectTests {
     init() throws {
         let fixture = try ProjectLibraryFixture()
         self.fixture = fixture
-        tags = TagStorage(userDefaults: fixture.defaults, syncTracker: fixture.tracker, appEvents: fixture.appEvents)
+        tags = TagStorage(syncJournal: fixture.journal.journal, connectionStorage: fixture.connections, appEvents: fixture.appEvents)
         recents = RecentConnectionsStore(defaults: fixture.defaults, appEvents: fixture.appEvents)
-        preferences = ConnectionListPreferences(defaults: fixture.defaults, appEvents: fixture.appEvents)
+        preferences = ConnectionListPreferences(
+            defaults: fixture.defaults,
+            connectionStorage: fixture.connections,
+            appEvents: fixture.appEvents
+        )
         viewModel = WelcomeViewModel(
             services: Self.services(fixture: fixture, tags: tags),
             importableAppDetector: { false },
@@ -54,14 +58,13 @@ struct WelcomeViewModelProjectTests {
             sshProfileStorage: live.sshProfileStorage,
             credentialProfileStorage: live.credentialProfileStorage,
             featureAccess: live.featureAccess,
-            syncMetadataStorage: live.syncMetadataStorage,
             favoritesExpansionState: live.favoritesExpansionState,
             linkedFolderWatcher: live.linkedFolderWatcher,
             queryHistoryManager: live.queryHistoryManager,
             dateFormattingService: live.dateFormattingService,
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
-            syncTracker: fixture.tracker,
+            syncJournal: fixture.journal.journal,
             welcomeRouter: WelcomeRouter(appEvents: fixture.appEvents),
             telemetry: live.telemetry,
             projectStorage: fixture.projects
@@ -522,6 +525,8 @@ struct WelcomeViewModelProjectTests {
         viewModel.saveFavoritesOrder([a2.id, a1.id], replacing: displayed)
         #expect(preferences.favoritesOrder == [b1.id, a2.id, b2.id, a1.id])
 
+        // A favourite leaves the one list the core keeps when it stops being one, as the Welcome window's toggle does.
+        #expect(fixture.connections.mutateConnections(ids: [a1.id], byUser: false) { $0.isFavorite = false })
         viewModel.saveFavoritesOrder([a2.id], replacing: [a2.id, a1.id])
         #expect(preferences.favoritesOrder == [b1.id, a2.id, b2.id])
 

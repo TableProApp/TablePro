@@ -8,6 +8,27 @@ import Foundation
 import TableProConnectionLibrary
 import TableProImport
 
+// A row the list shows but never saves: a linked folder's file or a team's copy.
+internal enum WelcomeSharedConnection {
+    case linked(LinkedConnection)
+    case team(DatabaseConnection)
+
+    var name: String {
+        switch self {
+        case .linked(let linked): linked.connection.name
+        case .team(let connection): connection.name
+        }
+    }
+
+    @MainActor
+    func databaseConnection() -> DatabaseConnection {
+        switch self {
+        case .linked(let linked): linked.databaseConnection()
+        case .team(let connection): connection.sharedCopy(from: .teamLibrary)
+        }
+    }
+}
+
 internal struct WelcomeResolvedRows: Equatable {
     internal var savedConnectionIds: [UUID] = []
     internal var sharedConnectionIds: [UUID] = []
@@ -78,8 +99,8 @@ extension WelcomeViewModel {
         }
         let shared = sharedConnectionsById
         for id in resolved.sharedConnectionIds {
-            guard let linked = shared[id] else { continue }
-            connectToLinkedConnection(linked)
+            guard let connection = shared[id] else { continue }
+            connectToSharedConnection(connection)
         }
     }
 
@@ -160,7 +181,7 @@ extension WelcomeViewModel {
         case .group(let id):
             return groupsById[id]?.name
         case .connection(let id, _):
-            return connectionsById[id]?.name ?? sharedConnectionsById[id]?.connection.name
+            return connectionsById[id]?.name ?? sharedConnectionsById[id]?.name
         case .section:
             return nil
         }
@@ -207,7 +228,7 @@ extension WelcomeViewModel {
         let targets = ids.filter { connectionsById[$0] != nil }
         guard !targets.isEmpty else { return }
         let displayed = LibraryOutlineBuilder.favoriteIds(outlineRequest(query: LibraryQuery()))
-        guard storage.mutateConnections(ids: Set(targets), { $0.isFavorite = isFavorite }) else {
+        guard storage.mutateConnections(ids: Set(targets), byUser: false, { $0.isFavorite = isFavorite }) else {
             reportLibraryWriteFailure()
             return
         }
@@ -284,6 +305,7 @@ extension WelcomeViewModel {
     func requestExcludeFromSync(_ ids: [UUID]) {
         let targets = ids.compactMap { connectionsById[$0] }.filter(\.participatesInSync)
         guard !targets.isEmpty else { return }
+        excludeFromSyncProvider = services.appSettings.sync.provider
         connectionsToExcludeFromSync = targets
         showExcludeFromSyncConfirmation = true
     }
@@ -428,12 +450,15 @@ extension WelcomeViewModel {
             linkedFolderConnectionIds: Set(presentableLinkedConnections.map(\.id)),
             disconnectableConnectionIds: disconnectable,
             reconnectableConnectionIds: reconnectable,
-            isSyncEnabled: services.appSettings.sync.enabled,
+            syncProvider: services.appSettings.sync.provider,
             isCompareSyncEnabled: AppModuleSettings.shared.isEnabled(.compareSync),
             canPublishToTeamCatalog: services.featureAccess.isAvailable(.teamCatalog),
-            teamLibraryTeams: services.featureAccess.isAvailable(.teamLibrary) ? TeamLibrarySync.shared.writableTeams : [],
-            hasTeamLibraryConflicts: !TeamLibrarySync.shared.conflicts.isEmpty,
-            projects: projects
+            teamLibraryTeams: services.featureAccess.isAvailable(.teamLibrary) ? TeamLibrary.shared.writableTeams : [],
+            hasTeamLibraryConflicts: !TeamLibrary.shared.conflicts.conflicts.isEmpty,
+            projects: projects,
+            editableTeamConnectionIds: services.featureAccess.isAvailable(.teamLibrary)
+                ? Set(TeamLibrary.shared.content.connections.filter(\.canWrite).map(\.connection.id))
+                : []
         )
     }
 
@@ -455,6 +480,8 @@ extension WelcomeViewModel {
             }
         case .edit(let id):
             WindowOpener.shared.openConnectionForm(editing: id)
+        case .editTeamConnection(let id):
+            editTeamConnection(rowID: id)
         case .rename(let row):
             outlineController?.beginRename(row)
         case .duplicate(let id):

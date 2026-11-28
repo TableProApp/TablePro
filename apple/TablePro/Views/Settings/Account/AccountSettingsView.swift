@@ -35,6 +35,13 @@ internal struct AccountSettingsView: View {
                     )
                 }
 
+                if content.showsEncryption {
+                    SettingsDrillRow(
+                        route: SettingsRoute.page(.accountEncryption),
+                        title: SettingsPage.accountEncryption.title
+                    )
+                }
+
                 if content.sellsPlans {
                     SettingsDrillRow(route: SettingsRoute.page(.accountOffline), title: SettingsPage.accountOffline.title)
                 }
@@ -508,6 +515,8 @@ internal struct AccountDevicesPage: View {
             }
         }
         .formStyle(.grouped)
+        // Another device can sign in while the pane stays open, so the list is read again each time it shows.
+        .task { await model.loadDevices() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(SettingsPage.accountDevices.pageIdentifier)
     }
@@ -592,15 +601,13 @@ private struct AccountTeamRow: View {
         return String(format: String(localized: "%@ · %@"), role, seat)
     }
 
+    // The team's keys page holds Manage on the Web too, so the row opens it. A drill row, as the pane's own pages are, so
+    // the link carries the team's name and its drill identifier.
     var body: some View {
-        SettingsRecordRow(title: team.name, subtitle: subtitle) {
-            Button(String(localized: "Manage…")) { model.openPortal(team.manage) }
-                .fixedSize()
-                .accessibilityLabel(Text(String(format: String(localized: "Manage %@"), team.name)))
-        }
-        .modifier(AccountRowMenu(title: String(localized: "Manage…")) {
-            model.openPortal(team.manage)
-        })
+        SettingsDrillRow(route: SettingsRoute.team(id: team.id, name: team.name), name: team.name, detail: subtitle)
+            .modifier(AccountRowMenu(title: String(localized: "Manage…")) {
+                model.openPortal(team.manage)
+            })
     }
 }
 

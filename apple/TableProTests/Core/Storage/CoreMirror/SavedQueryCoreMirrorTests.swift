@@ -1,24 +1,23 @@
 import Foundation
-import os
 @testable import TablePro
 import TableProFFI
 import TableProSyncTransport
 import Testing
 
+@MainActor
 struct SavedQueryCoreMirrorTests {
     private let fixture: CoreMirrorFixture
     private let storage: SQLFavoriteStorage
-    private let metadata: SyncMetadataStorage
+    private let journal = SyncJournalRecorder()
     private let manager: SQLFavoriteManager
     private let connectionId = UUID()
 
     init() throws {
         fixture = try CoreMirrorFixture()
         storage = SQLFavoriteStorage(databaseURL: fixture.url("sql_favorites.db"))
-        metadata = SyncMetadataStorage(userDefaults: try fixture.pool.make().defaults, prefix: "tests.\(UUID().uuidString)")
         manager = SQLFavoriteManager(
             storage: storage,
-            syncTracker: SyncChangeTracker(metadataStorage: metadata),
+            syncJournal: journal.journal,
             core: fixture.core,
             mirrorDefaults: try fixture.pool.make().defaults
         )
@@ -93,7 +92,7 @@ struct SavedQueryCoreMirrorTests {
 
         #expect(await storage.fetchFavorite(id: older.id)?.name == "Report")
         #expect(await storage.fetchFavorite(id: newer.id)?.name == "Report (2)")
-        #expect(metadata.dirtyIds(for: .favorite) == [newer.id.uuidString])
+        #expect(journal.dirtyIds(for: .favorite) == [newer.id.uuidString])
         let names = try await coreContents().queries.map { $0.name }.sorted()
         #expect(names == ["Report", "Report (2)"])
     }
@@ -110,7 +109,7 @@ struct SavedQueryCoreMirrorTests {
 
         #expect(await storage.fetchFavorite(id: older.id)?.name == "Report")
         #expect(await storage.fetchFavorite(id: agreed.id)?.name == "Report (2)")
-        #expect(metadata.dirtyIds(for: .favorite) == [agreed.id.uuidString])
+        #expect(journal.dirtyIds(for: .favorite) == [agreed.id.uuidString])
     }
 
     @Test("What the previous stable changed and deleted in its store after a downgrade reaches the core")
@@ -150,7 +149,7 @@ struct SavedQueryCoreMirrorTests {
         await manager.pushToCore()
 
         #expect(await storage.fetchFavorite(id: report.id)?.name == "Renamed in the core")
-        #expect(metadata.dirtyIds(for: .favorite).isEmpty)
+        #expect(journal.dirtyIds(for: .favorite).isEmpty)
     }
 
     @Test("A deletion that reached the core before a crash, then one on the previous stable, leaves both gone")
@@ -184,56 +183,5 @@ struct SavedQueryCoreMirrorTests {
         await manager.pushToCore()
 
         #expect(try await coreContents().digest == digest)
-    }
-
-    @Test("A policy stop before a pull's apply writes nothing of it (P1-M4)")
-    func policyStopEndsTheApply() async throws {
-        let deleted = favorite("Deleted", createdAt: Date(timeIntervalSince1970: 1_000))
-        #expect(await storage.addFavorite(deleted))
-        let folder = SQLFavoriteFolder(name: "Pulled", connectionId: connectionId)
-        let pulled = favorite("Pulled", createdAt: Date(timeIntervalSince1970: 2_000))
-        // The check before the apply starts passes; the stop lands before the store's first write.
-        let checks = StopAfter(checks: 1)
-
-        let outcome = await manager.applyRemote(
-            RemoteSQLFavoriteBatch(favorites: [pulled], folders: [folder], deletedFavoriteIds: [deleted.id]),
-            isStopped: { checks.isStopped() }
-        )
-
-        #expect(outcome == .failed)
-        #expect(await storage.fetchFavorite(id: deleted.id) != nil)
-        #expect(await storage.fetchFolder(id: folder.id) == nil)
-        #expect(await storage.fetchFavorite(id: pulled.id) == nil)
-    }
-
-    @Test("A stop that lands while a pulled write waits to commit rolls the write back (P1-M4)")
-    func stopWhileTheWriteWaits() async throws {
-        let pulled = SQLFavoriteFolder(name: "Pulled", connectionId: connectionId)
-        // The checks before the apply and on the store's actor pass; SQLite's commit asks again and sees the stop.
-        let stop = StopAfter(checks: 2)
-
-        let outcome = await manager.applyRemote(
-            RemoteSQLFavoriteBatch(folders: [pulled]),
-            isStopped: { stop.isStopped() }
-        )
-
-        #expect(outcome == .failed)
-        #expect(await storage.fetchFolder(id: pulled.id) == nil)
-    }
-}
-
-private final class StopAfter: Sendable {
-    private let remaining: OSAllocatedUnfairLock<Int>
-
-    init(checks: Int) {
-        remaining = OSAllocatedUnfairLock(initialState: checks)
-    }
-
-    func isStopped() -> Bool {
-        remaining.withLock { left in
-            guard left > 0 else { return true }
-            left -= 1
-            return false
-        }
     }
 }

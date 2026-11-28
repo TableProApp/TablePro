@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProFFI
 import TableProImport
 import Testing
 
@@ -20,18 +21,14 @@ struct WelcomeViewModelLinkedConnectionTests {
     }
 
     @Test("A Team Library connection asks for the password the library does not hold")
-    func teamLibraryConnectionPromptsForPassword() {
-        let payload = exportable(type: .mysql, port: 3_306).sanitizedForImport()
-        let linked = LinkedConnection(
-            id: UUID(),
-            connection: payload,
-            folderId: UUID(),
-            sourceFileURL: URL(fileURLWithPath: "/")
-        )
+    func teamLibraryConnectionPromptsForPassword() throws {
+        let item = TeamLibraryFixture.connection(UUID().uuidString, name: "Shared")
+        let team = try #require(TeamLibraryContent(teams: [TeamLibraryFixture.acme(items: [item])]).connections.first)
 
-        let connection = linked.databaseConnection()
+        let connection = WelcomeSharedConnection.team(team.connection).databaseConnection()
 
         #expect(ConnectionCredentialResolver.promptsForPassword(connection))
+        #expect(connection.origin == .teamLibrary)
     }
 
     @Test("A file-based linked connection has no password to ask for")

@@ -45,7 +45,8 @@ internal final class AccountServices: AccountBackendListener {
     let shares: any ShareService
     let events = PassthroughSubject<AccountEvent, Never>()
     private let backend: any AccountBackend
-    private let transport: any ClientTransport
+    // The account the sync service opens with; nil for a backend that has none.
+    let syncAccount: (any SyncAccountProviding)?
     private let storedKey: StoredLicenseKey
     private let clock: any Clock<Duration>
     private let now: @Sendable () -> Date
@@ -63,6 +64,7 @@ internal final class AccountServices: AccountBackendListener {
 
     init(
         backend: any AccountBackend,
+        syncAccount: (any SyncAccountProviding)? = nil,
         transport: any ClientTransport,
         storedKey: StoredLicenseKey,
         access: FeatureAccess,
@@ -71,7 +73,7 @@ internal final class AccountServices: AccountBackendListener {
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.backend = backend
-        self.transport = transport
+        self.syncAccount = syncAccount
         self.storedKey = storedKey
         self.access = access
         self.clock = clock
@@ -93,12 +95,6 @@ internal final class AccountServices: AccountBackendListener {
 
     var machineID: String {
         backend.machineID
-    }
-
-    // A client whose calls go to this server under this sign-in only: under any other, a call reads as signed out and
-    // is never sent.
-    func api(pinnedTo server: AccountServer, session: String) -> any APIProtocol {
-        AccountAPI.client(backend: backend, transport: transport, onlyTo: server.apiBaseURL, session: session)
     }
 
     var server: AccountServer {
@@ -181,6 +177,12 @@ internal final class AccountServices: AccountBackendListener {
         verifiedAt = now()
         publish()
         announceSignIn(.interactive)
+    }
+
+    // The step-up's tokens replace this sign-in's, for the same account only, so nothing is announced.
+    func stepUp(acrValues: [String], maxAgeSecs: UInt64?, using authenticator: some WebAuthenticating) async throws(AccountError) {
+        try await backend.stepUp(acrValues: acrValues, maxAgeSecs: maxAgeSecs, using: authenticator)
+        publish()
     }
 
     func signOut() async {

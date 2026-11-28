@@ -14,10 +14,11 @@ struct CredentialProfileImportTests {
     private let pool = EphemeralDefaultsPool()
     private let directory: URL
     private let keychain = InMemoryKeychain()
-    private let metadata: SyncMetadataStorage
     private let integrity: ConnectionStoreIntegrity
     private let connections: ConnectionStorage
     private let storage: CredentialProfileStorage
+
+    private let tracker = SyncJournalRecorder()
 
     init() throws {
         let unique = UUID().uuidString
@@ -25,25 +26,19 @@ struct CredentialProfileImportTests {
             .appendingPathComponent("tablepro-tests")
             .appendingPathComponent("credential-import-\(unique)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        metadata = SyncMetadataStorage(
-            userDefaults: try pool.make().defaults
-        )
         integrity = ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
         let connectionStorage = ConnectionStorage(
             fileURL: directory.appendingPathComponent("connections.json"),
             userDefaults: try pool.make().defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: keychain,
             integrity: integrity
         )
         connections = connectionStorage
         storage = CredentialProfileStorage(
-            fileURL: directory.appendingPathComponent("credentialProfiles.json"),
             keychain: keychain,
-            syncTracker: tracker,
-            connectionStorage: connectionStorage,
-            integrity: integrity
+            syncJournal: tracker.journal,
+            connectionStorage: connectionStorage
         )
     }
 
@@ -110,21 +105,27 @@ struct CredentialProfileImportTests {
             planned("p2", name: "Two")
         ]))
 
-        #expect(metadata.dirtyIds(for: .credentialProfile) == Set(created.values.map(\.uuidString)))
+        #expect(tracker.dirtyIds(for: .credentialProfile) == Set(created.values.map(\.uuidString)))
         #expect(storage.loadProfiles().map(\.sortOrder) == [0, 1])
     }
 
-    @Test("An unreadable profile store returns nil and keeps its bytes")
+    @Test("An unreadable library returns nil and keeps the profiles file's bytes")
     func unreadableStoreReturnsNil() throws {
-        let fileURL = directory.appendingPathComponent("unreadable-profiles.json")
+        let folder = directory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let fileURL = folder.appendingPathComponent("credentialProfiles.json")
         let corrupt = Data("not json".utf8)
         try corrupt.write(to: fileURL)
+        let unreadableConnections = ConnectionStorage(
+            fileURL: folder.appendingPathComponent("connections.json"),
+            userDefaults: try pool.make().defaults,
+            syncJournal: SyncHostJournal(),
+            keychain: keychain
+        )
         let unreadable = CredentialProfileStorage(
-            fileURL: fileURL,
             keychain: keychain,
-            syncTracker: SyncChangeTracker(metadataStorage: metadata),
-            connectionStorage: connections,
-            integrity: integrity
+            syncJournal: SyncHostJournal(),
+            connectionStorage: unreadableConnections
         )
 
         #expect(unreadable.addImportedProfiles([planned("p1", name: "Reader")]) == nil)

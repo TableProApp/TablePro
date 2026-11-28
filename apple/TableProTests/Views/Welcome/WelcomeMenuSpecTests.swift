@@ -17,10 +17,11 @@ struct WelcomeMenuSpecTests {
         disconnectable: Set<UUID> = [],
         reconnectable: Set<UUID> = [],
         linkedFolders: Set<UUID> = [],
-        isSyncEnabled: Bool = false,
+        syncProvider: SyncProviderSetting = .off,
         isCompareSyncEnabled: Bool = false,
         teamLibraryTeams: [TeamLibraryTeam] = [],
-        hasTeamLibraryConflicts: Bool = false
+        hasTeamLibraryConflicts: Bool = false,
+        editableTeamConnections: Set<UUID> = []
     ) -> WelcomeMenuContext {
         var resolved = WelcomeResolvedRows()
         let byId = Dictionary(uniqueKeysWithValues: connections.map { ($0.id, $0) })
@@ -48,11 +49,12 @@ struct WelcomeMenuSpecTests {
             linkedFolderConnectionIds: linkedFolders,
             disconnectableConnectionIds: disconnectable,
             reconnectableConnectionIds: reconnectable,
-            isSyncEnabled: isSyncEnabled,
+            syncProvider: syncProvider,
             isCompareSyncEnabled: isCompareSyncEnabled,
             canPublishToTeamCatalog: false,
             teamLibraryTeams: teamLibraryTeams,
-            hasTeamLibraryConflicts: hasTeamLibraryConflicts
+            hasTeamLibraryConflicts: hasTeamLibraryConflicts,
+            editableTeamConnectionIds: editableTeamConnections
         )
     }
 
@@ -146,12 +148,31 @@ struct WelcomeMenuSpecTests {
             rows: [.connection(connection.id, section: .connections)],
             connections: [connection],
             disconnectable: [connection.id],
-            isSyncEnabled: true
+            syncProvider: .iCloud
         ))
         let all = titles(sections).flatMap { $0 }
 
         #expect(all.contains("Disconnect"))
         #expect(all.contains("Exclude from iCloud Sync"))
+    }
+
+    @Test("Include and Exclude name the provider that syncs the connections")
+    func syncItemNamesTheProvider() {
+        let synced = DatabaseConnection(name: "Prod", type: .mysql)
+        var local = DatabaseConnection(name: "Scratch", type: .mysql)
+        local.localOnly = true
+        let item = { (connection: DatabaseConnection, provider: SyncProviderSetting) in
+            self.titles(WelcomeMenuSpec.sections(for: self.context(
+                rows: [.connection(connection.id, section: .connections)],
+                connections: [connection],
+                syncProvider: provider
+            ))).flatMap { $0 }.filter { $0.contains("Sync") }
+        }
+
+        #expect(item(synced, .tableproSync) == ["Exclude from TablePro Sync"])
+        #expect(item(local, .tableproSync) == ["Include in TablePro Sync"])
+        #expect(item(local, .iCloud) == ["Include in iCloud Sync"])
+        #expect(item(synced, .off).isEmpty)
     }
 
     @Test("A Favorites row names what Delete removes and offers removing the favorite")
@@ -310,6 +331,22 @@ struct WelcomeMenuSpecTests {
         #expect(titles(WelcomeMenuSpec.sections(for: context(rows: [row], hasTeamLibraryConflicts: true))) == [
             ["Connect"], ["Resolve Team Library Conflicts…"]
         ])
+    }
+
+    @Test("A Team Library connection offers Edit to an owner, admin or editor of its team, and never to a member")
+    func teamLibraryEdit() {
+        let id = UUID()
+        let row = LibraryRowID.connection(id, section: .teamLibrary)
+
+        let editor = WelcomeMenuSpec.sections(for: context(rows: [row], editableTeamConnections: [id]))
+        #expect(titles(editor) == [["Connect"], ["Edit…"]])
+        #expect(entries(editor).last?.command == .editTeamConnection(id))
+        #expect(titles(WelcomeMenuSpec.sections(for: context(rows: [row]))) == [["Connect"]])
+        let two = WelcomeMenuSpec.sections(for: context(
+            rows: [row, .connection(UUID(), section: .teamLibrary)],
+            editableTeamConnections: [id]
+        ))
+        #expect(!titles(two).joined().contains("Edit…"))
     }
 
     @Test("Publish to Team Library names the one team, or lists each team this account writes to")

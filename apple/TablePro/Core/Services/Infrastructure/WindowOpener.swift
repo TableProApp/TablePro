@@ -68,6 +68,14 @@ internal final class WindowOpener: ObservableObject {
         }
     }
 
+    internal func openTeamConnectionForm(teamID: String, itemID: String) {
+        perform { opener in
+            guard let present = opener.openConnectionFormAction else { return false }
+            present(.editTeamCopy(teamID: teamID, itemID: itemID), nil)
+            return true
+        }
+    }
+
     internal func openConnectionForm() {
         presentTypeChooser(initialType: nil) { selected in
             WindowOpener.shared.stageConnectionFormDraft(type: selected)

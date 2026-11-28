@@ -189,17 +189,17 @@ struct ConnectionDuplicateCoverageTests {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
-            .appendingPathComponent("duplicate_coverage_\(unique).json")
+            .appendingPathComponent("duplicate_coverage_\(unique)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         try FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
         let defaults = try pool.make().defaults
-        let syncDefaults = try pool.make().defaults
         storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults)),
+            syncJournal: SyncHostJournal(),
             keychain: InMemoryKeychain()
         )
     }

@@ -28,9 +28,9 @@ struct SettingsNavigationTests {
         #expect(SettingsNavigation.orderedPanes.contains(.general))
     }
 
-    @Test("Sync is titled iCloud Sync and every pane has its own symbol")
+    @Test("Sync is titled Sync, since it holds iCloud and TablePro Sync, and every pane has its own symbol")
     func titlesAndSymbols() {
-        #expect(SettingsPane.sync.title == String(localized: "iCloud Sync"))
+        #expect(SettingsPane.sync.title == String(localized: "Sync"))
         #expect(SettingsPane.mcp.title == "MCP")
         let symbols = SettingsPane.allCases.map(\.symbol)
         #expect(Set(symbols).count == symbols.count)
@@ -107,7 +107,7 @@ struct SettingsNavigationTests {
         #expect(connections?.pages.contains { $0.location == SettingsLocation(page: .trustedLinks) } == true)
     }
 
-    @Test("Backup does not find iCloud Sync, which keeps no backup")
+    @Test("Backup does not find Sync, which keeps no backup")
     func backupDoesNotFindSync() {
         #expect(!SettingsNavigation.panes(matching: "backup").contains(.sync))
     }

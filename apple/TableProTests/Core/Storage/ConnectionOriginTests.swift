@@ -3,7 +3,6 @@
 //  TableProTests
 //
 
-import CloudKit
 import Foundation
 @testable import TablePro
 import TableProImport
@@ -13,8 +12,6 @@ import Testing
 
 @MainActor
 struct ConnectionOriginTests {
-    private static let zoneID = CKRecordZone.ID(zoneName: "TableProSync", ownerName: CKCurrentUserDefaultName)
-
     private func pair() -> (thisMac: DatabaseConnection, imported: DatabaseConnection) {
         let own = DatabaseConnection(
             name: "Staging",
@@ -59,21 +56,6 @@ struct ConnectionOriginTests {
         #expect(pulled.adoptingDeviceLocalState(from: local).origin == .imported)
     }
 
-    @Test("The origin never reaches the CloudKit record")
-    func cloudKitRecordCarriesNoOrigin() {
-        let (own, imported) = pair()
-        let ownRecord = SyncRecordMapper.toCKRecord(own, in: Self.zoneID)
-        let importedRecord = SyncRecordMapper.toCKRecord(imported, in: Self.zoneID)
-
-        #expect(Set(importedRecord.allKeys()) == Set(ownRecord.allKeys()))
-        #expect(!importedRecord.allKeys().contains { $0.localizedCaseInsensitiveContains("origin") })
-        for key in importedRecord.allKeys() where key != ConnectionSyncField.modifiedAtLocal.key {
-            let left = importedRecord[key] as? NSObject
-            let right = ownRecord[key] as? NSObject
-            #expect(left == right, "\(key)")
-        }
-    }
-
     @Test("The origin never reaches an export, a share link or a team library entry")
     func exportCarriesNoOrigin() throws {
         let (own, imported) = pair()
@@ -104,7 +86,7 @@ struct ConnectionOriginTests {
             sourceFileURL: URL(fileURLWithPath: "/tmp/shared.tablepro")
         )
         #expect(linked.databaseConnection().origin == .linkedFolder)
-        #expect(linked.databaseConnection(origin: .teamLibrary).origin == .teamLibrary)
+        #expect(WelcomeSharedConnection.team(DatabaseConnection(name: "Team")).databaseConnection().origin == .teamLibrary)
 
         guard case .success(let parsed) = ConnectionURLParser.parse("postgresql://db.example.com:5432/app") else {
             Issue.record("The URL did not parse")

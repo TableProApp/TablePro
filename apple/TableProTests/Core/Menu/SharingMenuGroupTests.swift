@@ -30,10 +30,13 @@ struct SharingMenuGroupTests {
         let group = sharingItems(in: menu)
         #expect(group.count == 4)
         let others = menu.items.filter { item in !group.contains { $0 === item } }
+        // Some File items hide themselves, as Publish Saved Queries to Team does with no team to write; sharing leaves
+        // each as it was.
+        let othersHidden = others.map(\.isHidden)
 
         SharingMenuGroup.setShown(false, in: menu)
         #expect(group.allSatisfy { $0.isHidden })
-        #expect(others.allSatisfy { !$0.isHidden })
+        #expect(others.map(\.isHidden) == othersHidden)
 
         SharingMenuGroup.setShown(true, in: menu)
         #expect(group.allSatisfy { !$0.isHidden })

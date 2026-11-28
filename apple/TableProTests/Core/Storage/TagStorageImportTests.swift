@@ -13,13 +13,11 @@ import Testing
 @MainActor
 struct TagStorageImportTests {
     private let pool = EphemeralDefaultsPool()
-    private let metadata: SyncMetadataStorage
-    private let tracker: SyncChangeTracker
+    private let tracker: SyncJournalRecorder
     private let events: AppEvents
 
     init() throws {
-        metadata = SyncMetadataStorage(userDefaults: try pool.make().defaults)
-        tracker = SyncChangeTracker(metadataStorage: metadata)
+        tracker = SyncJournalRecorder()
         events = AppEvents()
     }
 
@@ -28,7 +26,16 @@ struct TagStorageImportTests {
         if let seed {
             defaults.set(seed, forKey: "com.TablePro.tags")
         }
-        return (TagStorage(userDefaults: defaults, syncTracker: tracker, appEvents: events), defaults)
+        let connections = ConnectionStorage(
+            fileURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+                .appendingPathComponent("connections.json"),
+            userDefaults: defaults,
+            syncJournal: tracker.journal,
+            keychain: InMemoryKeychain(),
+            appEvents: events
+        )
+        return (TagStorage(syncJournal: tracker.journal, connectionStorage: connections, appEvents: events), defaults)
     }
 
     private func preset(_ name: String) throws -> ConnectionTag {
@@ -84,7 +91,7 @@ struct TagStorageImportTests {
     func onlyCreatedTagsAreDirty() throws {
         let (storage, _) = try makeStorage()
         #expect(storage.saveTags(storage.loadTags()))
-        metadata.clearDirty(type: .tag)
+        tracker.clearDirty(type: .tag)
         var announcements = 0
         let subscription = events.connectionUpdated.sink { _ in announcements += 1 }
         defer { subscription.cancel() }
@@ -97,7 +104,7 @@ struct TagStorageImportTests {
 
         let newOne = try #require(ids["new-one"])
         let newTwo = try #require(ids["new-two"])
-        #expect(metadata.dirtyIds(for: .tag) == [newOne.uuidString, newTwo.uuidString])
+        #expect(tracker.dirtyIds(for: .tag) == [newOne.uuidString, newTwo.uuidString])
         #expect(announcements == 1)
     }
 

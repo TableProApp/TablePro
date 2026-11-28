@@ -59,8 +59,7 @@ paths:
 
 ## Sync
 
-- **Each user theme syncs as the `AppSettings` record `theme.<id>`** holding `ThemeFileFormat.encode(_:)` bytes, at the oldest schema that holds its keys. A user edit marks it dirty, a trash marks it deleted once the trash lands, and a load or migration marks nothing. Built-ins never sync.
+- **Each user theme syncs as the `AppSettings` record `theme.<id>`** holding `ThemeFileFormat.encode(_:)` bytes, at the oldest schema that holds its keys. A user edit journals it, a trash journals its deletion once the trash lands, and a load or migration journals nothing. Built-ins never sync.
 - **A record at a newer schema is skipped by an older Mac**, which keeps it as the merge base, so that Mac shows its default theme and its next edit of the theme drops the newer keys. A theme that sets no newer key stays at the old schema and syncs with it. This lasts only while an older build shares the zone, and it is named in the release that bumps the schema.
-- **A synced theme is untrusted.** `ThemeCatalog.applyRemote(category:data:)` checks the category id (never a built-in), a 64 KB cap, nesting depth, a full decode and the file id, and never writes over bytes it has not read. A validation failure is a logged skip; only a disk failure returns `.failed`, which withholds the change token so the pull replays. A remote delete trashes the file through `removeWithoutSync(ids:)`.
+- **A synced theme is untrusted.** `ThemeCatalog.applyRemote(category:data:)` checks the category id (never a built-in), a 64 KB cap, nesting depth, a full decode and the file id, and never writes over bytes it has not read. A validation failure is a logged skip; only a disk failure returns `.failed`. A remote delete trashes the file through `removeWithoutSync(ids:)`.
 - The light and dark theme ids sync. The appearance mode and fonts are device-local, and a received `appearance` record never changes them.
-- `SyncCoordinator.themeContentKind` names `ThemeSchema.current`, so a Mac upgraded past a bump refetches the zone once. After the first full pull, only local themes the server lacks are marked dirty, once.

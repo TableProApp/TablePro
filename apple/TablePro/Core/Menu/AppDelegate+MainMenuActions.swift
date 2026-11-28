@@ -30,6 +30,14 @@ extension AppDelegate: NSMenuItemValidation {
         _ = WebPageOpener.open(AccountServices.shared.portal.portalSharedLinks, scope: .httpsOrLoopbackHTTP)
     }
 
+    // The sender names its team in `representedObject`. Conflicts open in the welcome window, which every window reaches.
+    @objc func publishSavedQueriesToTeam(_ sender: NSMenuItem) {
+        guard let teamID = sender.representedObject as? String else { return }
+        TeamLibrarySavedQueriesPublishing.publish(to: teamID) {
+            WelcomeRouter.shared.route(.resolveTeamLibraryConflicts)
+        }
+    }
+
     @objc func openMCPActivity(_ sender: Any?) {
         WindowOpener.shared.openIntegrationsActivity()
     }

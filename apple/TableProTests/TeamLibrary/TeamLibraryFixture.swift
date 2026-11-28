@@ -3,172 +3,395 @@
 //  TableProTests
 //
 
+import Combine
 import Foundation
 @testable import TablePro
-import TableProCloudAPI
+import TableProFFI
 import TableProTestSupport
 
-// A signed-in account with the team_library feature, a seat in one team, and a sync engine storing into a temporary
-// folder, against FakeAccountServer's library.
+// The core's Team Library as one sign-in's sync service holds it. Once the sign-in it was opened with ends, it refuses
+// what reads or sends that sign-in's data, and still lists, discards, reports and deletes. A call that names another
+// owner than the engine's is refused, as the core refuses it.
+final class FakeTeamLibraryEngine: FakeTeamConflictEngine, TeamLibraryEngine, @unchecked Sendable {
+    private let state = NSLock()
+    private let owner: TeamLibraryOwnerArg
+    private var teams: [TeamLibraryTeamInfo]
+    private var statuses: [TeamScopeStatusInfo] = []
+    private var unsentEdits: [UnsentTeamEditInfo] = []
+    private var publishAnswer: Result<TeamPublishInfo, CoreError> = .success(TeamPublishInfo(edits: 1, conflicts: 0, unsent: 0, problem: nil))
+    private var syncAnswer: CoreError?
+    private var deleteFailure: CoreError?
+    private var importFailure: CoreError?
+    private var unsentFailure: CoreError?
+    private var ended = false
+    private var teamReadGate: AsyncGate?
+    private var passGate: AsyncGate?
+    private(set) var connectionPublishes: [(team: String, connections: [LibraryConnectionRecord])] = []
+    private(set) var connectionEdits: [(team: String, connection: LibraryConnectionRecord, secrets: [TeamSecretArg]?)] = []
+    private var heldSecrets: [String: [TeamSecretArg]] = [:]
+    private var secretsFailure: CoreError?
+    private(set) var queryPublishes: [(team: String, folders: [TeamFolderArg], queries: [TeamQueryArg])] = []
+    private(set) var discards: [String?] = []
+    private(set) var deletes = 0
+    private(set) var imports: [[TeamLibraryImportArg]] = []
+    private(set) var passes = 0
+    private(set) var namedOwners: [TeamLibraryOwnerArg] = []
+
+    init(teams: [TeamLibraryTeamInfo] = [TeamLibraryFixture.acme()], owner: TeamLibraryOwnerArg = TeamLibraryFixture.owner) {
+        self.teams = teams
+        self.owner = owner
+        super.init()
+    }
+
+    func hold(teams: [TeamLibraryTeamInfo]? = nil, statuses: [TeamScopeStatusInfo]? = nil, unsent: [UnsentTeamEditInfo]? = nil) {
+        state.withLock {
+            if let teams { self.teams = teams }
+            if let statuses { self.statuses = statuses }
+            if let unsent { unsentEdits = unsent }
+        }
+    }
+
+    // What the team's envelopes open to for one connection id, as the core answers it.
+    func hold(secrets: [TeamSecretArg], for connectionId: String) {
+        state.withLock { heldSecrets[connectionId] = secrets }
+    }
+
+    func failSecretReads(with error: CoreError?) {
+        state.withLock { secretsFailure = error }
+    }
+
+    func answerPublishes(with answer: Result<TeamPublishInfo, CoreError>) {
+        state.withLock { publishAnswer = answer }
+    }
+
+    func answerPasses(with error: CoreError?) {
+        state.withLock { syncAnswer = error }
+    }
+
+    func failDeletes(with error: CoreError?) {
+        state.withLock { deleteFailure = error }
+    }
+
+    func failImports(with error: CoreError?) {
+        state.withLock { importFailure = error }
+    }
+
+    func failUnsentReads(with error: CoreError?) {
+        state.withLock { unsentFailure = error }
+    }
+
+    // The next pass waits at the gate before it answers.
+    func holdNextPass(at gate: AsyncGate) {
+        state.withLock { passGate = gate }
+    }
+
+    // The sign-in the service was opened with ended.
+    func endSignIn() {
+        state.withLock { ended = true }
+    }
+
+    // The next read of the teams waits at the gate after it took what it answers.
+    func holdNextTeamRead(at gate: AsyncGate) {
+        state.withLock { teamReadGate = gate }
+    }
+
+    private func signedIn() throws {
+        if state.withLock({ ended }) {
+            throw TeamConflictFixture.failure("sync.team_library.signed_in_changed")
+        }
+    }
+
+    private func check(_ expected: TeamLibraryOwnerArg) throws {
+        state.withLock { namedOwners.append(expected) }
+        guard expected == owner else { throw TeamConflictFixture.failure("sync.team_library.other_owner") }
+    }
+
+    func teamLibraryOwner() -> TeamLibraryOwnerArg? {
+        owner
+    }
+
+    func teamLibrary(expectedOwner: TeamLibraryOwnerArg) async throws -> [TeamLibraryTeamInfo] {
+        try check(expectedOwner)
+        try signedIn()
+        let (answer, gate) = state.withLock { () -> ([TeamLibraryTeamInfo], AsyncGate?) in
+            let gate = teamReadGate
+            teamReadGate = nil
+            return (teams, gate)
+        }
+        await gate?.wait()
+        return answer
+    }
+
+    func publishTeamConnections(
+        expectedOwner: TeamLibraryOwnerArg,
+        teamId: String,
+        connections: [LibraryConnectionRecord]
+    ) async throws -> TeamPublishInfo {
+        try check(expectedOwner)
+        try signedIn()
+        return try state.withLock {
+            connectionPublishes.append((teamId, connections))
+            return try publishAnswer.get()
+        }
+    }
+
+    func publishTeamConnectionEdit(
+        expectedOwner: TeamLibraryOwnerArg,
+        teamId: String,
+        connection: LibraryConnectionRecord,
+        secrets: [TeamSecretArg]?
+    ) async throws -> TeamPublishInfo {
+        try check(expectedOwner)
+        try signedIn()
+        return try state.withLock {
+            connectionEdits.append((teamId, connection, secrets))
+            return try publishAnswer.get()
+        }
+    }
+
+    func teamConnectionSecrets(
+        expectedOwner: TeamLibraryOwnerArg,
+        teamId: String,
+        connectionId: String
+    ) async throws -> [TeamSecretArg] {
+        try check(expectedOwner)
+        try signedIn()
+        return try state.withLock {
+            if let secretsFailure { throw secretsFailure }
+            return heldSecrets[connectionId] ?? []
+        }
+    }
+
+    func publishTeamSavedQueries(
+        expectedOwner: TeamLibraryOwnerArg,
+        teamId: String,
+        folders: [TeamFolderArg],
+        queries: [TeamQueryArg]
+    ) async throws -> TeamPublishInfo {
+        try check(expectedOwner)
+        try signedIn()
+        return try state.withLock {
+            queryPublishes.append((teamId, folders, queries))
+            return try publishAnswer.get()
+        }
+    }
+
+    func unsentTeamEdits(expectedOwner: TeamLibraryOwnerArg) async throws -> [UnsentTeamEditInfo] {
+        try check(expectedOwner)
+        return try state.withLock {
+            if let unsentFailure { throw unsentFailure }
+            return unsentEdits
+        }
+    }
+
+    func discardTeamEdits(expectedOwner: TeamLibraryOwnerArg, teamId: String?) async throws {
+        try check(expectedOwner)
+        state.withLock {
+            discards.append(teamId)
+            unsentEdits.removeAll { teamId == nil || $0.teamId == teamId }
+        }
+    }
+
+    func deleteTeamLibraryData(expectedOwner: TeamLibraryOwnerArg) async throws {
+        try check(expectedOwner)
+        try state.withLock {
+            if let deleteFailure { throw deleteFailure }
+            deletes += 1
+            unsentEdits = []
+            teams = []
+        }
+    }
+
+    func teamScopeStatus(expectedOwner: TeamLibraryOwnerArg) async throws -> [TeamScopeStatusInfo] {
+        try check(expectedOwner)
+        return state.withLock { statuses }
+    }
+
+    func importTeamLibrary(expectedOwner: TeamLibraryOwnerArg, teams: [TeamLibraryImportArg]) async throws {
+        try check(expectedOwner)
+        try signedIn()
+        try state.withLock {
+            if let importFailure { throw importFailure }
+            imports.append(teams)
+        }
+    }
+
+    // A pass the team took everything in, unless told otherwise.
+    func syncNow(why: PassReasonTag) async throws {
+        let gate = state.withLock { () -> AsyncGate? in
+            let gate = passGate
+            passGate = nil
+            return gate
+        }
+        await gate?.wait()
+        try state.withLock {
+            passes += 1
+            if let syncAnswer { throw syncAnswer }
+            unsentEdits.removeAll { edit in
+                if case .refused = edit.state { return false }
+                return true
+            }
+        }
+    }
+}
+
+@MainActor
+final class FakeTeamLibrarySource: TeamLibraryEngineSource {
+    var current: FakeTeamLibraryEngine
+    let signals = PassthroughSubject<Void, Never>()
+    private(set) var keptOwners: [TeamLibraryOwnerArg?] = []
+    var deleteOthersFailure: CoreError?
+    // The next delete of other owners' data waits at the gate.
+    var deleteOthersGate: AsyncGate?
+
+    init(_ engine: FakeTeamLibraryEngine) {
+        current = engine
+    }
+
+    var changes: AnyPublisher<Void, Never> {
+        signals.eraseToAnyPublisher()
+    }
+
+    func engine() async throws -> any TeamLibraryEngine {
+        current
+    }
+
+    func deleteOtherOwners(keep: TeamLibraryOwnerArg?) async throws {
+        keptOwners.append(keep)
+        if let gate = deleteOthersGate {
+            deleteOthersGate = nil
+            await gate.wait()
+        }
+        if let deleteOthersFailure { throw deleteOthersFailure }
+    }
+}
+
+// A signed-in account with the team_library feature over a fake engine, with earlier builds' folders in a temporary one.
 @MainActor
 final class TeamLibraryFixture {
     nonisolated static let team = "team_01jbvh7pn9e3sv4bzq4rqk4kzh"
+    nonisolated static let owner = TeamLibraryOwnerArg(apiOrigin: AccountServer.production.apiOrigin.absoluteString, accountId: "acct_test")
 
     let account: AccountFixture
+    let engine: FakeTeamLibraryEngine
+    let source: FakeTeamLibrarySource
     let defaults: EphemeralDefaults
     let directory: URL
-    let clock = ManualClock()
-    let storage: TeamLibraryStorage
-    // The read cache of the account the fixture signs in.
-    let store: TeamLibraryStateStore
-    // What each involuntary sign-out discarded.
-    let discarded = DiscardedLog()
-    // What each one-time upload of the edits 0.88 left could not get taken.
-    let notTaken = DiscardedLog()
-    private(set) var sync: TeamLibrarySync
+    let legacy: TeamLibraryLegacyImport
+    private(set) var discarded: [[String]] = []
+    private(set) var library: TeamLibrary!
 
-    init(role: String = "owner", hasSeat: Bool = true, seed: (inout FakeTeamLibrary) -> Void = { _ in }) async throws {
+    init(engine: FakeTeamLibraryEngine = FakeTeamLibraryEngine(), signedIn: Bool = true) async throws {
         account = try AccountFixture()
-        var library = FakeTeamLibrary()
-        seed(&library)
-        let seeded = library
-        await account.server.set {
-            $0.features = ["team_library"]
-            $0.memberships = [FakeAccountServer.membership(teamID: Self.team, name: "Acme", role: role, hasSeat: hasSeat)]
-            $0.library = seeded
+        await account.server.set { $0.features = ["team_library"] }
+        if signedIn {
+            try await account.signIn()
         }
-        try await account.signIn()
+        self.engine = engine
+        source = FakeTeamLibrarySource(engine)
         defaults = try EphemeralDefaults()
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("TeamLibraryTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        storage = TeamLibraryStorage(
-            flat: TeamLibraryStateStore(
-                directory: directory.appendingPathComponent("TeamLibrary", isDirectory: true),
-                legacyFile: directory.appendingPathComponent("team_library.json"),
-                defaults: defaults.defaults
-            ),
+        legacy = TeamLibraryLegacyImport(
+            flatDirectory: directory.appendingPathComponent("TeamLibrary", isDirectory: true),
+            legacyFile: directory.appendingPathComponent("team_library.json"),
             cacheRoot: directory.appendingPathComponent("TeamLibraryCache", isDirectory: true),
             defaults: defaults.defaults
         )
-        store = storage.cache(in: storage.folder(server: AccountServer.production.apiOrigin, accountID: "acct_test"))
-        sync = TeamLibrarySync(
-            account: account.services, storage: storage, clock: clock,
-            reportDiscarded: discarded.record, reportEarlierEditsNotTaken: notTaken.record
-        )
-        sync.loadIfNeeded()
+        library = makeLibrary()
     }
 
     deinit {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    var server: FakeAccountServer {
-        account.server
-    }
-
-    // A new launch reading what the last one stored.
+    // A new launch over the same engine and folders.
     func relaunch() {
-        sync.stop()
-        sync = TeamLibrarySync(
-            account: account.services, storage: storage, clock: clock,
-            reportDiscarded: discarded.record, reportEarlierEditsNotTaken: notTaken.record
-        )
-        sync.loadIfNeeded()
+        library = makeLibrary()
     }
 
-    // A team file as 0.88 and earlier wrote it, unsent edits and conflicts included, on a Mac that has not read it yet;
-    // with `owner`, the JSON development builds of the account move wrote there.
-    func writeFlat(_ state: TeamLibraryTeamState, owner: Any? = nil) throws {
-        let file = storage.flat.directory.appendingPathComponent("\(state.teamID).json")
-        try JSONFileStore<TeamLibraryTeamState>(url: file).write(state)
-        if let owner {
-            guard var json = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any] else {
-                throw CocoaError(.fileReadCorruptFile)
-            }
-            json["owner"] = owner
-            try JSONSerialization.data(withJSONObject: json).write(to: file)
+    private func makeLibrary() -> TeamLibrary {
+        TeamLibrary(source: source, account: account.services, legacy: legacy) { [weak self] in
+            self?.discarded.append($0)
         }
-        defaults.defaults.removeObject(forKey: TeamLibraryStorage.flatConsideredKey)
     }
 
-    // The /v1 cache as 0.88 and earlier kept it, on a Mac that has not read it yet.
-    func writeFlatLegacyCache(_ cache: [String: Any]) throws {
-        try JSONSerialization.data(withJSONObject: cache).write(to: storage.flat.legacyFile)
-        defaults.defaults.removeObject(forKey: TeamLibraryStorage.flatConsideredKey)
+    // Started; signed in, until it shows the engine's teams this account writes.
+    func start() async throws {
+        library.start()
+        guard account.access.state.isSignedIn else { return }
+        try await waitUntil { !self.library.writableTeams.isEmpty }
     }
 
-    // The folders of the read cache on disk, one per server and account.
-    var cacheFolders: [String] {
-        let folders = (try? FileManager.default.contentsOfDirectory(atPath: storage.cacheRoot.path)) ?? []
-        return folders.sorted()
+    func refuseRefresh() async throws {
+        await account.server.set { $0.refusesRefresh = true }
+        await account.services.refreshEntitlement()
+        try await waitUntil { !self.account.access.state.isSignedIn }
+        await account.server.set { $0.refusesRefresh = false }
     }
 
-    func library(_ change: @escaping @Sendable (inout FakeTeamLibrary) -> Void) async {
-        await server.set { change(&$0.library) }
+    // MARK: - Records
+
+    nonisolated static func acme(role: TeamRoleTag? = .owner, canWrite: Bool = true, items: [TeamLibraryItemInfo] = []) -> TeamLibraryTeamInfo {
+        TeamLibraryTeamInfo(teamId: team, name: "Acme", role: role, canWrite: canWrite, items: items)
     }
 
-    func libraryRequests() async -> [FakeAccountServer.Request] {
-        await server.requests.filter { $0.path.hasPrefix("/teams/") }
+    nonisolated static func item(
+        _ kind: TeamLibraryKindTag,
+        _ id: String,
+        _ fields: [String: Any],
+        updatedBy: String? = nil
+    ) -> TeamLibraryItemInfo {
+        TeamLibraryItemInfo(kind: kind, id: id, fieldsJson: json(fields), connection: nil, updatedBy: updatedBy, updatedAtMs: nil)
     }
 
-    func pulls() async -> [FakeAccountServer.Request] {
-        await libraryRequests().filter { $0.method == "GET" }
-    }
-
-    func pushes() async -> [[[String: Any]]] {
-        await libraryRequests().filter { $0.method == "POST" }.map(Self.changes)
-    }
-
-    nonisolated static func cursor(of request: FakeAccountServer.Request) -> String? {
-        URLComponents(string: "http://fake\(request.path)")?.queryItems?.first { $0.name == "cursor" }?.value
-    }
-
-    nonisolated static func changes(of request: FakeAccountServer.Request) -> [[String: Any]] {
-        let body = (try? JSONSerialization.jsonObject(with: request.body)) as? [String: Any]
-        return body?["changes"] as? [[String: Any]] ?? []
-    }
-
-    nonisolated static func favorite(
-        _ id: UUID = UUID(),
+    // A connection item as the core reads it; `readable` false is one it read as none, such as a copy whose SSH host
+    // ssh would refuse.
+    nonisolated static func connection(
+        _ id: String,
         name: String,
-        query: String = "select 1",
-        folder: UUID? = nil,
-        connection: UUID? = nil,
-        sortOrder: Int = 0
-    ) -> SQLFavorite {
-        SQLFavorite(id: id, name: name, query: query, folderId: folder, connectionId: connection, sortOrder: sortOrder)
+        additionalFields: [String: String] = [:],
+        readable: Bool = true
+    ) -> TeamLibraryItemInfo {
+        var connection = DatabaseConnection(
+            name: name, host: "db.internal", port: 5_432, database: "app", username: "app", type: .postgresql
+        )
+        connection.additionalFields = additionalFields
+        let fields: [String: Any] = ["name": name, "host": "db.internal", "port": 5_432, "database": "app", "username": "app", "type": "PostgreSQL"]
+        return TeamLibraryItemInfo(
+            kind: .connection,
+            id: id,
+            fieldsJson: json(fields),
+            connection: readable ? LibraryRecordMapping.record(connection, keeping: nil) : nil,
+            updatedBy: nil,
+            updatedAtMs: nil
+        )
     }
 
-    nonisolated static func queryData(_ name: String, query: String = "select 1", folder: String? = nil) -> [String: Any] {
-        var data: [String: Any] = ["name": name, "query": query, "sort_order": 0]
-        if let folder {
-            data["folder_client_id"] = folder
-        }
-        return data
+    nonisolated static func unsent(_ name: String, state: UnsentTeamEditTag = .pending) -> UnsentTeamEditInfo {
+        UnsentTeamEditInfo(
+            teamId: team,
+            item: TeamLibraryItemRef(kind: .query, id: name.lowercased()),
+            name: name,
+            deletion: false,
+            state: state
+        )
     }
 
-    nonisolated static func folderData(_ name: String, parent: String? = nil) -> [String: Any] {
-        var data: [String: Any] = ["name": name, "sort_order": 0]
-        if let parent {
-            data["parent_client_id"] = parent
-        }
-        return data
+    nonisolated static func json(_ object: [String: Any]) -> String {
+        let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data("{}".utf8)
+        return String(decoding: data, as: UTF8.self)
     }
-}
 
-@MainActor
-final class DiscardedLog {
-    private(set) var reports: [[String]] = []
-
-    func record(_ changes: [String]) {
-        reports.append(changes)
+    nonisolated static func object(_ json: String?) -> [String: Any]? {
+        json.flatMap { (try? JSONSerialization.jsonObject(with: Data($0.utf8))) as? [String: Any] }
     }
-}
 
-// Defaults whose writes never reach the disk, as when synchronize fails.
-final class UnsavedDefaults: UserDefaults {
-    override func synchronize() -> Bool {
-        false
+    nonisolated static func favorite(name: String, folderID: UUID? = nil) -> SQLFavorite {
+        SQLFavorite(
+            id: UUID(), name: name, query: "SELECT 1", keyword: nil, folderId: folderID, connectionId: nil,
+            sortOrder: 0, createdAt: Date(), updatedAt: Date()
+        )
     }
 }

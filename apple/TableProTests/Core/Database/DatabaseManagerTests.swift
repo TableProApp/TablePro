@@ -167,7 +167,8 @@ struct DatabaseManagerQueryTimeoutHandoffTests {
         FakeMSSQLPluginRegistration.registerIfNeeded()
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("tablepro-session-adoption-\(unique).json")
+            .appendingPathComponent("tablepro-session-adoption-\(unique)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         let suite = try EphemeralDefaults()
         let storage = ConnectionStorage(
             fileURL: fileURL,
@@ -175,7 +176,7 @@ struct DatabaseManagerQueryTimeoutHandoffTests {
             keychain: InMemoryKeychain()
         )
         let manager = DatabaseManager(connectionStorage: storage)
-        defer { try? FileManager.default.removeItem(at: fileURL) }
+        defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
 
         let originalTag = UUID()
         let reconciledTag = UUID()

@@ -18,19 +18,18 @@ struct ConnectionStorageAIFieldsTests {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
-            .appendingPathComponent("connections_\(unique).json")
+            .appendingPathComponent("connections_\(unique)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         try? FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
         let defaults = try pool.make().defaults
-        let syncDefaults = try pool.make().defaults
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        let tracker = SyncJournalRecorder()
         self.storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,
-            syncTracker: tracker
+            syncJournal: tracker.journal
         )
     }
 

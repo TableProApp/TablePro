@@ -2,8 +2,6 @@
 //  TagStorage.swift
 //  TablePro
 //
-//  Created by Claude on 20/12/25.
-//
 
 import Combine
 import Foundation
@@ -31,26 +29,21 @@ internal final class TagStorage {
     internal static let shared = TagStorage()
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TagStorage")
 
-    private let tagsKey = "com.TablePro.tags"
-    private let defaults: UserDefaults
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
+    private let connectionStorageProvider: () -> ConnectionStorage
     private let appEvents: AppEvents
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
-    private var cachedTags: [ConnectionTag]?
-    // Records this build cannot read. Every write puts them back as they were read.
-    private var preserved: [UnreadableLibraryRecord] = []
-    // Every write replaces the whole list, so a payload that could not be read is never written over with the
-    // presets shown in its place.
+    /// Set when the library could not be read. Every mutation rewrites the whole library, so
+    /// continuing over an unreadable one would replace a user's own tags with the preset list this
+    /// falls back to for display.
     internal private(set) var storeIsUnreadable = false
 
     internal init(
-        userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        syncTracker: SyncChangeTracker = .shared,
+        syncJournal: SyncHostJournal = .shared,
+        connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared,
         appEvents: AppEvents = .shared
     ) {
-        self.defaults = userDefaults
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
+        self.connectionStorageProvider = connectionStorage
         self.appEvents = appEvents
         if loadTags().isEmpty {
             saveTags(ConnectionTag.presets)
@@ -59,68 +52,32 @@ internal final class TagStorage {
 
     // MARK: - Tag CRUD
 
-    // An entry that does not decode is kept as it was read, and the rest of the list loads.
     internal func loadTags() -> [ConnectionTag] {
-        if let cached = cachedTags { return cached }
-
-        guard let data = defaults.data(forKey: tagsKey) else {
-            storeIsUnreadable = false
-            preserved = []
-            let tags = ConnectionTag.presets
-            cachedTags = tags
-            return tags
-        }
-
-        guard let records = try? LibraryFileRecords<ConnectionTag>(decoding: data, using: decoder) else {
-            Self.logger.error("Tag store could not be read; leaving it untouched")
+        guard let image = connectionStorageProvider().library.current() else {
+            Self.logger.error("The connection library could not be read; leaving the tags untouched")
             storeIsUnreadable = true
-            preserved = []
             return ConnectionTag.presets
         }
-
-        if !records.unreadable.isEmpty {
-            Self.logger.error("Kept \(records.unreadable.count, privacy: .public) tag entries this build cannot read")
-        }
         storeIsUnreadable = false
-        preserved = records.unreadable
-        cachedTags = records.elements
-        return records.elements
+        return image.tags
     }
 
-    // Loads first, so the answer does not depend on whether anything has read the store yet.
-    internal var unreadableTagIds: Set<UUID> {
-        _ = loadTags()
-        return Set(preserved.compactMap(\.id))
-    }
-
-    // False leaves the store holding the previous set. A save carrying the id of a record this build cannot read
-    // is refused. `removingUnreadable` drops such records by id, as a deletion another device made does.
+    // False leaves the store holding the previous set, so a caller that goes on to write related state checks it.
     @discardableResult
-    internal func saveTags(
-        _ tags: [ConnectionTag],
-        removingUnreadable removedIds: Set<UUID> = []
-    ) -> Bool {
-        let loaded = loadTags()
-        // With nothing stored, what loaded is the presets shown in its place, which were never saved.
-        let previous = defaults.data(forKey: tagsKey) == nil ? [] : loaded
-        guard !storeIsUnreadable else {
+    internal func saveTags(_ tags: [ConnectionTag]) -> Bool {
+        let previous = loadTags()
+        let library = connectionStorageProvider().library
+        guard !storeIsUnreadable, var image = library.current() else {
             Self.logger.error("Refusing to overwrite an unreadable tag store")
             return false
         }
-
-        do {
-            let encoded = try LibraryFileRecords.encoded(
-                tags, keeping: preserved, removing: removedIds, using: encoder
-            )
-            defaults.set(encoded.data, forKey: tagsKey)
-            preserved = encoded.kept
-            cachedTags = nil
-            syncTracker.markDirty(.tag, ids: SyncRecordChanges.changedIds(from: previous, to: tags))
-            return true
-        } catch {
-            Self.logger.error("Failed to save tags: \(error.publicLogShape, privacy: .public)")
+        image.tags = tags
+        guard library.commit(image, byUser: false) else {
+            Self.logger.error("Failed to save tags")
             return false
         }
+        syncJournal.recorded(.tag, written: SyncRecordChanges.changedIds(from: previous, to: tags))
+        return true
     }
 
     internal func addTag(_ tag: ConnectionTag) throws {
@@ -134,44 +91,16 @@ internal final class TagStorage {
         notifyChanged()
     }
 
-    /// Apply a tag that arrived from another device.
-    ///
-    /// Written as it arrived, and skipped when it matches what is already stored.
-    @discardableResult
-    internal func applyRemoteTag(_ tag: ConnectionTag) -> RemoteApplyOutcome {
-        var tags = loadTags()
-
-        if let index = tags.firstIndex(where: { $0.id == tag.id }) {
-            guard tags[index] != tag else { return .skipped }
-            tags[index] = tag
-        } else {
-            tags.append(tag)
-        }
-
-        return saveTags(tags) ? .applied : .failed
-    }
-
-    // A deletion another device made: no tombstone and no notification, which the pull raises once. A tag always
-    // syncs, so one this build cannot read goes by its id.
-    @discardableResult
-    internal func applyRemoteDeletions(_ ids: Set<UUID>) -> Bool {
-        guard !ids.isEmpty else { return true }
-        var tags = loadTags()
-        guard !storeIsUnreadable else { return false }
-        tags.removeAll { ids.contains($0.id) }
-        return saveTags(tags, removingUnreadable: ids)
-    }
-
     internal func deleteTag(_ tag: ConnectionTag) {
         guard !tag.isPreset else { return }
         var tags = loadTags()
         tags.removeAll { $0.id == tag.id }
         guard saveTags(tags) else { return }
-        syncTracker.markDeleted(.tag, id: tag.id.uuidString)
+        syncJournal.recorded(.tag, deleted: [tag.id.uuidString])
         notifyChanged()
     }
 
-    /// Connections are persisted before the tag tombstone fires (sync delete-ordering invariant).
+    /// Connections are persisted before the tag's deletion is journaled.
     internal func deleteTag(_ tag: ConnectionTag, clearingFrom connectionStorage: ConnectionStorage) {
         guard !tag.isPreset else { return }
         connectionStorage.removeTagId(tag.id)
@@ -186,8 +115,6 @@ internal final class TagStorage {
         var tags = loadTags()
         guard !storeIsUnreadable else { throw TagStorageError.storeUnreadable }
 
-        // The id of a record this build cannot read is taken, so its preset is not restored over it.
-        let takenIds = unreadableTagIds
         var ids: [String: UUID] = [:]
         var created = false
         for tag in wanted {
@@ -197,8 +124,7 @@ internal final class TagStorage {
                 continue
             }
             let restorablePreset = ConnectionTag.presets.first { preset in
-                Self.matchKey(preset.name) == key && !takenIds.contains(preset.id)
-                    && !tags.contains { $0.id == preset.id }
+                Self.matchKey(preset.name) == key && !tags.contains { $0.id == preset.id }
             }
             let added = restorablePreset ?? ConnectionTag(
                 name: tag.name.trimmingCharacters(in: .whitespacesAndNewlines),

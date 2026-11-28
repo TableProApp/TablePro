@@ -268,8 +268,10 @@ extension GlobalStateSuites {
         func onlyRuleChangesSignalTheSheet() async throws {
             let events = AppEvents()
             let suite = try EphemeralDefaults()
-            let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent("share-rules-\(UUID().uuidString).json")
-            defer { try? FileManager.default.removeItem(at: fileURL) }
+            let directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("share-rules-\(UUID().uuidString)", isDirectory: true)
+            let fileURL = directory.appendingPathComponent("connections.json")
+            defer { try? FileManager.default.removeItem(at: directory) }
             let storage = ConnectionStorage(
                 fileURL: fileURL, userDefaults: suite.defaults, keychain: InMemoryKeychain(), appEvents: events
             )
@@ -465,14 +467,13 @@ private extension AppServices {
             sshProfileStorage: sshProfileStorage,
             credentialProfileStorage: credentialProfileStorage,
             featureAccess: featureAccess,
-            syncMetadataStorage: syncMetadataStorage,
             favoritesExpansionState: favoritesExpansionState,
             linkedFolderWatcher: linkedFolderWatcher,
             queryHistoryManager: queryHistoryManager,
             dateFormattingService: dateFormattingService,
             copilotService: copilotService,
             mcpServerManager: mcpServerManager,
-            syncTracker: syncTracker,
+            syncJournal: syncJournal,
             welcomeRouter: welcomeRouter,
             telemetry: telemetry
         )

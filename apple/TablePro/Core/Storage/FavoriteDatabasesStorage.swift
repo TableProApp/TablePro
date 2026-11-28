@@ -10,7 +10,7 @@ extension Notification.Name {
     internal static let favoriteDatabasesDidChange = Notification.Name("FavoriteDatabasesDidChange")
 }
 
-// One key for every connection, so a sync push resolves a dirty id without knowing the connections. `FavoriteTablesStorage` is the same shape.
+// One key for every connection. `FavoriteTablesStorage` is the same shape.
 @MainActor
 internal final class FavoriteDatabasesStorage {
     internal static let shared = FavoriteDatabasesStorage(core: .shared)
@@ -18,18 +18,18 @@ internal final class FavoriteDatabasesStorage {
     private static let storageKey = JSONDefaultsKey<Set<FavoriteDatabaseEntry>>("com.TablePro.favoriteDatabases")
 
     private let defaults: UserDefaults
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
     private var cache: Set<FavoriteDatabaseEntry>?
     // Nil keeps the favourites out of the core, for a store nothing else reads.
     internal private(set) var coreMirror: CoreMirror<FavoriteDatabasesCoreAdapter>?
 
     internal init(
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        syncTracker: SyncChangeTracker = .shared,
+        syncJournal: SyncHostJournal = .shared,
         core: CoreHistoryDatabase? = nil
     ) {
         self.defaults = defaults
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
         if let core {
             coreMirror = CoreMirror(adapter: FavoriteDatabasesCoreAdapter(store: self, database: core), defaults: defaults)
         }
@@ -56,15 +56,11 @@ internal final class FavoriteDatabasesStorage {
             database: database,
             environment: environment
         )
-        commit(sync: .track) { Self.upsert(entry, into: &$0) }
-    }
-
-    internal func setFavoriteWithoutSync(_ entry: FavoriteDatabaseEntry) {
-        commit(sync: .discard) { Self.upsert(entry, into: &$0) }
+        commit { Self.upsert(entry, into: &$0) }
     }
 
     internal func rename(database oldName: String, to newName: String, connectionId: UUID) {
-        commit(sync: .track) { favorites in
+        commit { favorites in
             guard let existing = favorites.first(where: {
                 $0.connectionId == connectionId && $0.database == oldName
             }) else { return }
@@ -77,26 +73,13 @@ internal final class FavoriteDatabasesStorage {
     }
 
     internal func removeFavorite(database: String, connectionId: UUID) {
-        commit(sync: .track) { favorites in
+        commit { favorites in
             favorites = favorites.filter { !($0.connectionId == connectionId && $0.database == database) }
         }
     }
 
-    internal func removeFavoritesWithoutSync(ids: Set<String>) {
-        guard !ids.isEmpty else { return }
-        commit(sync: .discard) { favorites in
-            favorites = favorites.filter { !ids.contains(Self.syncId(for: $0)) }
-        }
-    }
-
     internal func removeFavorites(for connectionId: UUID) {
-        commit(sync: .track) { favorites in
-            favorites = favorites.filter { $0.connectionId != connectionId }
-        }
-    }
-
-    internal func removeFavoritesWithoutSync(for connectionId: UUID) {
-        commit(sync: .discard) { favorites in
+        commit { favorites in
             favorites = favorites.filter { $0.connectionId != connectionId }
         }
     }
@@ -104,15 +87,6 @@ internal final class FavoriteDatabasesStorage {
     // No environment in the id: re-tagging a database would orphan the old record and push a second one.
     nonisolated internal static func syncId(for entry: FavoriteDatabaseEntry) -> String {
         (entry.connectionId.uuidString + "|" + entry.database).sha256
-    }
-
-    private enum SyncTracking {
-        case track
-        case discard
-    }
-
-    private static func syncIdsByConnection(of entries: Set<FavoriteDatabaseEntry>) -> [UUID: Set<String>] {
-        Dictionary(grouping: entries, by: \.connectionId).mapValues { Set($0.map(syncId(for:))) }
     }
 
     private static func upsert(_ entry: FavoriteDatabaseEntry, into favorites: inout Set<FavoriteDatabaseEntry>) {
@@ -124,7 +98,7 @@ internal final class FavoriteDatabasesStorage {
         favorites.insert(entry)
     }
 
-    private func commit(sync: SyncTracking, _ edit: (inout Set<FavoriteDatabaseEntry>) -> Void) {
+    private func commit(_ edit: (inout Set<FavoriteDatabaseEntry>) -> Void) {
         let previous = loadFavorites()
         var favorites = previous
         edit(&favorites)
@@ -135,13 +109,7 @@ internal final class FavoriteDatabasesStorage {
         guard !removed.isEmpty || !changedIds.isEmpty else { return }
 
         persist(favorites)
-        switch sync {
-        case .track:
-            syncTracker.markDeleted(.favoriteDatabase, idsByOwner: Self.syncIdsByConnection(of: removed))
-            syncTracker.markDirty(.favoriteDatabase, ids: changedIds)
-        case .discard:
-            syncTracker.discardDirty(.favoriteDatabase, ids: removed.map(Self.syncId(for:)))
-        }
+        syncJournal.recorded(.favoriteDatabase, written: changedIds, deleted: removed.map(Self.syncId(for:)))
         coreMirror?.schedulePush()
         postChangeNotification()
     }

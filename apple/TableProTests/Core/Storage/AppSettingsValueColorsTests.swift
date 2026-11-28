@@ -3,7 +3,6 @@
 //  TableProTests
 //
 
-import CloudKit
 import Combine
 import Foundation
 @testable import TablePro
@@ -14,157 +13,60 @@ import Testing
 struct AppSettingsValueColorsTests {
     @MainActor
     private final class Harness {
-        let environment: SyncTestEnvironment
+        let suite: EphemeralDefaults
+        let directory: URL
         let storage: AppSettingsStorage
         let settings: AppSettingsManager
-        let coordinator: SyncCoordinator
+        let tracker = SyncJournalRecorder()
         private(set) var sentEvents = 0
         private var subscription: AnyCancellable?
 
-        var tracker: SyncChangeTracker { environment.tracker }
-
-        init(label: String, saved: ValueColorSettings? = nil) throws {
-            let environment = try SyncTestEnvironment(label: label)
-            let storage = AppSettingsStorage(userDefaults: environment.defaults)
+        init(saved: ValueColorSettings? = nil) throws {
+            suite = try EphemeralDefaults()
+            directory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("AppSettingsValueColorsTests-\(UUID().uuidString)", isDirectory: true)
+            let storage = AppSettingsStorage(userDefaults: suite.defaults)
             if let saved { storage.saveValueColors(saved) }
             let events = AppEvents()
             let catalog = ThemeCatalog(
-                userDirectory: environment.directory.appendingPathComponent("Themes", isDirectory: true),
+                userDirectory: directory.appendingPathComponent("Themes", isDirectory: true),
                 bundleDirectory: nil,
-                fileTrash: .folder(environment.directory.appendingPathComponent("Trash", isDirectory: true)),
-                syncTracker: environment.tracker
+                fileTrash: .folder(directory.appendingPathComponent("Trash", isDirectory: true)),
+                syncJournal: tracker.journal
             )
-            let settings = AppSettingsManager(
+            self.storage = storage
+            settings = AppSettingsManager(
                 storage: storage,
                 themeEngine: ThemeEngine(catalog: catalog),
-                syncTracker: environment.tracker,
+                syncJournal: tracker.journal,
                 appEvents: events
-            )
-            let transport = ScriptedSyncTransport(zoneID: SyncTestEnvironment.zoneID)
-            let columnLayouts = environment.columnLayouts
-            let base = environment.makeCoordinator(transport: transport)
-            self.environment = environment
-            self.storage = storage
-            self.settings = settings
-            coordinator = SyncCoordinator(
-                services: base.services.withAppSettings(settings, storage: storage),
-                recordCache: environment.recordCache,
-                transport: transport,
-                makeNetworkMonitor: { nil },
-                columnLayouts: columnLayouts,
-                themeCatalog: catalog,
-                licenseGate: { nil },
-                pushRegistrar: .inert
             )
             subscription = events.valueColorSettingsChanged.sink { [weak self] in self?.sentEvents += 1 }
         }
 
-        func pull(_ category: String, _ data: Data) async -> Bool {
-            let record = SyncRecordMapper.toCKRecord(category: category, settingsData: data, in: SyncTestEnvironment.zoneID)
-            return await coordinator.applyPullResult(PullResult(changedRecords: [record], deletedRecordIDs: [], newToken: nil))
+        deinit {
+            try? FileManager.default.removeItem(at: directory)
         }
     }
 
-    // MARK: - Manager
-
-    @Test("Turning Color values by type on saves it, tells the open grids and marks its record for sync")
+    @Test("Turning Color values by type on saves it, tells the open grids and journals its record")
     func changeSavesSendsAndMarks() throws {
-        let harness = try Harness(label: "value-colors-change")
+        let harness = try Harness()
 
         harness.settings.valueColors = ValueColorSettings(colorsValuesByType: true)
 
         #expect(harness.storage.loadValueColors().colorsValuesByType)
         #expect(harness.sentEvents == 1)
-        #expect(harness.tracker.dirtyRecords(for: .settings) == [AppSettingsCategory.valueColors])
+        #expect(harness.tracker.dirtyIds(for: .settings) == [AppSettingsCategory.valueColors])
     }
 
-    @Test("Writing the value colors it already holds tells no grid and marks nothing")
+    @Test("Writing the value colors it already holds tells no grid and journals nothing")
     func unchangedWriteDoesNothing() throws {
-        let harness = try Harness(label: "value-colors-same", saved: ValueColorSettings(colorsValuesByType: true))
+        let harness = try Harness(saved: ValueColorSettings(colorsValuesByType: true))
 
         harness.settings.valueColors = ValueColorSettings(colorsValuesByType: true)
 
         #expect(harness.sentEvents == 0)
-        #expect(harness.tracker.dirtyRecords(for: .settings).isEmpty)
-    }
-
-    // MARK: - Sync
-
-    @Test("The outgoing value colors record carries what this Mac saved")
-    func outgoingRecordCarriesTheSavedSetting() throws {
-        let harness = try Harness(label: "value-colors-out", saved: ValueColorSettings(colorsValuesByType: true))
-
-        let data = try #require(harness.coordinator.settingsData(for: AppSettingsCategory.valueColors))
-
-        #expect(try JSONDecoder().decode(ValueColorSettings.self, from: data) == ValueColorSettings(colorsValuesByType: true))
-    }
-
-    @Test("A pulled value colors record turns the setting on and recolors the grids, without marking it for push")
-    func pulledRecordAppliesWithoutMarking() async throws {
-        let harness = try Harness(label: "value-colors-in")
-        let data = try JSONEncoder().encode(ValueColorSettings(colorsValuesByType: true))
-
-        let acknowledged = await harness.pull(AppSettingsCategory.valueColors, data)
-
-        #expect(acknowledged)
-        #expect(harness.settings.valueColors.colorsValuesByType)
-        #expect(harness.storage.loadValueColors().colorsValuesByType)
-        #expect(harness.sentEvents == 1)
-        #expect(harness.tracker.dirtyRecords(for: .settings).isEmpty)
-    }
-
-    @Test("A Data Grid record from a Mac that predates value colors leaves them as they are")
-    func olderDataGridRecordKeepsValueColors() async throws {
-        let harness = try Harness(label: "value-colors-older-grid", saved: ValueColorSettings(colorsValuesByType: true))
-        var dataGrid = DataGridSettings.default
-        dataGrid.showRowNumbers.toggle()
-
-        let acknowledged = await harness.pull(AppSettingsCategory.dataGrid, try JSONEncoder().encode(dataGrid))
-
-        #expect(acknowledged)
-        #expect(harness.settings.dataGrid.showRowNumbers == dataGrid.showRowNumbers)
-        #expect(harness.settings.valueColors.colorsValuesByType)
-        #expect(harness.storage.loadValueColors().colorsValuesByType)
-        #expect(harness.sentEvents == 0)
-    }
-}
-
-@MainActor
-private extension AppServices {
-    func withAppSettings(_ appSettings: AppSettingsManager, storage: AppSettingsStorage) -> AppServices {
-        AppServices(
-            appEvents: appEvents,
-            appSettings: appSettings,
-            appSettingsStorage: storage,
-            connectionStorage: connectionStorage,
-            databaseManager: databaseManager,
-            pluginManager: pluginManager,
-            schemaService: schemaService,
-            schemaRefreshService: schemaRefreshService,
-            schemaProviderRegistry: schemaProviderRegistry,
-            catalogChangeService: catalogChangeService,
-            sqlFavoriteManager: sqlFavoriteManager,
-            favoriteTablesStorage: favoriteTablesStorage,
-            favoriteDatabasesStorage: favoriteDatabasesStorage,
-            tableFolderStorage: tableFolderStorage,
-            aiChatStorage: aiChatStorage,
-            aiKeyStorage: aiKeyStorage,
-            aiAccessApprovals: aiAccessApprovals,
-            groupStorage: groupStorage,
-            tagStorage: tagStorage,
-            sshProfileStorage: sshProfileStorage,
-            credentialProfileStorage: credentialProfileStorage,
-            featureAccess: featureAccess,
-            syncMetadataStorage: syncMetadataStorage,
-            favoritesExpansionState: favoritesExpansionState,
-            linkedFolderWatcher: linkedFolderWatcher,
-            queryHistoryManager: queryHistoryManager,
-            dateFormattingService: dateFormattingService,
-            copilotService: copilotService,
-            mcpServerManager: mcpServerManager,
-            syncTracker: syncTracker,
-            welcomeRouter: welcomeRouter,
-            telemetry: telemetry
-        )
+        #expect(harness.tracker.dirtyIds(for: .settings).isEmpty)
     }
 }

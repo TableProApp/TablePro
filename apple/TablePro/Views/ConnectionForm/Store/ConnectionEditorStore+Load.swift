@@ -47,6 +47,8 @@ extension ConnectionEditorStore {
             loadedRecord = record
             baselineEdits = ConnectionEditorEngine.edits(draft, traits, originalTraits: originalTraits, context)
             dirtyBaseline = dirtyFingerprint()
+        case .editTeamCopy(let target):
+            loadTeamCopy(target)
         }
         refreshDerivedState()
         loadSSHConfigEntries()
@@ -98,7 +100,7 @@ extension ConnectionEditorStore {
         context.savedName = self.context.savedName
         context.participatesInSync = self.context.participatesInSync
         context.aiEnabled = services.appSettings.ai.enabled
-        context.syncEnabled = services.appSettings.sync.enabled
+        context.syncProvider = services.appSettings.sync.provider
         context.managedSafeModeMinimum = ManagedPolicyResolver.minimumSafeModeLevel(policy: managedPolicy)
         let credentialStorage = services.credentialProfileStorage
         context.credentialProfiles = credentialStorage.loadProfiles()
@@ -157,13 +159,13 @@ extension ConnectionEditorStore {
             }
             .store(in: &cancellables)
         services.appSettings.aiSlice.publisher.map(\.enabled).removeDuplicates()
-            .combineLatest(services.appSettings.syncSlice.publisher.map(\.enabled).removeDuplicates())
+            .combineLatest(services.appSettings.syncSlice.publisher.map(\.provider).removeDuplicates())
             .dropFirst()
-            .sink { [weak self] aiEnabled, syncEnabled in
+            .sink { [weak self] aiEnabled, syncProvider in
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.context.aiEnabled = aiEnabled
-                    self.context.syncEnabled = syncEnabled
+                    self.context.syncProvider = syncProvider
                     self.refreshDerivedState()
                 }
             }
@@ -229,7 +231,8 @@ extension ConnectionEditorStore {
 
     // The baseline stays where load put it: moving it would make every untouched field look edited and revert the change.
     func connectionDidUpdate(_ id: UUID?) {
-        guard !isClosing, !isNew, id == nil || id == connectionId else { return }
+        // A team's copy is never in the library, so the library's changes say nothing about it.
+        guard !isClosing, !isNew, teamCopy == nil, id == nil || id == connectionId else { return }
         if !storage.isLibraryUnreadable, storage.loadConnection(id: connectionId) == nil {
             isRecordMissing = true
             cancelTest()

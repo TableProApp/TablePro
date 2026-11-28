@@ -13,7 +13,7 @@ import Testing
 struct ConnectionStoragePersistenceTests {
     private let pool = EphemeralDefaultsPool()
     private let storage: ConnectionStorage
-    private let syncTracker: SyncChangeTracker
+    private let syncTracker: SyncJournalRecorder
     private let fileURL: URL
     private let defaults: UserDefaults
 
@@ -21,20 +21,19 @@ struct ConnectionStoragePersistenceTests {
         let unique = UUID().uuidString
         self.fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
-            .appendingPathComponent("connections_\(unique).json")
+            .appendingPathComponent("connections_\(unique)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         try? FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
         let defaults = try pool.make().defaults
-        let syncDefaults = try pool.make().defaults
         self.defaults = defaults
-        let metadata = SyncMetadataStorage(userDefaults: syncDefaults)
-        self.syncTracker = SyncChangeTracker(metadataStorage: metadata)
+        self.syncTracker = SyncJournalRecorder()
         self.storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,
-            syncTracker: syncTracker,
+            syncJournal: syncTracker.journal,
             keychain: InMemoryKeychain()
         )
     }
@@ -256,7 +255,7 @@ struct ConnectionStoragePersistenceTests {
         #expect(loaded.first(where: { $0.id == second.id })?.name == "Renamed")
         #expect(loaded.first(where: { $0.id == untouched.id })?.name == "Untouched")
 
-        let dirty = syncTracker.dirtyRecords(for: .connection)
+        let dirty = syncTracker.dirtyIds(for: .connection)
         #expect(dirty.contains(first.id.uuidString))
         #expect(dirty.contains(second.id.uuidString))
         #expect(!dirty.contains(untouched.id.uuidString))
@@ -309,7 +308,7 @@ struct ConnectionStoragePersistenceTests {
         let result = storage.updateConnections([localOnly, sample, synced])
         #expect(result == true)
 
-        let dirty = syncTracker.dirtyRecords(for: .connection)
+        let dirty = syncTracker.dirtyIds(for: .connection)
         #expect(dirty.contains(synced.id.uuidString))
         #expect(!dirty.contains(localOnly.id.uuidString))
         #expect(!dirty.contains(sample.id.uuidString))

@@ -2,9 +2,9 @@
 //  ThemeCatalogSyncTests.swift
 //  TableProTests
 //
-//  Each user theme syncs as the settings record `theme.<id>`. The catalog marks it on every edit,
-//  tombstones it after a move to the Trash, and writes what another Mac sent without marking
-//  anything, after treating it as untrusted input.
+//  Each user theme syncs as the settings record `theme.<id>`. The catalog journals it on every
+//  edit and after a move to the Trash, and writes what another Mac sent without journaling it,
+//  after treating it as untrusted input.
 //
 
 import Foundation
@@ -20,20 +20,20 @@ struct ThemeCatalogSyncTests {
     private final class Harness {
         let root: URL
         let suite: EphemeralDefaults
-        let tracker: SyncChangeTracker
+        let tracker: SyncJournalRecorder
         let fileTrash: ThemeFileTrash
         private(set) var catalog: ThemeCatalog
 
         var themes: URL { root.appendingPathComponent("Themes", isDirectory: true) }
         var trash: URL { root.appendingPathComponent("Trash", isDirectory: true) }
-        var dirty: Set<String> { tracker.dirtyRecords(for: .settings) }
+        var dirty: Set<String> { tracker.dirtyIds(for: .settings) }
         var tombstoned: Set<String> { tracker.tombstonedIds(for: .settings) }
 
         init(userDirectory: URL? = nil, fileTrash: ThemeFileTrash? = nil) throws {
             root = FileManager.default.temporaryDirectory
                 .appendingPathComponent("ThemeCatalogSyncTests-\(UUID().uuidString)", isDirectory: true)
             suite = try EphemeralDefaults()
-            tracker = SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: suite.defaults))
+            tracker = SyncJournalRecorder()
             let folders = [
                 root.appendingPathComponent("Themes", isDirectory: true),
                 root.appendingPathComponent("Trash", isDirectory: true),
@@ -46,7 +46,7 @@ struct ThemeCatalogSyncTests {
                 userDirectory: userDirectory ?? folders[0],
                 bundleDirectory: nil,
                 fileTrash: self.fileTrash,
-                syncTracker: tracker
+                syncJournal: tracker.journal
             )
         }
 
@@ -62,7 +62,7 @@ struct ThemeCatalogSyncTests {
                 userDirectory: themes,
                 bundleDirectory: nil,
                 fileTrash: fileTrash,
-                syncTracker: tracker
+                syncJournal: tracker.journal
             )
         }
 
@@ -499,20 +499,20 @@ struct ThemeCatalogSyncTests {
 
     // MARK: - Remote deletion
 
-    @Test("A theme deleted on another Mac goes to this Mac's Trash with its pending mark and no tombstone")
+    @Test("A theme deleted on another Mac goes to this Mac's Trash and journals nothing")
     func remoteDeletionTrashesWithoutSync() throws {
         let harness = try Harness()
         defer { harness.remove() }
         let night = try Self.theme("user.night")
         try harness.catalog.save(night)
-        #expect(harness.dirty == [Self.category(night.id)])
+        let journaled = harness.tracker.changes
 
         #expect(harness.catalog.removeWithoutSync(ids: [night.id, "user.unknown"]))
 
         #expect(harness.catalog.theme(id: night.id) == nil)
         #expect(try harness.fileNames().isEmpty)
         #expect(try FileManager.default.contentsOfDirectory(atPath: harness.trash.path).count == 1)
-        #expect(harness.dirty.isEmpty)
+        #expect(harness.tracker.changes == journaled)
         #expect(harness.tombstoned.isEmpty)
     }
 
@@ -641,7 +641,7 @@ struct ThemeCatalogSyncTests {
         let catalog = ThemeCatalog(
             userDirectory: folder,
             bundleDirectory: nil,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: suite.defaults))
+            syncJournal: SyncHostJournal()
         )
 
         let receipt = try catalog.trash(id: night.id)
@@ -654,16 +654,16 @@ struct ThemeCatalogSyncTests {
     }
 }
 
-// Reads the tracker from inside the trash closure, which runs off the main actor's bookkeeping.
+// Reads the journal from inside the trash closure, which the catalog calls on the main actor.
 private final class TrackerProbe: @unchecked Sendable {
-    private let state = OSAllocatedUnfairLock<(SyncChangeTracker, String)?>(initialState: nil)
+    private let state = OSAllocatedUnfairLock<(SyncJournalRecorder, String)?>(initialState: nil)
 
-    func watch(_ tracker: SyncChangeTracker, category: String) {
+    func watch(_ tracker: SyncJournalRecorder, category: String) {
         state.withLock { $0 = (tracker, category) }
     }
 
     func isTombstoned() -> Bool? {
         guard let (tracker, category) = state.withLock({ $0 }) else { return nil }
-        return tracker.tombstonedIds(for: .settings).contains(category)
+        return MainActor.assumeIsolated { tracker.tombstonedIds(for: .settings).contains(category) }
     }
 }

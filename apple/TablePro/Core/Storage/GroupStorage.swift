@@ -52,97 +52,56 @@ internal final class GroupStorage {
     internal static let shared = GroupStorage()
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "GroupStorage")
 
-    private let groupsKey = "com.TablePro.groups"
-    private let defaults: UserDefaults
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
     private let connectionStorageProvider: () -> ConnectionStorage
     private let appEvents: AppEvents
     private let projectIdsProvider: () -> Set<UUID>
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
-    private var cachedGroups: [ConnectionGroup]?
-    // Records this build cannot read. Every write puts them back as they were read.
-    private var preserved: [UnreadableLibraryRecord] = []
-    // Every write replaces the whole list, so a payload that could not be read is never written over.
+    // Every write rewrites the whole library, so one that could not be read is never written over.
     internal private(set) var storeIsUnreadable = false
 
     internal init(
-        userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
-        syncTracker: SyncChangeTracker = .shared,
+        syncJournal: SyncHostJournal = .shared,
         connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared,
         appEvents: AppEvents = .shared,
         projectIds: (() -> Set<UUID>)? = nil
     ) {
-        // The projects live in the same suite, so the ids that resolve are read from it.
-        self.projectIdsProvider = projectIds ?? { ProjectStorage.projectIds(in: userDefaults) }
-        self.defaults = userDefaults
-        self.syncTracker = syncTracker
+        // The projects live in the same library, so the ids that resolve are read from it.
+        self.projectIdsProvider = projectIds ?? {
+            Set(connectionStorage().library.current()?.projects.map(\.id) ?? [])
+        }
+        self.syncJournal = syncJournal
         self.connectionStorageProvider = connectionStorage
         self.appEvents = appEvents
     }
 
     // MARK: - Group CRUD
 
-    // An entry that does not decode is kept as it was read, and the rest of the list loads.
     internal func loadGroups() -> [ConnectionGroup] {
-        if let cached = cachedGroups { return cached }
-
-        guard let data = defaults.data(forKey: groupsKey) else {
-            storeIsUnreadable = false
-            preserved = []
-            cachedGroups = []
-            return []
-        }
-
-        guard let records = try? LibraryFileRecords<ConnectionGroup>(decoding: data, using: decoder) else {
-            Self.logger.error("Group store could not be read; leaving it untouched")
+        guard let image = connectionStorageProvider().library.current() else {
+            Self.logger.error("The connection library could not be read; leaving the groups untouched")
             storeIsUnreadable = true
-            preserved = []
             return []
-        }
-
-        if !records.unreadable.isEmpty {
-            Self.logger.error("Kept \(records.unreadable.count, privacy: .public) group entries this build cannot read")
         }
         storeIsUnreadable = false
-        preserved = records.unreadable
-        cachedGroups = records.elements
-        return records.elements
+        return image.groups
     }
 
-    // Loads first, so the answer does not depend on whether anything has read the store yet. A connection or a
-    // group that names one of these ids keeps naming it, and lists as ungrouped until a build reads the group.
-    internal var unreadableGroupIds: Set<UUID> {
-        _ = loadGroups()
-        return Set(preserved.compactMap(\.id))
-    }
-
-    // False leaves the store holding the previous set. A save carrying the id of a record this build cannot read
-    // is refused. `removingUnreadable` drops such records by id, as a deletion another device made does.
+    // False leaves the store holding the previous set, so a caller that goes on to write related state checks it.
     @discardableResult
-    internal func saveGroups(
-        _ groups: [ConnectionGroup],
-        removingUnreadable removedIds: Set<UUID> = []
-    ) -> Bool {
+    internal func saveGroups(_ groups: [ConnectionGroup]) -> Bool {
         let previous = loadGroups()
-        guard !storeIsUnreadable else {
+        let library = connectionStorageProvider().library
+        guard !storeIsUnreadable, var image = library.current() else {
             Self.logger.error("Refusing to overwrite an unreadable group store")
             return false
         }
-
-        do {
-            let encoded = try LibraryFileRecords.encoded(
-                groups, keeping: preserved, removing: removedIds, using: encoder
-            )
-            defaults.set(encoded.data, forKey: groupsKey)
-            preserved = encoded.kept
-            cachedGroups = nil
-            syncTracker.markDirty(.group, ids: SyncRecordChanges.changedIds(from: previous, to: groups))
-            return true
-        } catch {
-            Self.logger.error("Failed to save groups: \(error.publicLogShape, privacy: .public)")
+        image.groups = groups
+        guard library.commit(image, byUser: false) else {
+            Self.logger.error("Failed to save groups")
             return false
         }
+        syncJournal.recorded(.group, written: SyncRecordChanges.changedIds(from: previous, to: groups))
+        return true
     }
 
     internal func addGroup(_ group: ConnectionGroup) throws {
@@ -287,57 +246,6 @@ internal final class GroupStorage {
         notifyChanged()
     }
 
-    /// Apply a group that arrived from another device, reporting whether anything changed.
-    ///
-    /// Written exactly as it arrived. A record cannot be judged on its own, because a pull carries
-    /// no dependency order: a hierarchy the other device reversed legally, rooting B and then
-    /// moving A under B, arrives as two records, and whichever lands first describes a state that
-    /// looks like a cycle against the half of the change that has not arrived yet. Repairing it
-    /// here would root A permanently, and the next push would send that back as a revert of a move
-    /// the user made. `repairHierarchy` runs once the whole batch is in, when the graph is whole.
-    ///
-    /// The pull that calls this raises one change notification for the batch, so this raises none.
-    ///
-    /// A record identical to the one already stored is skipped. The iOS coordinator has always had
-    /// this guard.
-    @discardableResult
-    internal func applyRemoteGroup(_ group: ConnectionGroup) -> RemoteApplyOutcome {
-        var groups = loadGroups()
-
-        if let index = groups.firstIndex(where: { $0.id == group.id }) {
-            guard groups[index] != group else { return .skipped }
-            groups[index] = group
-        } else {
-            groups.append(group)
-        }
-
-        return saveGroups(groups) ? .applied : .failed
-    }
-
-    /// Root every group left on a parent cycle, reporting whether anything moved.
-    ///
-    /// Called once a pull has applied every record it carried, which is the first moment the graph
-    /// can be judged. A cycle that survives to here was authored by a device that should not have
-    /// been able to author one, or predates the validation, and leaving it stored would make
-    /// `deleteGroup` compute a subtree the list does not show.
-    @discardableResult
-    internal func repairHierarchy() -> Bool {
-        let groups = loadGroups()
-        let cyclic = LibraryGroupGraph.cyclicGroupIds(in: groups)
-        guard !cyclic.isEmpty else { return false }
-
-        Self.logger.error("Rooting \(cyclic.count, privacy: .public) groups left on a parent cycle")
-        let projects = LibraryProjectNormalizer.movingGroups(Array(cyclic), toParent: nil, groups: groups)
-        let repaired = groups.map { group -> ConnectionGroup in
-            guard cyclic.contains(group.id) else { return group }
-            var rooted = group
-            rooted.parentId = nil
-            rooted.projectId = projects.groupProjectId(group.id, current: group.projectId)
-            return rooted
-        }
-        return saveGroups(repaired)
-    }
-
     // The members are saved before the group goes, and the tombstones follow the last write, so a sync
     // they start reads the finished state. False when either write failed.
     @discardableResult
@@ -346,39 +254,22 @@ internal final class GroupStorage {
         guard !storeIsUnreadable else { return false }
         let deletedIds = LibraryGroupGraph(groups: groups).descendantIds(of: group.id).union([group.id])
 
-        guard let remaining = removingGroups(deletedIds, from: groups, byUser: true) else { return false }
+        guard let remaining = removingGroups(deletedIds, from: groups) else { return false }
         guard saveGroups(remaining) else { return false }
-        for deletedId in deletedIds {
-            syncTracker.markDeleted(.group, id: deletedId.uuidString)
-        }
+        syncJournal.recorded(.group, deleted: deletedIds.map(\.uuidString))
         notifyChanged()
         return true
     }
 
-    // A deletion another device made: no tombstone and no notification, which the pull raises once.
-    @discardableResult
-    internal func applyRemoteDeletions(_ ids: Set<UUID>) -> Bool {
-        guard !ids.isEmpty else { return true }
-        let groups = loadGroups()
-        guard !storeIsUnreadable else { return false }
-        guard let remaining = removingGroups(ids, from: groups, byUser: false) else { return false }
-        // A group always syncs, so one this build cannot read goes by its id.
-        return saveGroups(remaining, removingUnreadable: ids)
-    }
-
     // Clears the members first, a Local only connection too, so no connection is left naming a group that is gone.
     // What the groups held moves to the top level and stays in their project.
-    private func removingGroups(
-        _ ids: Set<UUID>,
-        from groups: [ConnectionGroup],
-        byUser: Bool
-    ) -> [ConnectionGroup]? {
+    private func removingGroups(_ ids: Set<UUID>, from groups: [ConnectionGroup]) -> [ConnectionGroup]? {
         let storage = connectionStorageProvider()
         let connections = storage.loadConnections()
         // A library that cannot be read cannot be cleared, so the group stays for its members.
         guard !storage.lastLoadFailed else { return nil }
         let projects = LibraryProjectNormalizer.deletingGroups(ids, connections: connections, groups: groups)
-        let cleared = storage.rewriteMembership(byUser: byUser) { connection in
+        let cleared = storage.rewriteMembership(byUser: false) { connection in
             guard let groupId = connection.groupId, ids.contains(groupId) else { return }
             connection.groupId = nil
             connection.projectId = projects.connectionProjectId(connection.id, current: connection.projectId)

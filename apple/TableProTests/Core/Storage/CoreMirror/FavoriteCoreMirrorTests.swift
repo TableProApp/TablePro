@@ -13,12 +13,8 @@ struct FavoriteCoreMirrorTests {
         fixture = try CoreMirrorFixture()
     }
 
-    private func tracker() throws -> SyncChangeTracker {
-        SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: try fixture.pool.make().defaults))
-    }
-
     private func favoriteTables(_ defaults: UserDefaults) throws -> FavoriteTablesStorage {
-        FavoriteTablesStorage(userDefaults: defaults, syncTracker: try tracker(), core: fixture.core)
+        FavoriteTablesStorage(userDefaults: defaults, syncJournal: SyncHostJournal(), core: fixture.core)
     }
 
     @Test("Favourite tables move in, and a toggle and the previous stable's removal reach the core")
@@ -67,7 +63,7 @@ struct FavoriteCoreMirrorTests {
         await tables.coreMirror?.push()
         let store = FavoriteDatabasesStorage(
             defaults: try fixture.pool.make().defaults,
-            syncTracker: try tracker(),
+            syncJournal: SyncHostJournal(),
             core: fixture.core
         )
         store.setFavorite(database: "shop", environment: .production, connectionId: connectionId)
@@ -87,7 +83,7 @@ struct FavoriteCoreMirrorTests {
     func tableFoldersReachTheCore() async throws {
         let store = TableFolderStorage(
             defaults: try fixture.pool.make().defaults,
-            syncTracker: try tracker(),
+            syncJournal: SyncHostJournal(),
             core: fixture.core,
             mirrorDefaults: try fixture.pool.make().defaults
         )
@@ -117,7 +113,7 @@ struct FavoriteCoreMirrorTests {
         let mirrorDefaults = try fixture.pool.make().defaults
         let store = TableFolderStorage(
             defaults: defaults,
-            syncTracker: try tracker(),
+            syncJournal: SyncHostJournal(),
             core: fixture.core,
             mirrorDefaults: mirrorDefaults
         )

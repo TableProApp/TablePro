@@ -44,7 +44,7 @@ internal final class SettingsTitleResolver {
     // A page the pane root hides is unavailable, so Back, Forward and links never land on it.
     internal func isAvailable(_ route: SettingsRoute) -> Bool {
         switch route {
-        case .page(.accountDevices), .page(.accountTeams):
+        case .page(.accountDevices), .page(.accountTeams), .page(.accountEncryption), .team:
             sources.isSignedIn()
         case .page(.slashCommands):
             sources.isAIEnabled()
@@ -71,6 +71,8 @@ internal final class SettingsTitleResolver {
             sources.rejectedPlugins().first { $0.url == url }?.name
         case .aiProvider(let id):
             sources.providers().first { $0.id == id }?.displayName
+        case .team(_, let name):
+            name
         }
     }
 

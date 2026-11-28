@@ -1,16 +1,24 @@
 import Combine
 import Foundation
+import TableProFFI
 import TableProPluginKit
 
 final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, QueryPlanSnapshotReading, Sendable {
     static let shared: QueryHistoryManager = {
         let storage = QueryHistoryStorage(onSetAside: { DamagedStoreNotice.queryHistorySetAside($0) })
-        let mirror = QueryHistoryCoreMirror(storage: storage, database: .shared) { ids in
-            await MainActor.run {
-                let named = ConnectionStorage.shared.loadConnections().filter { ids.contains($0.id) }
-                return Dictionary(named.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        let mirror = QueryHistoryCoreMirror(
+            storage: storage,
+            database: .shared,
+            connectionNames: { ids in
+                await MainActor.run {
+                    let named = ConnectionStorage.shared.loadConnections().filter { ids.contains($0.id) }
+                    return Dictionary(named.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+                }
+            },
+            changed: {
+                await MainActor.run { AppEvents.shared.queryHistoryDidUpdate.send(nil) }
             }
-        }
+        )
         return QueryHistoryManager(storage: storage, coreMirror: mirror)
     }()
 
@@ -84,8 +92,22 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Que
         await storage.isStoreAvailable()
     }
 
+    // The core's history, other devices' runs included, and this store's only while the core's cannot be read. A page
+    // goes on in the store its cursor came from.
     func fetch(_ filter: QueryHistoryFilter, after cursor: QueryHistoryCursor?, limit: Int) async -> QueryHistoryPage {
-        await storage.fetch(filter, after: cursor, limit: limit)
+        if let coreMirror, cursor.map(Self.isCore) ?? true,
+           let page = await coreMirror.search(filter, after: cursor, limit: limit) {
+            return page
+        }
+        if let cursor, Self.isCore(cursor) {
+            return .empty
+        }
+        return await storage.fetch(filter, after: cursor, limit: limit)
+    }
+
+    private static func isCore(_ cursor: QueryHistoryCursor) -> Bool {
+        if case .core = cursor { return true }
+        return false
     }
 
     func count(scope: QueryHistoryScope) async -> Int {
@@ -134,50 +156,61 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Que
 
     // MARK: - Deleting
 
-    // Each reports a failure while the core still holds what went, so nobody is told SQL is gone that is not.
+    // Each reports a failure while the core still holds what went, so nobody is told SQL is gone that is not. The run
+    // may be another device's, which only the core held.
     func delete(id: UUID) async -> Bool {
-        let success = await storage.delete(id: id)
-        guard success else { return false }
-        let mirrored = await coreMirror?.dropped([id]) ?? true
+        let storage = storage
+        let deleted: Bool
+        if let coreMirror {
+            deleted = await coreMirror.deleted([id]) { await storage.delete(id: id) }
+        } else {
+            deleted = await storage.delete(id: id)
+        }
         await MainActor.run {
             AppEvents.shared.queryHistoryDidUpdate.send(nil)
         }
-        return mirrored
+        return deleted
     }
 
     /// Used when the connection itself is gone, so it takes the plan and rewind snapshots with the
     /// history rather than unlinking them the way a filtered clear does.
     @discardableResult
     func deleteEverything(forConnection connectionId: UUID) async -> Bool {
-        let success = await storage.deleteEverything(forConnection: connectionId)
-        guard success else { return false }
-        let mirrored = await coreMirror?.cleared(connectionId: connectionId) ?? true
+        let storage = storage
+        let deleted: Bool
+        if let coreMirror {
+            let ids = await storage.ids(matching: QueryHistoryFilter(scope: .connection(connectionId))) ?? []
+            deleted = await coreMirror.cleared(connectionId: connectionId, ids: ids) {
+                await storage.deleteEverything(forConnection: connectionId)
+            }
+        } else {
+            deleted = await storage.deleteEverything(forConnection: connectionId)
+        }
         await MainActor.run {
             AppEvents.shared.queryHistoryDidUpdate.send(nil)
         }
-        return mirrored
+        return deleted
     }
 
+    // What the pane shows: the core's runs the filter matches, other devices' included, and this store's.
     func clear(matching filter: QueryHistoryFilter) async -> Bool {
-        let everyRow = QueryHistoryStorage.coversEveryRow(filter)
-        var before: Set<UUID>?
-        if coreMirror != nil, !everyRow {
-            before = await storage.entryIds()
-        }
-        let success = await storage.clear(matching: filter)
-        guard success else { return false }
-        let mirrored: Bool
-        if everyRow {
-            mirrored = await coreMirror?.cleared(connectionId: nil) ?? true
-        } else if let before, let after = await storage.entryIds() {
-            mirrored = await coreMirror?.dropped(before.subtracting(after)) ?? true
+        let storage = storage
+        let cleared: Bool
+        if let coreMirror, QueryHistoryStorage.coversEveryRow(filter) {
+            let ids = await storage.entryIds() ?? []
+            cleared = await coreMirror.cleared(connectionId: nil, ids: ids) { await storage.clear(matching: filter) }
+        } else if let coreMirror {
+            let ids = await storage.ids(matching: filter) ?? []
+            cleared = await coreMirror.cleared(matching: filter, localIds: ids) { matched in
+                await storage.deleteRuns(matched)
+            }
         } else {
-            mirrored = await coreMirror?.push() ?? true
+            cleared = await storage.clear(matching: filter)
         }
         await MainActor.run {
             AppEvents.shared.queryHistoryDidUpdate.send(nil)
         }
-        return mirrored
+        return cleared
     }
 
     // MARK: - Retention
@@ -190,6 +223,7 @@ final class QueryHistoryManager: QueryHistoryRecording, QueryHistoryReading, Que
             await runCleanup()
         }
         await coreMirror?.push()
+        await coreMirror?.fillFingerprints()
     }
 
     @MainActor

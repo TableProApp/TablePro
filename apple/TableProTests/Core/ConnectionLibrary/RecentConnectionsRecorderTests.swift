@@ -24,7 +24,8 @@ struct RecentConnectionsRecorderTests {
         let defaults = suite.defaults
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
-            .appendingPathComponent("recent-connections_\(unique).json")
+            .appendingPathComponent("recent-connections_\(unique)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         try? FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -32,7 +33,7 @@ struct RecentConnectionsRecorderTests {
         storage = ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: defaults))
+            syncJournal: SyncHostJournal()
         )
         store = RecentConnectionsStore(defaults: defaults, appEvents: appEvents)
         recorder = RecentConnectionsRecorder(store: store, connectionStorage: storage, appEvents: appEvents)

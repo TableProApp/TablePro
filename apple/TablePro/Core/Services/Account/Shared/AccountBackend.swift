@@ -123,6 +123,8 @@ nonisolated internal protocol AccountBackend: AnyObject, Sendable {
     func license() -> AccountServerLicense?
 
     func signIn(using authenticator: any WebAuthenticating) async throws(AccountError)
+    // RFC 9470: the sign-in page again, for the methods and age a call's challenge named. The caller then retries it.
+    func stepUp(acrValues: [String], maxAgeSecs: UInt64?, using authenticator: any WebAuthenticating) async throws(AccountError)
     func signOut() async throws(AccountError)
     func refresh() async throws(AccountError)
     func refreshPastDeviceLimit() async throws(AccountError) -> Bool

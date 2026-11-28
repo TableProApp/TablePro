@@ -17,10 +17,18 @@ internal struct MachineDescription: Equatable, Sendable {
     static func current() -> MachineDescription {
         MachineDescription(
             machineID: MachineIdentity.shared.machineID,
-            name: SCDynamicStoreCopyComputerName(nil, nil) as String? ?? "Mac",
+            name: name(
+                computer: SCDynamicStoreCopyComputerName(nil, nil) as String? ?? "Mac",
+                deviceProfile: AppStorageEnvironment.shared.deviceProfile
+            ),
             appVersion: Bundle.main.appVersion,
             osVersion: osVersion(ProcessInfo.processInfo.operatingSystemVersion)
         )
+    }
+
+    // Device profiles on one Mac are told apart in the device lists and the approval sheets.
+    static func name(computer: String, deviceProfile: String?) -> String {
+        deviceProfile.map { "\(computer) (\($0))" } ?? computer
     }
 
     static func osVersion(_ version: OperatingSystemVersion) -> String {
@@ -29,26 +37,37 @@ internal struct MachineDescription: Equatable, Sendable {
     }
 }
 
-// The SHA-256 of the hardware UUID, the value the license system registered, so migrated devices match.
+// The SHA-256 of the hardware UUID, the value the license system registered, so migrated devices match. A Debug device
+// profile is a device of its own on the server, so its ID also takes the profile's name.
 internal final class MachineIdentity: Sendable {
-    static let shared = MachineIdentity(defaults: AppStorageEnvironment.shared.defaults)
+    static let shared = MachineIdentity(
+        defaults: AppStorageEnvironment.shared.defaults,
+        deviceProfile: AppStorageEnvironment.shared.deviceProfile
+    )
 
     static let fallbackKey = "com.TablePro.license.fallbackMachineId"
 
     private let defaults: UserDefaults
+    private let deviceProfile: String?
     private let cached = OSAllocatedUnfairLock<String?>(initialState: nil)
 
-    init(defaults: UserDefaults) {
+    init(defaults: UserDefaults, deviceProfile: String? = nil) {
         self.defaults = defaults
+        self.deviceProfile = deviceProfile
     }
 
     var machineID: String {
         cached.withLock { value in
             if let value { return value }
             let computed = Self.compute(hardwareUUID: Self.hardwareUUID(), defaults: defaults)
-            value = computed
-            return computed
+            let profiled = deviceProfile.map { Self.profiled(computed, deviceProfile: $0) } ?? computed
+            value = profiled
+            return profiled
         }
+    }
+
+    static func profiled(_ machineID: String, deviceProfile: String) -> String {
+        "\(machineID):device-profile:\(deviceProfile)".sha256
     }
 
     static func compute(hardwareUUID: String?, defaults: UserDefaults) -> String {

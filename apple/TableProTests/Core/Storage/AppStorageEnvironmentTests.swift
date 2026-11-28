@@ -41,6 +41,70 @@ struct AppStorageEnvironmentTests {
         #expect(AppStorageEnvironment.shared.isUnitTestHost)
     }
 
+    @Test("A Debug build takes a device profile, and a Release build ignores the variable")
+    func deviceProfileIsDebugOnly() {
+        let profile = [AppStorageEnvironment.deviceProfileVariable: "device-a"]
+        #expect(AppStorageEnvironment.decision(for: profile, isDebugBuild: true) == .deviceProfile(name: "device-a"))
+        #expect(AppStorageEnvironment.decision(for: profile, isDebugBuild: false) == .production)
+        #expect(
+            AppStorageEnvironment.decision(for: [AppStorageEnvironment.deviceProfileVariable: "  "], isDebugBuild: true)
+                == .production
+        )
+    }
+
+    @Test("A sandbox and a UI test without one win over a device profile")
+    func sandboxWinsOverADeviceProfile() {
+        let profile = AppStorageEnvironment.deviceProfileVariable
+        #expect(
+            AppStorageEnvironment.decision(for: [sandbox: "/tmp/x", profile: "device-a"], isDebugBuild: true)
+                == .isolated(path: "/tmp/x")
+        )
+        #expect(AppStorageEnvironment.decision(for: [uiTesting: "1", profile: "device-a"], isDebugBuild: true) == .refuseToLaunch)
+    }
+
+    @Test("A profile name that cannot name a folder, suite and service refuses to launch", arguments: [
+        "../real",
+        "device a",
+        "device/a",
+        "device.a",
+        "Device-A",
+        String(repeating: "a", count: 33)
+    ])
+    func refusesAnUnusableProfileName(_ name: String) {
+        let environment = [AppStorageEnvironment.deviceProfileVariable: name]
+        #expect(AppStorageEnvironment.decision(for: environment, isDebugBuild: true) == .refuseProfile)
+    }
+
+    @Test("Only the real store touches what lives outside the app's own folder and suite")
+    func sandboxIsNotTheProductionStore() {
+        #expect(!AppStorageEnvironment.shared.isProductionStore)
+        #expect(AppStorageEnvironment.deviceProfileSuiteName("device-a") == "com.TablePro.profile.device-a")
+    }
+
+    @Test("A device profile keeps its folder, suite and sync items apart and still starts the account and sync")
+    func deviceProfileStorage() throws {
+        let support = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AppStorageEnvironmentTests-\(UUID().uuidString)", isDirectory: true)
+        let name = "unit-\(UUID().uuidString.prefix(8).lowercased())"
+        defer {
+            try? FileManager.default.removeItem(at: support)
+            UserDefaults.standard.removePersistentDomain(forName: AppStorageEnvironment.deviceProfileSuiteName(name))
+        }
+
+        let environment = AppStorageEnvironment.deviceProfile(named: name, in: support, isUnitTestHost: true)
+
+        #expect(environment.deviceProfile == name)
+        #expect(!environment.isIsolated)
+        #expect(!environment.isProductionStore)
+        #expect(environment.supportDirectory.path == support.appendingPathComponent("TablePro-\(name)/TablePro").path)
+        #expect(FileManager.default.fileExists(atPath: environment.supportDirectory.path))
+        #expect(environment.defaultsSuiteName == "com.TablePro.profile.\(name)")
+        #expect(environment.defaults !== UserDefaults.standard)
+        let items = try #require(environment.deviceItems as? ProfileDeviceKeychainItems)
+        #expect(items.profile == name)
+        #expect(items.base is SystemDeviceKeychainItems)
+    }
+
     @Test("Whitespace around the path is not a path")
     func trimsThePath() {
         #expect(AppStorageEnvironment.decision(for: [sandbox: "  /tmp/y  "]) == .isolated(path: "/tmp/y"))

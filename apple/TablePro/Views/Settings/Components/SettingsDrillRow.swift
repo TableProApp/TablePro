@@ -7,7 +7,7 @@ protocol SettingsDrillIdentifying {
 struct SettingsDrillRow<Route: Hashable>: View {
     private let route: Route
     private let title: Text
-    private let subtitle: LocalizedStringKey?
+    private let subtitle: Text?
     private let value: String?
     private let identifier: String?
 
@@ -18,7 +18,7 @@ struct SettingsDrillRow<Route: Hashable>: View {
         subtitle: LocalizedStringKey? = nil,
         identifier: String? = nil
     ) {
-        self.init(route: route, titleText: Text(title), value: value, subtitle: subtitle, identifier: identifier)
+        self.init(route: route, titleText: Text(title), value: value, subtitle: subtitle.map { Text($0) }, identifier: identifier)
     }
 
     @_disfavoredOverload
@@ -29,10 +29,17 @@ struct SettingsDrillRow<Route: Hashable>: View {
         subtitle: LocalizedStringKey? = nil,
         identifier: String? = nil
     ) {
-        self.init(route: route, titleText: Text(title), value: value, subtitle: subtitle, identifier: identifier)
+        self.init(route: route, titleText: Text(title), value: value, subtitle: subtitle.map { Text($0) }, identifier: identifier)
     }
 
-    private init(route: Route, titleText: Text, value: String?, subtitle: LocalizedStringKey?, identifier: String?) {
+    // A record listed under its own name, with a detail already localized: a team and its role and seat.
+    init(route: Route, name: String, detail: String?, identifier: String? = nil) {
+        self.init(
+            route: route, titleText: Text(verbatim: name), value: nil, subtitle: detail.map { Text(verbatim: $0) }, identifier: identifier
+        )
+    }
+
+    private init(route: Route, titleText: Text, value: String?, subtitle: Text?, identifier: String?) {
         self.route = route
         self.title = titleText
         self.subtitle = subtitle
@@ -51,7 +58,7 @@ struct SettingsDrillRow<Route: Hashable>: View {
             } label: {
                 title
                 if let subtitle {
-                    Text(subtitle)
+                    subtitle
                 }
             }
         }

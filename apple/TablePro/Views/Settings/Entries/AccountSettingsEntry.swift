@@ -23,11 +23,25 @@ internal struct AccountSettingsPageEntry: View {
             AccountDevicesPage(model: context.models.account)
         case .page(.accountTeams):
             AccountTeamsPage(model: context.models.account)
+        case .page(.accountEncryption):
+            AccountKeysPage(model: context.models.accountKeys)
         case .page(.accountOffline):
             AccountOfflinePage(model: context.models.account)
+        case .team(let id, let name):
+            teamKeysPage(id: id, name: name)
         default:
             EmptyView()
         }
+    }
+
+    private func teamKeysPage(id: String, name: String) -> some View {
+        let account = context.models.account
+        let membership = account.profile.value?.memberships.first { $0.teamID == id }
+        let team = membership.map(TeamKeysTeam.init) ?? TeamKeysTeam(id: id, name: name, role: nil)
+        return TeamKeysPage(team: team, manage: account.services.portal.portalTeam(id)) { url in
+            account.openPortal(url)
+        }
+        .id(id)
     }
 }
 
@@ -42,7 +56,9 @@ internal struct AccountStackPresentations: ViewModifier {
 
 private struct AccountPresentations: ViewModifier {
     private static let offlineFileTypes = [UTType(filenameExtension: "jwt") ?? .data]
-    private static let signedInPages: [SettingsRoute] = [.page(.accountDevices), .page(.accountTeams)]
+    private static let signedInPages: [SettingsRoute] = [
+        .page(.accountDevices), .page(.accountTeams), .page(.accountEncryption),
+    ]
 
     @ObservedObject var model: AccountSettingsModel
     @ObservedObject var visit: SettingsPaneVisit
@@ -55,7 +71,7 @@ private struct AccountPresentations: ViewModifier {
             }
             .onChange(of: model.access.state.isSignedIn) { isSignedIn in
                 guard !isSignedIn else { return }
-                for route in Self.signedInPages where context.path.routes.contains(route) {
+                for route in context.path.routes where Self.needsSignIn(route) {
                     context.navigation.removeRoute(route)
                 }
             }
@@ -106,6 +122,11 @@ private struct AccountPresentations: ViewModifier {
             } message: { _ in
                 Text("TablePro on that device signs out the next time it checks your account. Its paid features keep working until its last check expires.")
             }
+    }
+
+    private static func needsSignIn(_ route: SettingsRoute) -> Bool {
+        if case .team = route { return true }
+        return signedInPages.contains(route)
     }
 
     private var signedInEmail: String? {

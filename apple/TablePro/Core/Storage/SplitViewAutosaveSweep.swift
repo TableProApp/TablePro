@@ -82,9 +82,9 @@ internal enum SplitViewAutosaveSweep {
 
         /// AppKit files these in the process's own standard domain, which a UI test's redirected
         /// suite never receives; `SplitViewAutosaveName` exists to stop cases inheriting each
-        /// other's geometry through it. A sandboxed run therefore shares the developer's real
-        /// records and has no business deleting them.
-        guard !AppStorageEnvironment.shared.isIsolated else { return }
+        /// other's geometry through it. A sandboxed run or a device profile therefore shares the
+        /// developer's real records and has no business deleting them.
+        guard AppStorageEnvironment.shared.isProductionStore else { return }
 
         let defaults = UserDefaults.standard
         let doomed = deadKeys(among: defaults.dictionaryRepresentation().keys)

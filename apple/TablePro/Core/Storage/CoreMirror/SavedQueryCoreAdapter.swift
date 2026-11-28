@@ -44,6 +44,8 @@ internal struct SavedQueryCoreAdapter: CoreMirrorAdapter {
     let storage: SQLFavoriteStorage
     let database: CoreHistoryDatabase
     let announceSettled: @Sendable (_ queries: [UUID], _ folders: [UUID]) async -> Void
+    // The store took the core's records, a pull's among them, so what shows them reads again.
+    let applied: @Sendable () async -> Void
 
     var name: String { "savedQueries" }
 
@@ -114,13 +116,17 @@ internal struct SavedQueryCoreAdapter: CoreMirrorAdapter {
             case .folder(let id): removedFolders.append(id)
             }
         }
-        return await storage.applyCoreRecords(
+        let wrote = await storage.applyCoreRecords(
             favorites: favorites,
             folders: folders,
             removedFavoriteIds: removedFavorites,
             removedFolderIds: removedFolders,
             expected: expected
         )
+        if wrote {
+            await applied()
+        }
+        return wrote
     }
 
     func announce(settled: [SavedQueryMirrorValue]) async {

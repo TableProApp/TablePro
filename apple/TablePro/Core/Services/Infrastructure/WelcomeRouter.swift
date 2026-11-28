@@ -35,6 +35,7 @@ internal enum WelcomeRequest {
     case importHandoff(ImportHandoff)
     case newProject
     case manageProjects
+    case resolveTeamLibraryConflicts
 }
 
 @MainActor

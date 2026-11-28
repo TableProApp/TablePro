@@ -21,22 +21,22 @@ struct CatalogEditSchemaFilterAdoptionTests {
         suite = try EphemeralDefaults()
         syncSuite = try EphemeralDefaults()
         let defaults = suite.defaults
-        let metadata = SyncMetadataStorage(userDefaults: syncSuite.defaults)
-        let tracker = SyncChangeTracker(metadataStorage: metadata)
+        let tracker = SyncJournalRecorder()
         let connectionStorage = ConnectionStorage(
             fileURL: FileManager.default.temporaryDirectory
                 .appendingPathComponent("tablepro-tests")
-                .appendingPathComponent("catalog-edit-schema-filter-\(unique).json"),
+                .appendingPathComponent("catalog-edit-schema-filter-\(unique)", isDirectory: true)
+                .appendingPathComponent("connections.json"),
             userDefaults: defaults,
-            syncTracker: tracker,
+            syncJournal: tracker.journal,
             keychain: InMemoryKeychain()
         )
         databaseManager = DatabaseManager(connectionStorage: connectionStorage)
         adoption = CatalogEditAdoption(
             databaseManager: databaseManager,
             connectionStorage: connectionStorage,
-            favoriteTables: FavoriteTablesStorage(userDefaults: defaults, syncTracker: tracker),
-            favoriteDatabases: FavoriteDatabasesStorage(defaults: defaults, syncTracker: tracker)
+            favoriteTables: FavoriteTablesStorage(userDefaults: defaults, syncJournal: tracker.journal),
+            favoriteDatabases: FavoriteDatabasesStorage(defaults: defaults, syncJournal: tracker.journal)
         )
     }
 

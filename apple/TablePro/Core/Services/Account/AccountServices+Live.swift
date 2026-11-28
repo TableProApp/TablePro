@@ -24,6 +24,7 @@ extension AccountServices {
         )
         let services = AccountServices(
             backend: backend,
+            syncAccount: backend,
             transport: AccountAPI.transport(session: liveSession()),
             storedKey: StoredLicenseKey(
                 keychain: environment.keychain,
@@ -31,7 +32,7 @@ extension AccountServices {
                 machineID: machine.machineID
             ),
             access: .shared,
-            sharedLinkServer: setup.developmentStack.flatMap { URL(string: $0.apiBase) } ?? AccountServer.production.apiBaseURL
+            sharedLinkServer: setup.developmentStack?.apiBase.flatMap { URL(string: $0) } ?? AccountServer.production.apiBaseURL
         )
         backend.setListener(services)
         return services

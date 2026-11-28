@@ -25,14 +25,15 @@ struct SavedConnectionDatabaseAdoptionTests {
         let unique = UUID().uuidString
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-tests")
-            .appendingPathComponent("connections_\(unique).json")
+            .appendingPathComponent("connections_\(unique)", isDirectory: true)
+            .appendingPathComponent("connections.json")
         try? FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true
         )
         return ConnectionStorage(
             fileURL: fileURL,
             userDefaults: defaults.defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: SyncMetadataStorage(userDefaults: syncDefaults.defaults)),
+            syncJournal: SyncHostJournal(),
             keychain: InMemoryKeychain()
         )
     }

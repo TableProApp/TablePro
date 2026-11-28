@@ -62,4 +62,21 @@ struct ConnectionEditorStoreAdvancedTests {
 
         #expect(!store.removesSyncedSecretsOnSave)
     }
+
+    @Test("Turning Local Only on warns about iCloud Keychain only while iCloud syncs the connection")
+    func keychainWarningFollowsTheProvider() throws {
+        let fixture = try ConnectionEditorStoreFixture()
+        let connection = DatabaseConnection(name: "Prod", type: .mysql)
+        fixture.seed([connection])
+        let store = fixture.makeStore(.edit(connectionId: connection.id))
+        store.update { $0.options.localOnly = true }
+        store.context.participatesInSync = true
+
+        store.context.syncProvider = .iCloud
+        #expect(store.removesSyncedSecretsOnSave)
+        store.context.syncProvider = .tableproSync
+        #expect(!store.removesSyncedSecretsOnSave)
+        store.context.syncProvider = .off
+        #expect(!store.removesSyncedSecretsOnSave)
+    }
 }

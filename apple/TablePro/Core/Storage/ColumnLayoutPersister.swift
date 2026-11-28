@@ -32,16 +32,16 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
 
     private let storageDirectory: URL
     private let defaults: UserDefaults
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
     private var cache: [UUID: [String: PersistedColumnLayout]] = [:]
 
-    init(storageDirectory: URL? = nil, defaults: UserDefaults = AppStorageEnvironment.shared.defaults, syncTracker: SyncChangeTracker = .shared) {
+    init(storageDirectory: URL? = nil, defaults: UserDefaults = AppStorageEnvironment.shared.defaults, syncJournal: SyncHostJournal = .shared) {
         self.storageDirectory = storageDirectory ?? Self.resolvedStorageDirectory()
         self.defaults = defaults
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
 
         do {
             try FileManager.default.createDirectory(
@@ -77,7 +77,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         entries[key.storageKey] = entry
         cache[key.connectionId] = entries
         writeEntries(entries, for: key.connectionId)
-        syncTracker.markDirty(.settings, id: Self.syncCategory(for: key.storageKey))
+        syncJournal.recorded(.settings, written: [Self.syncCategory(for: key.storageKey)])
     }
 
     func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? {
@@ -129,14 +129,10 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         entries[key.storageKey] = entry
         cache[key.connectionId] = entries
         writeEntries(entries, for: key.connectionId)
-        syncTracker.markDirty(.settings, id: Self.syncCategory(for: key.storageKey))
+        syncJournal.recorded(.settings, written: [Self.syncCategory(for: key.storageKey)])
     }
 
     /// Moves a table's saved widths, order and hidden columns onto its new name.
-    ///
-    /// Persisted before either sync marker is written, because `markDeleted` posts a change
-    /// notification that can start a sync, and a sync reading the old file would put the entry
-    /// back under the name that has gone.
     func renameTable(from oldScope: TableScope, to newScope: TableScope) {
         let oldKey = oldScope.storageComponent
         let newKey = newScope.storageComponent
@@ -146,8 +142,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         entries[newKey] = entry
         cache[oldScope.connectionId] = entries
         writeEntries(entries, for: oldScope.connectionId)
-        syncTracker.markDirty(.settings, id: Self.syncCategory(for: newKey))
-        syncTracker.markDeleted(.settings, ids: [Self.syncCategory(for: oldKey)], owner: oldScope.connectionId)
+        syncJournal.recorded(.settings, written: [Self.syncCategory(for: newKey)], deleted: [Self.syncCategory(for: oldKey)])
     }
 
     /// Moves every table's saved layout from one container to another. Same prefix rewrite as the
@@ -177,10 +172,11 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         }
         cache[connectionId] = entries
         writeEntries(entries, for: connectionId)
-        for key in moving {
-            syncTracker.markDirty(.settings, id: Self.syncCategory(for: newPrefix + key.dropFirst(oldPrefix.count)))
-            syncTracker.markDeleted(.settings, ids: [Self.syncCategory(for: key)], owner: connectionId)
-        }
+        syncJournal.recorded(
+            .settings,
+            written: moving.map { Self.syncCategory(for: newPrefix + $0.dropFirst(oldPrefix.count)) },
+            deleted: moving.map(Self.syncCategory(for:))
+        )
     }
 
     func dropTable(_ scope: TableScope) {
@@ -193,9 +189,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         ))
     }
 
-    /// Drops every table's layout under a container. The sync deletions go out after the file is
-    /// written, not before, so a sync fired by the notification cannot read the entries back off a
-    /// stale file and re-upload them.
+    /// Drops every table's layout under a container.
     func dropContainer(connectionId: UUID, database: String, schema: String?) {
         let prefix = TableScope.storagePrefix(connectionId: connectionId, database: database, schema: schema)
         var entries = loadEntries(for: connectionId)
@@ -206,24 +200,17 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         }
 
         guard store(entries, for: connectionId) else { return }
-        syncTracker.markDeleted(.settings, ids: dropping.map(Self.syncCategory(for:)), owner: connectionId)
+        syncJournal.recorded(.settings, deleted: dropping.map(Self.syncCategory(for:)))
     }
 
-    func purgeConnections(_ connectionIds: Set<UUID>, leavesTombstones: Bool) {
-        var categoriesByConnection: [UUID: Set<String>] = [:]
+    func purgeConnections(_ connectionIds: Set<UUID>) {
+        var categories: [String] = []
         for connectionId in connectionIds {
-            categoriesByConnection[connectionId] = Set(loadEntries(for: connectionId).keys.map(Self.syncCategory(for:)))
+            categories += loadEntries(for: connectionId).keys.map(Self.syncCategory(for:))
             cache[connectionId] = [:]
             removeFile(for: connectionId)
         }
-        /// The dirty marks go either way. A tombstone from a remote delete would push the sender's
-        /// own deletion back at it, but leaving the ids dirty means the next push looks for entries
-        /// that are gone and never drains them.
-        if leavesTombstones {
-            syncTracker.markDeleted(.settings, idsByOwner: categoriesByConnection)
-        } else {
-            syncTracker.discardDirty(.settings, ids: categoriesByConnection.values.flatMap { $0 })
-        }
+        syncJournal.recorded(.settings, deleted: categories)
     }
 
     func clear(for key: ColumnLayoutTableKey) {
@@ -233,7 +220,7 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         guard entries.removeValue(forKey: key.storageKey) != nil else { return }
 
         guard store(entries, for: key.connectionId) else { return }
-        syncTracker.markDeleted(.settings, ids: [Self.syncCategory(for: key.storageKey)], owner: key.connectionId)
+        syncJournal.recorded(.settings, deleted: [Self.syncCategory(for: key.storageKey)])
     }
 
     func clearGeometry(for key: ColumnLayoutTableKey) {
@@ -248,11 +235,11 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
             entries[key.storageKey] = entry
             cache[key.connectionId] = entries
             writeEntries(entries, for: key.connectionId)
-            syncTracker.markDirty(.settings, id: Self.syncCategory(for: key.storageKey))
+            syncJournal.recorded(.settings, written: [Self.syncCategory(for: key.storageKey)])
         } else {
             entries.removeValue(forKey: key.storageKey)
             guard store(entries, for: key.connectionId) else { return }
-            syncTracker.markDeleted(.settings, ids: [Self.syncCategory(for: key.storageKey)], owner: key.connectionId)
+            syncJournal.recorded(.settings, deleted: [Self.syncCategory(for: key.storageKey)])
         }
     }
 
@@ -288,7 +275,6 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
                 continue
             }
             removed.forEach(removeLegacyHidden(storageKey:))
-            syncTracker.discardDirty(.settings, ids: removed.map(Self.syncCategory(for:)))
         }
         return persisted
     }
@@ -306,6 +292,68 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         entries[storageKey] = entry
         cache[scope.connectionId] = entries
         writeEntries(entries, for: scope.connectionId)
+    }
+
+    // MARK: - Sync
+
+    // Every layout the files hold, read from disk rather than the cache, which a failed load leaves empty. A file it
+    // cannot read fails the read, so a damaged file stops the pass instead of reading as layouts removed on every Mac.
+    func syncedLayouts() throws -> [String: Data] {
+        let files: [URL]
+        do {
+            files = try FileManager.default.contentsOfDirectory(at: storageDirectory, includingPropertiesForKeys: nil)
+        } catch CocoaError.fileReadNoSuchFile {
+            return [:]
+        }
+        var layouts: [String: Data] = [:]
+        for file in files where file.pathExtension == "json" {
+            guard let connectionId = UUID(uuidString: file.deletingPathExtension().lastPathComponent) else { continue }
+            for (storageKey, entry) in try readEntries(for: connectionId) {
+                layouts[storageKey] = try encoder.encode(entry)
+            }
+        }
+        return layouts
+    }
+
+    func syncedLayout(storageKey: String) throws -> Data? {
+        guard let scope = TableScope(storageComponent: storageKey) else { return nil }
+        return try readEntries(for: scope.connectionId)[storageKey].map { try encoder.encode($0) }
+    }
+
+    // False when the document is no layout. A file this Mac cannot read is never written over, and the cache takes the
+    // layout only once it is on disk, so a failed write is tried again instead of read back as stored.
+    func applyPulled(storageKey: String, data: Data) throws -> Bool {
+        guard let scope = TableScope(storageComponent: storageKey),
+              let entry = try? decoder.decode(PersistedColumnLayout.self, from: data)
+        else { return false }
+        var entries = try readEntries(for: scope.connectionId)
+        entries[storageKey] = entry
+        try persist(entries, for: scope.connectionId)
+        cache[scope.connectionId] = entries
+        return true
+    }
+
+    func removePulled(storageKey: String) throws {
+        guard let scope = TableScope(storageComponent: storageKey) else { return }
+        var entries = try readEntries(for: scope.connectionId)
+        guard entries.removeValue(forKey: storageKey) != nil else { return }
+        if entries.isEmpty {
+            try deleteFile(for: scope.connectionId)
+        } else {
+            try persist(entries, for: scope.connectionId)
+        }
+        cache[scope.connectionId] = entries
+        removeLegacyHidden(storageKey: storageKey)
+    }
+
+    private func readEntries(for connectionId: UUID) throws -> [String: PersistedColumnLayout] {
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL(for: connectionId))
+        } catch CocoaError.fileReadNoSuchFile {
+            return [:]
+        }
+        return try decoder.decode([String: PersistedColumnLayout].self, from: data)
     }
 
     func customizedStorageKeys() -> [String] {
@@ -368,12 +416,22 @@ final class FileColumnLayoutPersister: ColumnLayoutPersisting, TableScopedSettin
         }
     }
 
+    private func persist(_ entries: [String: PersistedColumnLayout], for connectionId: UUID) throws {
+        try encoder.encode(entries).write(to: fileURL(for: connectionId), options: .atomic)
+    }
+
+    private func deleteFile(for connectionId: UUID) throws {
+        do {
+            try FileManager.default.removeItem(at: fileURL(for: connectionId))
+        } catch CocoaError.fileNoSuchFile {
+            return
+        }
+    }
+
     @discardableResult
     private func writeEntries(_ entries: [String: PersistedColumnLayout], for connectionId: UUID) -> Bool {
-        let fileURL = fileURL(for: connectionId)
         do {
-            let data = try encoder.encode(entries)
-            try data.write(to: fileURL, options: .atomic)
+            try persist(entries, for: connectionId)
             return true
         } catch {
             Self.logger.error(

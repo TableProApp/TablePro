@@ -52,6 +52,19 @@ struct ConnectionStoreIntegrity: Sendable {
         self.keySource = keySource
     }
 
+    // Whether a tag can be written or checked at all, so a store can tell "no key" from "not tagged".
+    var hasKey: Bool {
+        keySource.key() != nil
+    }
+
+    // The key the core seals the library writes it makes itself with: derived from the tag's key, so it is the same at
+    // every launch and nothing outside TablePro can forge a report.
+    func libraryReportKey() -> String? {
+        guard let key = keySource.key() else { return nil }
+        let code = HMAC<SHA256>.authenticationCode(for: Data("TablePro core library writes".utf8), using: key)
+        return Data(code).map { String(format: "%02x", $0) }.joined()
+    }
+
     static func tagURL(for fileURL: URL) -> URL {
         fileURL.appendingPathExtension("hmac")
     }
@@ -204,11 +217,12 @@ struct KeychainIntegrityKeySource: IntegrityKeySource {
         ]
     }
 
-    /// A sandboxed run keeps its key inside the sandbox. The production query is left exactly as it
-    /// is: the key it finds is the one that stamped the user's existing store, and looking somewhere
-    /// else would mint a new key, fail every verification against it, and drop `storeIsTrusted`.
+    /// A sandboxed run or a device profile keeps its key in its own keychain. The production query is
+    /// left exactly as it is: the key it finds is the one that stamped the user's existing store, and
+    /// looking somewhere else would mint a new key, fail every verification against it, and drop
+    /// `storeIsTrusted`.
     private static var isolatedStore: (any KeychainStoring)? {
-        AppStorageEnvironment.shared.isIsolated ? AppStorageEnvironment.shared.keychain : nil
+        AppStorageEnvironment.shared.isProductionStore ? nil : AppStorageEnvironment.shared.keychain
     }
 
     private static func read() -> SymmetricKey? {

@@ -36,7 +36,7 @@ struct WelcomeProjectMenuSpecTests {
             linkedFolderConnectionIds: [],
             disconnectableConnectionIds: [],
             reconnectableConnectionIds: [],
-            isSyncEnabled: false,
+            syncProvider: .off,
             isCompareSyncEnabled: false,
             canPublishToTeamCatalog: false,
             teamLibraryTeams: [],

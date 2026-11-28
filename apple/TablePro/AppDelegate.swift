@@ -13,6 +13,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         LaunchTracer.shared.mark(.willFinishLaunchingBegan)
+        // Before anything opens the core, so its first line reaches the log.
+        CoreLogBridge.install()
         // First: the migration below writes the flag that tells an existing install from a new one.
         AppModule.recordDefaults(
             in: AppStorageEnvironment.shared.defaults,
@@ -125,7 +127,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidBecomeActive(_ notification: Notification) {
         runPostLaunchActivationIfNeeded()
         guard !AppStorageEnvironment.shared.isIsolated else { return }
-        SyncCoordinator.shared.syncIfNeeded()
+        SyncProviderCoordinator.shared.syncIfNeeded()
         AccountServices.shared.applicationDidBecomeActive()
     }
 
@@ -155,13 +157,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         AccountServices.shared.start()
         // Before sync starts, so a profile's provider is the switch's first state.
         SyncProviderPolicy.shared.start()
-        SyncCoordinator.shared.start()
+        KeychainProviderFollower.shared.start(host: .shared)
+        SyncProviderCoordinator.shared.start()
+        ProviderMoves.shared.start()
+        SyncApprovalsModel.shared.start()
+        SyncPassFollower.shared.start(host: .shared)
         // Its gate reads the sign-in the core restores after launch.
         Task {
             await AccountServices.shared.waitUntilRestored()
             LinkedFolderWatcher.shared.start()
         }
-        TeamLibrarySync.shared.start()
+        TeamLibrary.shared.start()
         SupportAskCoordinator.shared.start()
     }
 
@@ -170,16 +176,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        SyncCoordinator.shared.pushRegistrationDidFinish(registered: true)
+        SyncProviderCoordinator.shared.pushRegistrationDidFinish(registered: true)
     }
 
     func application(_ application: NSApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
         Self.logger.warning("Push registration failed: \(error.localizedDescription, privacy: .private)")
-        SyncCoordinator.shared.pushRegistrationDidFinish(registered: false)
+        SyncProviderCoordinator.shared.pushRegistrationDidFinish(registered: false)
     }
 
     func application(_ application: NSApplication, didReceiveRemoteNotification userInfo: [String: Any]) {
-        SyncCoordinator.shared.handleRemoteNotification(userInfo)
+        SyncProviderCoordinator.shared.handleRemoteNotification(userInfo)
     }
 
     // Unhiding brings windows back with no window notification, and while hidden every window reports invisible.
@@ -195,32 +201,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         Task {
-            // Team Library edits not uploaded live only in memory, so they are asked about while a Cancel changes nothing.
-            let quits = await TeamLibraryUnsentChanges.quit {
-                // Before anything the app could not take back if it stays open.
-                guard await QuitApproval.commitBeforeQuitting(plan) else { return false }
-                RunningWorkRegistry.shared.cancel(plan.work)
-                // While the drivers are open: a debug stop rolls back the routine's transaction.
-                await AppModuleTermination.stopModuleWork()
-                await MCPServerManager.shared.stop()
-                await DatabaseManager.shared.runPostDisconnectScriptsBeforeQuit()
-                // A Vault lease outlives the app on the server until its TTL, so its database user goes now.
-                await VaultDatabaseCredentials.shared.revokeAllLeases()
-                return true
-            }
-            guard quits else {
+            // Before anything the app could not take back if it stays open.
+            guard await QuitApproval.commitBeforeQuitting(plan) else {
                 NSApp.reply(toApplicationShouldTerminate: false)
                 AppRelauncher.shared.terminationWasCancelled()
                 return
             }
+            RunningWorkRegistry.shared.cancel(plan.work)
+            // While the drivers are open: a debug stop rolls back the routine's transaction.
+            await AppModuleTermination.stopModuleWork()
+            await MCPServerManager.shared.stop()
+            await DatabaseManager.shared.runPostDisconnectScriptsBeforeQuit()
+            // A Vault lease outlives the app on the server until its TTL, so its database user goes now.
+            await VaultDatabaseCredentials.shared.revokeAllLeases()
+            // Once the quit is decided, so a Cancel never waits on it.
+            await SyncProviderCoordinator.shared.flushBeforeQuit()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        // The quit is committed: what its question said to discard goes now, not before a step that could stop it.
-        TeamLibrarySync.shared.discardHeld()
         ConnectionEditorWindowController.closeAllForTermination()
         SessionRecoveryTracker.saveOnQuit()
         // Synchronously: an actor hop at terminate may never run, which lost a killed session's last turn.

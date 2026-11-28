@@ -11,51 +11,38 @@ final class SSHProfileStorage {
     static let shared = SSHProfileStorage()
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "SSHProfileStorage")
 
-    private let profilesKey = "com.TablePro.sshProfiles"
-    private let defaults: UserDefaults
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
     private let keychain: any KeychainStoring
     private let connectionStorageProvider: () -> ConnectionStorage
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
     private(set) var lastLoadFailed = false
 
     // The Keychain comes from AppStorageEnvironment, so a sandboxed run keeps profile secrets inside the sandbox.
     init(
-        userDefaults: UserDefaults = AppStorageEnvironment.shared.defaults,
         keychain: any KeychainStoring = AppStorageEnvironment.shared.keychain,
-        syncTracker: SyncChangeTracker = .shared,
+        syncJournal: SyncHostJournal = .shared,
         connectionStorage: @escaping @autoclosure () -> ConnectionStorage = .shared
     ) {
-        self.defaults = userDefaults
         self.keychain = keychain
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
         self.connectionStorageProvider = connectionStorage
     }
 
+    // The profiles live in the connection library, written with it in one commit.
     func loadProfiles() -> [SSHProfile] {
-        guard let data = defaults.data(forKey: profilesKey) else {
-            lastLoadFailed = false
-            return []
-        }
-
-        do {
-            let profiles = try decoder.decode([SSHProfile].self, from: data)
-            lastLoadFailed = false
-            return profiles
-        } catch {
-            Self.logger.error("Failed to load SSH profiles: \(error)")
+        guard let image = connectionStorageProvider().library.current() else {
             lastLoadFailed = true
             return []
         }
+        lastLoadFailed = false
+        return image.sshProfiles
     }
 
-    // False when nothing reached disk, so a caller that also writes Keychain items or tombstones can stop.
+    // False when nothing reached disk, so a caller that also writes Keychain items or journals a deletion can stop.
     @discardableResult
     func saveProfiles(_ profiles: [SSHProfile]) -> Bool {
         let previous = loadProfiles()
         guard saveProfilesWithoutSync(profiles) else { return false }
-        syncTracker.markDirty(.sshProfile, ids: SyncRecordChanges.changedIds(from: previous, to: profiles))
+        syncJournal.recorded(.sshProfile, written: SyncRecordChanges.changedIds(from: previous, to: profiles))
         return true
     }
 
@@ -65,22 +52,24 @@ final class SSHProfileStorage {
             Self.logger.warning("Refusing to save SSH profiles: previous load failed (would overwrite existing data)")
             return false
         }
-        do {
-            let data = try encoder.encode(profiles)
-            defaults.set(data, forKey: profilesKey)
-            NotificationCenter.default.post(name: .sshProfilesDidChange, object: nil)
-            return true
-        } catch {
-            Self.logger.error("Failed to save SSH profiles: \(error)")
+        let library = connectionStorageProvider().library
+        guard var image = library.current() else { return false }
+        image.sshProfiles = profiles
+        guard library.commit(image, byUser: false) else {
+            Self.logger.error("Failed to save SSH profiles")
             return false
         }
+        NotificationCenter.default.post(name: .sshProfilesDidChange, object: nil)
+        return true
     }
 
     @discardableResult
     func addProfile(_ profile: SSHProfile) -> Bool {
         var profiles = loadProfiles()
         guard !lastLoadFailed else { return false }
-        guard !profiles.contains(where: { $0.id == profile.id }) else {
+        // A profile this build cannot read still owns its id.
+        let taken = connectionStorageProvider().library.unreadableProfileIds
+        guard !profiles.contains(where: { $0.id == profile.id }), !taken.contains(profile.id) else {
             Self.logger.error("Refusing to add SSH profile \(profile.id.uuidString, privacy: .public): the id is taken")
             return false
         }
@@ -111,7 +100,7 @@ final class SSHProfileStorage {
         profiles.removeAll { $0.id == profile.id }
         guard unlinkConnections(fromProfile: current, byUser: true) else { return false }
         guard saveProfiles(profiles) else { return false }
-        syncTracker.markDeleted(.sshProfile, id: profile.id.uuidString)
+        syncJournal.recorded(.sshProfile, deleted: [profile.id.uuidString])
 
         deleteSecrets(for: profile.id)
         return true
@@ -275,7 +264,7 @@ final class SSHProfileStorage {
         deleteSecret(.totpSecret, for: profileId)
     }
 
-    private static func key(_ secret: SSHSecret, _ profileId: UUID) -> String {
+    nonisolated static func key(_ secret: SSHSecret, _ profileId: UUID) -> String {
         switch secret {
         case .password: "com.TablePro.sshprofile.password.\(profileId.uuidString)"
         case .keyPassphrase: "com.TablePro.sshprofile.keypassphrase.\(profileId.uuidString)"

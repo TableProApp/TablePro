@@ -176,15 +176,16 @@ struct MacImportLibraryStoreTests {
         }
     }
 
-    @Test("Unreadable credential profiles turn profile import off instead of refusing the file")
-    func unreadableProfilesTurnProfilesOff() async throws {
+    // The profiles move in with the library, so a profiles file that does not read holds the library, as the tags do.
+    @Test("Unreadable credential profiles refuse the import, as unreadable tags do")
+    func unreadableProfilesRefuseTheImport() async throws {
         let library = try ImportLibraryFixture(damage: [.profiles])
         defer { library.cleanUp() }
+        let store = library.store
 
-        let inputs = try await library.store.analysisInputs(environment: ImportLibraryFixture.environment())
-
-        #expect(!inputs.environment.rules.supportsCredentialProfiles)
-        #expect(inputs.environment.rules.supportsSavedQueries)
+        await #expect(throws: ImportStoreError.unreadable) {
+            _ = try await store.snapshot()
+        }
     }
 
     @Test("Unreadable saved queries turn query import off instead of refusing the file")
@@ -383,9 +384,9 @@ struct MacImportLibraryStoreTests {
         defer { library.cleanUp() }
         let suite = try EphemeralDefaults("ImportLibrary.refusing")
         let refusing = ConnectionStorage(
-            fileURL: library.directory.appendingPathComponent("refusing-connections.json"),
+            fileURL: library.directory.appendingPathComponent("refusing", isDirectory: true).appendingPathComponent("connections.json"),
             userDefaults: suite.defaults,
-            syncTracker: SyncChangeTracker(metadataStorage: library.metadata),
+            syncJournal: SyncHostJournal(),
             keychain: RefusingKeychain(),
             appEvents: library.appEvents,
             integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: InMemoryKeychain()))
@@ -416,7 +417,8 @@ struct MacImportLibraryStoreTests {
         let library = try ImportLibraryFixture()
         defer { library.cleanUp() }
         _ = library.connections.loadConnections()
-        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: library.directory.path)
+        try LibraryWriteRefusal.set(true, in: library.directory)
+        defer { try? LibraryWriteRefusal.set(false, in: library.directory) }
         let importedId = UUID()
 
         let outcome = try await library.importDefaults(

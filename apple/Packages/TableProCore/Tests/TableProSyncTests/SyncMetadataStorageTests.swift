@@ -45,6 +45,16 @@ struct SyncMetadataStorageTests {
         #expect(storage.adoptReadableRecordTypes(["Connection", "TableFolder"]))
     }
 
+    @Test("The record types a build read come back as recorded, and none before any build recorded them")
+    func readableRecordTypesReadBack() {
+        let storage = makeStorage()
+        #expect(storage.readableRecordTypes == nil)
+
+        _ = storage.adoptReadableRecordTypes(["Connection", "TableFolder"])
+
+        #expect(storage.readableRecordTypes == ["Connection", "TableFolder"])
+    }
+
     @Test("Removing tombstones in a batch keeps the others")
     func removeTombstonesKeepsOthers() {
         let storage = makeStorage()
@@ -169,6 +179,19 @@ struct SyncMetadataStorageTests {
         let now = Date()
         storage.lastSyncDate = now
         #expect(storage.lastSyncDate?.timeIntervalSince1970 == now.timeIntervalSince1970)
+    }
+
+    @Test("A forgotten zone state reads again as a build before the key inferred it")
+    func forgottenZoneStateIsInferred() {
+        let storage = makeStorage()
+        storage.zoneState = .removed
+        storage.forgetZoneState()
+        #expect(storage.zoneState == .unknown)
+
+        storage.zoneState = .removed
+        storage.lastSyncDate = Date()
+        storage.forgetZoneState()
+        #expect(storage.zoneState == .confirmed)
     }
 
     @Test("The last account identifier round-trips")

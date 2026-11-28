@@ -29,6 +29,12 @@ final class IntegrityStampedFileStore<Element: Codable> {
 
     var unreadableIds: Set<UUID> { Set(preserved.compactMap(\.id)) }
 
+    // For a file that copies another store which no longer vouches for what it holds: no save signs it until a load
+    // or a person's save trusts it again.
+    func withdrawTrust() {
+        isTrusted = false
+    }
+
     var backupURL: URL { fileURL.appendingPathExtension("backup") }
     var unreadableURL: URL { fileURL.appendingPathExtension("unreadable") }
     var unreadableRecordsURL: URL { fileURL.appendingPathExtension("unreadable-records") }

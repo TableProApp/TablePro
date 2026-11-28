@@ -29,13 +29,13 @@ final class CustomSlashCommandStorage: ObservableObject {
 
     private static let defaultsKey = JSONDefaultsKey<[CustomSlashCommand]>("ai.customSlashCommands.v1")
     private let defaults: UserDefaults
-    private let syncTracker: SyncChangeTracker
+    private let syncJournal: SyncHostJournal
 
     @Published private(set) var commands: [CustomSlashCommand] = []
 
-    init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults, syncTracker: SyncChangeTracker = .shared) {
+    init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults, syncJournal: SyncHostJournal = .shared) {
         self.defaults = defaults
-        self.syncTracker = syncTracker
+        self.syncJournal = syncJournal
         self.commands = Self.load(from: defaults)
     }
 
@@ -57,6 +57,16 @@ final class CustomSlashCommandStorage: ObservableObject {
             kept.append(named)
         }
         return kept
+    }
+
+    // What sync reads: nil for a list never saved, which holds no choice, and an empty one once saved, which does. A list
+    // that no longer decodes throws, so it never reads as every command removed.
+    func syncedCommands() throws -> [CustomSlashCommand]? {
+        switch defaults.read(Self.defaultsKey) {
+        case .missing: return nil
+        case .value(let commands): return commands
+        case .unreadable(let error): throw error
+        }
     }
 
     func isDuplicate(_ name: String, excluding id: UUID? = nil) -> Bool {
@@ -99,7 +109,7 @@ final class CustomSlashCommandStorage: ObservableObject {
             return
         }
         if markDirty {
-            syncTracker.markDirty(.settings, id: Self.syncCategory)
+            syncJournal.recorded(.settings, written: [Self.syncCategory])
         }
     }
 

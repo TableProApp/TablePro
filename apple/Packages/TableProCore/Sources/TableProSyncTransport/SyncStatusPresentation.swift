@@ -75,7 +75,7 @@ public struct SyncStatusPresentation: Equatable, Sendable {
             Self.title(for: blocker)
         case .error(.offline):
             String(localized: "Offline")
-        case .error(.busy):
+        case .error(.busy), .error(.waitingForKeychain):
             String(localized: "Waiting to Retry")
         case .error(.recordsRejected):
             String(localized: "Some Changes Not Uploaded")
@@ -95,7 +95,8 @@ public struct SyncStatusPresentation: Equatable, Sendable {
             []
         case .error(.blocked(let blocker)):
             Self.actions(for: blocker)
-        case .error(.offline), .error(.busy), .error(.recordsRejected), .error(.pullNotSaved), .error(.unexpected):
+        case .error(.offline), .error(.busy), .error(.waitingForKeychain), .error(.recordsRejected), .error(.pullNotSaved),
+             .error(.unexpected):
             [.tryAgain]
         }
     }
