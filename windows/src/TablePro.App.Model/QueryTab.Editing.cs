@@ -406,7 +406,7 @@ public sealed partial class QueryTab
         }
 
         var count = (int)Math.Clamp(_results.ShownRowCount, 0, int.MaxValue);
-        _editing = new EditedRows(editor, new TableEdits(editor.Columns, count), rows);
+        _editing = new EditedRows(editor, new TableEdits(editor, rows, count), rows);
         _resultLock = locked;
         _editing.Edits.Changed += OnResultEditsChanged;
         ResultEditsChanged();
@@ -496,11 +496,16 @@ public sealed partial class QueryTab
             return false;
         }
 
-        var planned = editing.Edits.ToRowEdits();
-        IRowSave save;
+        return await RunRowSaveAsync(view, editing, reread).ConfigureAwait(true);
+    }
+
+    // The delete question comes at every Safe Mode level, as on a table tab, then the level's own.
+    private async Task<bool> RunRowSaveAsync(IResultEditView view, EditedRows editing, bool reread)
+    {
+        SavePreview preview;
         try
         {
-            save = editing.Plan(planned);
+            preview = editing.Edits.Preview();
         }
         catch (TableProException exception)
         {
@@ -508,39 +513,28 @@ public sealed partial class QueryTab
             return false;
         }
 
-        using (save)
+        if (preview.IsEmpty)
         {
-            return await RunRowSaveAsync(view, save, editing, planned, reread).ConfigureAwait(true);
-        }
-    }
-
-    // The delete question comes at every Safe Mode level, as on a table tab, then the level's own.
-    private async Task<bool> RunRowSaveAsync(
-        IResultEditView view, IRowSave save, EditedRows editing, PlannedEdits planned, bool reread)
-    {
-        if (save.IsEmpty)
-        {
-            editing.Edits.Discard();
             return true;
         }
 
-        if (save.Gate == SaveGate.Refuse)
+        if (preview.Gate == SaveGate.Refuse)
         {
             view.ShowEditRefusal(new EditRefusal.TableLocked(EditLock.ReadOnlyConnection));
             return false;
         }
 
-        var deletes = planned.Edits.Count(edit => edit is RowEdit.Delete);
+        var deletes = checked((int)preview.Deletes);
         if (deletes > 0
             && !await view.ConfirmDeleteAsync(editing.Editor.Table?.Name ?? Title, deletes).ConfigureAwait(true))
         {
             return false;
         }
 
-        var confirmed = save.Gate == SaveGate.Run;
-        if (save.Gate == SaveGate.Confirm)
+        var confirmed = preview.Gate == SaveGate.Run;
+        if (preview.Gate == SaveGate.Confirm)
         {
-            if (!await view.ConfirmSaveAsync(_session.Name, save.Statements).ConfigureAwait(true))
+            if (!await view.ConfirmSaveAsync(_session.Name, preview.Statements).ConfigureAwait(true))
             {
                 view.ShowSaveCancelled();
                 return false;
@@ -563,18 +557,15 @@ public sealed partial class QueryTab
             SetSavingRows(true);
             try
             {
-                (outcome, failure) = await EditedRows.RunSaveAsync(save, confirmed).ConfigureAwait(true);
+                (outcome, failure) = await editing.SaveAsync(confirmed).ConfigureAwait(true);
             }
             finally
             {
                 SetSavingRows(false);
             }
 
-            if (outcome is RowSaveOutcome.Saved)
-            {
-                editing.Edits.Discard();
-            }
-            else if (outcome is RowSaveOutcome.Unknown)
+            // The editor settles the tracker: a commit drops the saved rows, an unknown outcome refuses the next save.
+            if (outcome is RowSaveOutcome.Unknown)
             {
                 _saveBlocked = true;
                 ResultEditsChanged();
@@ -598,11 +589,11 @@ public sealed partial class QueryTab
                 return true;
             case RowSaveOutcome.RolledBack rolledBack:
                 await view.ShowSaveFailedAsync(rolledBack.Error, incomplete: false).ConfigureAwait(true);
-                FocusEdit(view, planned, rolledBack.Edit);
+                FocusRow(view, rolledBack.Row);
                 return false;
             case RowSaveOutcome.Unknown unknown:
                 await view.ShowSaveFailedAsync(unknown.Error, incomplete: true).ConfigureAwait(true);
-                FocusEdit(view, planned, unknown.Edit);
+                FocusRow(view, unknown.Row);
                 return false;
             default:
                 if (failure is not null)
@@ -614,11 +605,11 @@ public sealed partial class QueryTab
         }
     }
 
-    private static void FocusEdit(IResultEditView view, PlannedEdits planned, int? edit)
+    private static void FocusRow(IResultEditView view, long? row)
     {
-        if (EditedRows.RowOf(planned, edit) is { } row)
+        if (EditedRows.RowOf(row) is { } at)
         {
-            view.FocusRow(row);
+            view.FocusRow(at);
         }
     }
 
