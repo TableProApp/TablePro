@@ -126,8 +126,7 @@ fn reference(secret: &SecretRef) -> Option<SyncedSecretRef> {
 pub(crate) struct CoreSecrets {
     vault: Arc<dyn SecretVault>,
     store: ConnectionStore,
-    // A pulled secret lands under the lock a library write holds, so it never meets a save of the same connection
-    // half done.
+    // The lock a library write holds while it saves a record and its secrets, which `hold` takes.
     writes: LibraryWrites,
     host: Option<HostKept>,
     tasks: Tasks,
@@ -212,9 +211,11 @@ impl DeviceSecrets for CoreSecrets {
         kinds
     }
 
-    // After a library save that holds the lock wrote the secret as well as its record.
+    async fn hold(&self) -> Box<dyn Send> {
+        Box::new(Arc::clone(&self.writes).lock_owned().await)
+    }
+
     async fn load(&self, secret: &SecretRef) -> Result<Option<SecretString>, AdapterError> {
-        let _held = self.writes.lock().await;
         if let Some(kind) = stored_kind(secret.parent, &secret.secret) {
             return match self.vault.load(secret.parent_id, kind).await {
                 Ok(SecretLookup::Found(value)) => Ok(Some(value)),
@@ -227,7 +228,6 @@ impl DeviceSecrets for CoreSecrets {
     }
 
     async fn store(&self, secret: &SecretRef, value: &SecretString) -> Result<(), AdapterError> {
-        let _held = self.writes.lock().await;
         if let Some(kind) = stored_kind(secret.parent, &secret.secret) {
             let label = self.label(secret, kind).await?;
             return self
@@ -242,7 +242,6 @@ impl DeviceSecrets for CoreSecrets {
     }
 
     async fn delete(&self, secret: &SecretRef) -> Result<(), AdapterError> {
-        let _held = self.writes.lock().await;
         if let Some(kind) = stored_kind(secret.parent, &secret.secret) {
             return self
                 .vault

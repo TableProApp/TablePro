@@ -560,3 +560,66 @@ async fn an_envelope_the_policy_refused_goes_up_once_password_sync_is_on_again()
     assert_eq!(while_off, None);
     assert_eq!(stored_envelope(&server, 1), Some(sealed(1)));
 }
+
+// A connection kept on the device and then deleted there takes its envelope's deletion with it: other devices keep both
+// (0054, Rules for both providers; 0069).
+#[tokio::test]
+async fn the_envelope_of_a_connection_kept_on_the_device_is_not_deleted_on_the_server_with_it() {
+    let server = FakeServer::new();
+    let secrets = envelopes();
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&secrets))
+        .build()
+        .await;
+    let other = Device::new(&server, "dev_other").await;
+    rotate(&other, 1).await;
+    mac.connections.put(&id(1), connection("Prod"));
+    secrets.put(&envelope_id(1), sealed(1));
+    mac.sync().await;
+    let synced = stored_envelope(&server, 1);
+    mac.connections.put_local_only(&id(1), connection("Prod"));
+    mac.sync().await;
+
+    mac.connections.remove(&id(1));
+    secrets.remove(&envelope_id(1));
+    mac.sync().await;
+
+    assert_eq!(synced, Some(sealed(1)));
+    assert_eq!(stored_envelope(&server, 1), Some(sealed(1)));
+}
+
+// An envelope update pulled while the device's own copy cannot be read, as with a locked keychain, waits for the store
+// and lands once it reads again, with no new edit on the server (0069).
+#[tokio::test]
+async fn an_envelope_pulled_while_the_store_cannot_read_its_copy_lands_once_it_can() {
+    let server = FakeServer::new();
+    let (mac_secrets, other_secrets) = (envelopes(), envelopes());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&mac_secrets))
+        .build()
+        .await;
+    let other = DeviceBuilder::new(&server, "dev_other")
+        .adapter(ScopeName::Personal, Arc::clone(&other_secrets))
+        .build()
+        .await;
+    rotate(&other, 1).await;
+    mac_secrets.put(&envelope_id(1), sealed(1));
+    mac.sync().await;
+    other.sync().await;
+    let changed = json!({"suite": "tp1", "kv": 1, "nonce": "n2", "ct": "c2"});
+    other_secrets.put(&envelope_id(1), changed.clone());
+    other.sync().await;
+
+    mac_secrets.hide(&envelope_id(1));
+    mac.sync().await;
+    let waiting = mac.row(RowKey::Held(personal_key(&envelope_id(1)))).await;
+    mac_secrets.show(&envelope_id(1));
+    mac.sync().await;
+
+    assert!(
+        matches!(&waiting, Some(Row::Held(held)) if held.reason == HeldReason::AwaitingStore),
+        "{waiting:?}"
+    );
+    assert_eq!(mac_secrets.get(&envelope_id(1)), Some(changed.clone()));
+    assert_eq!(stored_envelope(&server, 1), Some(changed));
+}

@@ -22,6 +22,10 @@ pub trait DeviceSecrets: Send + Sync {
     // deleted from here.
     fn kinds(&self, parent: Kind) -> Vec<SecretKind>;
 
+    // Holds off the app's own writes of records and their secrets until the guard drops, so a record read under it is
+    // still the one a secret is read for or written to (0056, At use). The calls below take no hold of their own.
+    async fn hold(&self) -> Box<dyn Send>;
+
     async fn load(&self, secret: &SecretRef) -> Result<Option<SecretString>, AdapterError>;
 
     // A pulled secret, which stays on this device: iCloud Keychain never carries it beside its envelope (0044,

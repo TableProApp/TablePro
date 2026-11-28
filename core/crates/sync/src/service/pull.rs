@@ -745,7 +745,14 @@ impl ServiceSync {
             };
             let local = locals.get(&index);
             if local.is_some_and(|local| local.unreadable.contains(&key.record_id)) {
-                writes.held.push(held(HeldReason::Unreadable, key, record));
+                // The keys took a live envelope before it came here, so only its store waits, and each pull offers it
+                // again.
+                let reason = if kind == Kind::SecretEnvelope && record.deleted.is_none() {
+                    HeldReason::AwaitingStore
+                } else {
+                    HeldReason::Unreadable
+                };
+                writes.held.push(held(reason, key, record));
                 continue;
             }
             // Arriving from iCloud, the record's first meet with the service is against the copy both providers last

@@ -414,6 +414,8 @@ impl RecordAdapter for EnvelopeAdapter {
         if scope != ScopeName::Personal {
             return Ok(out);
         }
+        // Each record and its secrets as one save left them, never a destination from before it and a secret after.
+        let _held = self.secrets.hold().await;
         let bases = self.bases().await?;
         let version = self.keys.personal_envelope_version().await.unwrap_or_else(|error| {
             tracing::debug!(code = error.code(), "no version to seal personal secrets under");
@@ -498,6 +500,8 @@ impl RecordAdapter for EnvelopeAdapter {
         if scope != ScopeName::Personal {
             return Err(unreadable("an envelope outside the personal scope"));
         }
+        // A record a save changes between the check and the write would take a secret sealed for where it pointed.
+        let _held = self.secrets.hold().await;
         let mut read = HashMap::new();
         for change in changes {
             match change {

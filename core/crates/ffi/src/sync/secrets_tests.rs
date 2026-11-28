@@ -641,3 +641,32 @@ async fn a_profile_s_secret_goes_through_the_app_and_a_connection_s_through_this
     );
     assert!(unkept.is_err(), "a kind the app does not keep is never asked for");
 }
+
+// A record and its secrets are read as one library write left them: a read waits for a save in flight, so a password
+// is never sealed for the destination the save is replacing.
+#[tokio::test]
+async fn secrets_are_read_between_library_writes_never_during_one() {
+    let tasks = runtime::tasks().unwrap();
+    let server = FakeServer::new();
+    let mac = Mac::open(
+        &tasks,
+        &server,
+        AccountId(Uuid::new_v4()),
+        "dev_01k8d6wpggfd68tbhz818p4ww4",
+    )
+    .await;
+    mac.save("prod", "db.internal", "hunter2").await;
+    let saving = Arc::clone(&mac.core.writes()).lock_owned().await;
+    let service = Arc::clone(&mac.service);
+    let mut plan = tokio::spawn(async move { service.plan_move_to_service().await });
+
+    let during = tokio::time::timeout(std::time::Duration::from_millis(300), &mut plan).await;
+    drop(saving);
+    let after = plan.await.unwrap().unwrap();
+
+    assert!(
+        during.is_err(),
+        "the read went on while a library write held the library"
+    );
+    assert_eq!(after.secrets_to_seal, 1);
+}
