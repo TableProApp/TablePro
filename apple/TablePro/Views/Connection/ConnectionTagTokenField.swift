@@ -54,13 +54,21 @@ internal enum ConnectionTagTokens {
     }
 }
 
-// A token's represented object, so text still being typed (a plain String in objectValue) is never
-// taken for a finished tag.
+// Equal by name: AppKit re-reads a field being edited during layout and gets a fresh token for the typed text, so a
+// token equal only to itself changed the value, and the field's size, on every pass until AppKit raised.
 internal final class TagToken: NSObject {
     let name: String
 
     init(name: String) {
         self.name = name
+    }
+
+    override func isEqual(_ object: Any?) -> Bool {
+        (object as? TagToken)?.name == name
+    }
+
+    override var hash: Int {
+        name.hashValue
     }
 }
 

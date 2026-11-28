@@ -333,6 +333,10 @@ internal extension ThemeTableChrome {
         internal func show(_ content: some View) {
             rootView = AnyView(content.modifier(RecordsCellText(scope: scope)))
         }
+
+        override internal func accessibilityPerformShowMenu() -> Bool {
+            showEnclosingRowContextMenu() || super.accessibilityPerformShowMenu()
+        }
     }
 }
 

@@ -25,7 +25,9 @@ use tablepro_core::{
     SafeModeLevel, SinkFlow, TableRef, TlsConfig, UserSql, WorkspaceSettings,
 };
 use tablepro_driver_sqlite::SqliteDriver;
-use tablepro_mcp::{AccessToken, McpHost, McpServer, OpenOutcome, ToolContext, WriteApproval};
+use tablepro_mcp::{
+    AccessToken, McpHost, McpServer, OpenOutcome, ToolContext, ToolError, WriteApproval, dispatch_tool,
+};
 use tablepro_session::runtime::Tasks;
 use tablepro_session::{
     ConnectRequest, ConnectServices, ConnectionMetadata, Connector, DefaultDeadlines, DriverConnector,
@@ -867,6 +869,52 @@ async fn a_write_the_user_approves_runs_once_and_is_recorded() {
     let recorded = harness.host.recorded.lock().expect("recorded");
     assert_eq!(recorded[0].rows_affected, Some(1));
     assert_eq!(recorded[0].connection_id, harness.ids.writable);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_in_process_dispatch_reaches_the_same_gate() {
+    let harness = harness().await;
+    let context = ToolContext {
+        host: harness.host.clone(),
+        connections: harness.store.clone(),
+    };
+    let cancel = CancellationToken::new();
+
+    // The agent loop dispatches here, not over HTTP. A read runs with no approval.
+    let read = dispatch_tool(
+        &context,
+        "execute_query",
+        json!({
+            "connection_id": harness.ids.readable.to_string(),
+            "query": "SELECT id FROM orders ORDER BY id",
+            "max_rows": 1,
+        }),
+        cancel.clone(),
+    )
+    .await
+    .expect("a read answers");
+    assert!(read.contains("\"id\""), "{read}");
+    assert!(harness.host.asked.lock().expect("asked").is_empty());
+
+    // A write is gated: the host is asked, and a decline refuses it.
+    harness.host.approves.store(false, Ordering::SeqCst);
+    let declined = dispatch_tool(
+        &context,
+        "execute_query",
+        json!({
+            "connection_id": harness.ids.writable.to_string(),
+            "query": "DELETE FROM orders WHERE id = 1",
+        }),
+        cancel.clone(),
+    )
+    .await;
+
+    assert!(
+        matches!(&declined, Err(error) if matches!(error, ToolError::UserCancelled(_))),
+        "{declined:?}"
+    );
+    assert_eq!(harness.host.asked.lock().expect("asked").len(), 1);
+    assert_eq!(order_count(&harness).await, 3);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

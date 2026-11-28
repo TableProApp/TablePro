@@ -15,13 +15,13 @@ use async_trait::async_trait;
 use tablepro_records::cloudkit::record_type_of;
 
 use super::{PushReport, Pusher, Waits, zone};
-use crate::adapters::approval::Queue;
+use crate::adapters::approval::{self, Queue, Tally};
 use crate::adapters::categories::DeviceCategories;
 use crate::api::adapter::LocalChange;
 use crate::api::adapter::RecordAdapter;
 use crate::api::cloudkit::{CloudKitFailure, CloudKitTransport};
 use crate::api::control::{
-    HeldRecord, HeldRecordReason, NewIdentityChoice, NewIdentityPlan, PassReason, PendingApproval, SyncCategories,
+    HeldRecord, HeldRecordReason, NewIdentityChoice, NewIdentityPlan, PassReason, RecordApproval, SyncCategories,
     SyncControl, SyncPhase, SyncStatus,
 };
 use crate::api::error::SyncError;
@@ -33,7 +33,7 @@ use crate::api::state::{
 };
 use crate::cloudkit::fetch::{Categories, FetchReport, Fetcher, SCOPE, listed_key, read_everything_again};
 use crate::cloudkit::legacy::{Context, LegacyLink};
-use crate::engine::{Adapters, Clock, EngineEvents, Journal, JournalEntry, JournalIds, Pass, StopSignal};
+use crate::engine::{Adapters, Clock, EngineEvents, Journal, JournalEntry, JournalIds, Pass, StopSignal, Waiting};
 use crate::moves::MoveFence;
 
 const MOVED: &str = "sync with iCloud once this device's data moved to TablePro Sync";
@@ -130,6 +130,9 @@ pub struct CloudKitSync {
     // The session's account, readable while a pass runs.
     account: Mutex<Option<String>>,
     status: Mutex<SyncStatus>,
+    // The values waiting as the app was last told of them, and what the log last said was held or waiting.
+    approvals_mark: Mutex<[u8; 32]>,
+    waiting_logged: Mutex<Waiting>,
     legacy: Option<LegacyLink>,
     stale_move_dropped: AtomicBool,
 }
@@ -193,12 +196,15 @@ impl CloudKitSync {
                 provider: Some(Provider::ICloud),
                 phase: SyncPhase::Idle,
                 last_pass_ms: None,
+                last_synced_ms: None,
                 problem: None,
                 waiting_approvals: 0,
                 conflicts: 0,
                 held: 0,
                 queued_changes: 0,
             }),
+            approvals_mark: Mutex::new(approval::tally(std::iter::empty()).mark),
+            waiting_logged: Mutex::default(),
             legacy: None,
             stale_move_dropped: AtomicBool::new(false),
         }
@@ -648,6 +654,12 @@ impl CloudKitSync {
             session.choice_owed = Some(unsent);
         }
         let state = self.files.open(identity(account)).await?;
+        // Another account's file holds another account's last sync.
+        let kept = state.last_synced_ms().await.unwrap_or_else(|error| {
+            tracing::warn!(code = error.code(), "the last sync time was not read");
+            None
+        });
+        lock(&self.status).last_synced_ms = kept;
         session.stale_handled = false;
         session.legacy_checked = false;
         if let Some(legacy) = &self.legacy {
@@ -842,23 +854,58 @@ impl CloudKitSync {
     }
 
     // The records held by id and the values waiting for the person.
-    async fn counts(&self, session: &Session) -> Option<(u32, u32)> {
+    async fn counts(&self, session: &Session) -> Option<(u32, Tally, Waiting)> {
         let state = session.state.as_ref()?;
         let mut txn = state.begin().await.ok()?;
         let held = txn.scan(&RowRange::Scope(Table::Held, SCOPE)).await.ok()?;
+        let approvals = txn.scan(&RowRange::Scope(Table::Approvals, SCOPE)).await.ok()?;
         drop(txn);
-        let adapters = Adapters::new(self.adapters.clone());
-        let waiting = self.queue(state, &adapters).count().await.ok()?;
-        Some((u32::try_from(held.len()).unwrap_or(u32::MAX), waiting))
+        let tally = approval::tally(approvals.iter().filter_map(|row| match row {
+            Row::Approval(row) => Some(row),
+            _ => None,
+        }));
+        let waiting = Waiting::of(held.iter().chain(&approvals));
+        Some((u32::try_from(held.len()).unwrap_or(u32::MAX), tally, waiting))
+    }
+
+    // A decision changed the values waiting and maybe a store: the counts and the app follow.
+    async fn decided(&self, session: &Session) {
+        if let Some((_, tally, _)) = self.counts(session).await {
+            self.take_tally(tally);
+        }
+        if let Some(events) = &self.events {
+            events.status_changed();
+        }
+    }
+
+    // Into the status; the app hears of a change to the values waiting, whatever their count.
+    fn take_tally(&self, tally: Tally) {
+        lock(&self.status).waiting_approvals = tally.records;
+        let changed = std::mem::replace(&mut *lock(&self.approvals_mark), tally.mark) != tally.mark;
+        if let (true, Some(events)) = (changed, &self.events) {
+            events.approvals_changed();
+        }
     }
 
     // A journal pass diffs only what it was told of, so the count it saw is not what waits.
     async fn finish(&self, session: &Session, outcome: &Result<CloudKitReport, SyncError>, journal_only: bool) {
         let held = self.counts(session).await;
+        let now = self.clock.now_ms();
+        // A throttled pass is the scheduler's failure, which backs off from it.
+        let synced = matches!(outcome, Ok(report) if report.throttle().is_none());
+        if synced
+            && let Some(state) = &session.state
+            && let Err(error) = state.set_last_synced_ms(now).await
+        {
+            tracing::warn!(code = error.code(), "the last sync time was not kept");
+        }
         let mut status = lock(&self.status);
-        status.last_pass_ms = Some(self.clock.now_ms());
+        status.last_pass_ms = Some(now);
         match outcome {
             Ok(report) => {
+                if synced {
+                    status.last_synced_ms = Some(now);
+                }
                 // A record the store refused is held, never dropped silently: the pass that held it says so.
                 status.problem = (report.fetch.counts.refused > 0).then_some(crate::api::error::UNREADABLE);
                 if !journal_only {
@@ -881,11 +928,17 @@ impl CloudKitSync {
                 };
             }
         }
-        if let Some((held, waiting)) = held {
-            status.held = held;
-            status.waiting_approvals = waiting;
+        if let Some((held, _, _)) = &held {
+            status.held = *held;
         }
         drop(status);
+        if let Some((_, tally, waiting)) = held {
+            let mut logged = lock(&self.waiting_logged);
+            waiting.log(&logged);
+            *logged = waiting;
+            drop(logged);
+            self.take_tally(tally);
+        }
         if let Some(events) = &self.events {
             events.status_changed();
         }
@@ -916,7 +969,7 @@ impl Pass for CloudKitSync {
 #[async_trait]
 impl SyncControl for CloudKitSync {
     fn status(&self) -> SyncStatus {
-        lock(&self.status).clone()
+        lock(&self.status).clone().shown()
     }
 
     async fn sync_now(&self, why: PassReason) -> Result<(), SyncError> {
@@ -960,7 +1013,7 @@ impl SyncControl for CloudKitSync {
         self.run_new_identity_choice(choice, &account).await.map(|_| ())
     }
 
-    async fn approvals(&self) -> Result<Vec<PendingApproval>, SyncError> {
+    async fn approvals(&self) -> Result<Vec<RecordApproval>, SyncError> {
         let session = self.session.lock().await;
         let Some(state) = &session.state else {
             return Ok(Vec::new());
@@ -1000,13 +1053,16 @@ impl SyncControl for CloudKitSync {
         let state = session.state.as_ref().ok_or(SyncError::Unknown { what: "approval" })?;
         let adapters = Adapters::new(self.adapters.clone());
         self.queue(state, &adapters).decide(&key, &field, seen, approve).await?;
-        if let Some((_, waiting)) = self.counts(&session).await {
-            lock(&self.status).waiting_approvals = waiting;
-        }
-        drop(session);
-        if let Some(events) = &self.events {
-            events.status_changed();
-        }
+        self.decided(&session).await;
+        Ok(())
+    }
+
+    async fn decide_record_approval(&self, key: RecordKey, seen: [u8; 32], approve: bool) -> Result<(), SyncError> {
+        let session = self.session.lock().await;
+        let state = session.state.as_ref().ok_or(SyncError::Unknown { what: "approval" })?;
+        let adapters = Adapters::new(self.adapters.clone());
+        self.queue(state, &adapters).decide_record(&key, seen, approve).await?;
+        self.decided(&session).await;
         Ok(())
     }
 }

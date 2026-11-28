@@ -22,11 +22,26 @@ pub trait StateStore: Send + Sync {
     // What opening found; it does not change while the file is open.
     fn opened(&self) -> &Opened;
 
+    // The file has one connection, so a transaction waits for the one before it to end. A caller that holds one never
+    // begins another or makes a network call: a helper that reads or writes rows under its caller's transaction takes
+    // it as `&mut dyn StateTxn`, and a step that pushes or pulls ends its transaction first.
     async fn begin(&self) -> Result<Box<dyn StateTxn>, StateError>;
 
     // Once a delete committed, nothing of what it removed stays in the file's WAL frames or free pages, as a verified
     // delete of an owner's data needs (K8t; 0054, The state file). A store that keeps no file has nothing to purge.
     async fn purge(&self) -> Result<(), StateError> {
+        Ok(())
+    }
+
+    // When a pass last ended without an error, which the app shows after a restart while no pass gets through. Kept
+    // outside the MAC: it decides nothing a pass sends or applies, and sealing it would cost each pass a commit and an
+    // anchor write. A store that keeps no file keeps none.
+    async fn last_synced_ms(&self) -> Result<Option<i64>, StateError> {
+        Ok(None)
+    }
+
+    async fn set_last_synced_ms(&self, at_ms: i64) -> Result<(), StateError> {
+        let _ = at_ms;
         Ok(())
     }
 }
@@ -396,6 +411,10 @@ pub enum HeldReason {
     // A team library record whose id another of its kind holds in other case: neither is applied, listed or sent, as
     // the publish plan leaves both out (0052, Team scope).
     Collides,
+    // An envelope the keys took that its store did not, as while its record waits for the person or points elsewhere
+    // than it was sealed for (0056, Envelopes and history, At use). Each pull offers it to the store again, unlike one
+    // the keys refused, which waits for the server to serve it again.
+    AwaitingStore,
 }
 
 #[derive(Debug, Clone, PartialEq)]

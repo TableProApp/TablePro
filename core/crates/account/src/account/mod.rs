@@ -97,6 +97,17 @@ pub struct AccessToken {
     pub sign_in: String,
 }
 
+// The sign-in an `AccessToken` would be of, as this run holds it, without the token.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignedInAs {
+    pub api: String,
+    pub origin: String,
+    pub account_id: Option<String>,
+    pub device_id: Option<String>,
+    pub session_id: Option<String>,
+    pub sign_in: String,
+}
+
 struct Inner {
     settings: AccountSettings,
     http: reqwest::Client,
@@ -1315,6 +1326,35 @@ mod tests {
             .await
             .expect("read")
             .expect("an account file")
+    }
+
+    // Sync opens the sign-in's state file from this while the server is out of reach (E2E F21).
+    #[tokio::test]
+    async fn a_restored_sign_in_names_itself_with_the_server_out_of_reach() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        keep(dir.path(), Some(entitlement(Utc::now()))).await;
+        let account = account(dir.path(), Keyring::holding(Some("refresh")));
+        account.restore().await;
+
+        let held = account.signed_in_as().await.expect("the sign-in");
+        let token = account.access_token().await;
+
+        assert_eq!(held.account_id.as_deref(), Some(ACCOUNT));
+        assert_eq!(held.device_id.as_deref(), Some("dev_01k8d6wpggfd68tbhz818p4ww4"));
+        assert_eq!(held.session_id, signed_in(&account).session_id);
+        assert!(held.session_id.is_some());
+        assert!(matches!(token, Err(AccountError::Unreachable(_))), "{token:?}");
+    }
+
+    #[tokio::test]
+    async fn a_signed_out_machine_names_no_sign_in() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let account = account(dir.path(), Keyring::holding(None));
+        account.restore().await;
+
+        let held = account.signed_in_as().await;
+
+        assert!(matches!(held, Err(AccountError::SignedOut)), "{held:?}");
     }
 
     #[tokio::test]

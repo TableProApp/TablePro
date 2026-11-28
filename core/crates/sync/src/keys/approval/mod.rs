@@ -154,8 +154,9 @@ impl ApprovalFlows for KeyService {
     async fn confirm_session(&self, request: RequestId) -> Result<ApprovalSession, SyncError> {
         let _serial = self.serialized().await;
         let mut record = self.require_session(request).await?;
-        record.confirm()?;
-        self.save_session(&record).await?;
+        if record.confirm()? {
+            self.save_session(&record).await?;
+        }
         self.drive(&mut record).await?;
         self.session_view(&mut record).await
     }

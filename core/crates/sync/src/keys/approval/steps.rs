@@ -414,8 +414,11 @@ impl KeyService {
         })
     }
 
-    pub(super) async fn approval_av_failed(&self, request: RequestId) -> Result<Option<Version>, SyncError> {
-        let mut txn = self.begin().await?;
+    pub(super) async fn approval_av_failed(
+        &self,
+        txn: &mut dyn StateTxn,
+        request: RequestId,
+    ) -> Result<Option<Version>, SyncError> {
         let flow = PendingFlow::Approval { request };
         match txn.get(&RowKey::KeyPending(flow)).await? {
             Some(Row::KeyPending(row)) if row.state.len() == 4 => {
@@ -428,14 +431,17 @@ impl KeyService {
     }
 
     // A's approval built at an `av` a rotation then passed: kept so it is built again only at a newer one.
-    pub(super) async fn note_approval_av_failed(&self, request: RequestId, av: Version) -> Result<(), SyncError> {
-        let mut txn = self.begin().await?;
+    pub(super) async fn note_approval_av_failed(
+        &self,
+        txn: &mut dyn StateTxn,
+        request: RequestId,
+        av: Version,
+    ) -> Result<(), SyncError> {
         txn.put(Row::KeyPending(KeyPendingRow {
             flow: PendingFlow::Approval { request },
             state: av.get().to_be_bytes().to_vec(),
         }))
         .await?;
-        txn.commit().await?;
         Ok(())
     }
 }

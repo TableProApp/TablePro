@@ -16,6 +16,19 @@ pub trait RecordAdapter: Send + Sync {
     // The store whose identity puts this kind into refill when it changes (0054, Store identity).
     fn store(&self) -> &str;
 
+    // A store with no identity of its own, as the device's secret store, never puts its kind into refill, the first
+    // time a state file meets it included: a pull merges against what it holds.
+    fn refills(&self) -> bool {
+        true
+    }
+
+    // A kind several scopes share can have a store for some of them only, as the personal envelopes; the engine leaves
+    // a scope this answers false for to the store that serves it, or to none.
+    fn serves(&self, scope: ScopeName) -> bool {
+        let _ = scope;
+        true
+    }
+
     async fn identity(&self) -> Result<StoreStamp, AdapterError>;
 
     // Every record the store holds of this kind in `scope` as wire fields, the ids it holds but cannot read, and for a

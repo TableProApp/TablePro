@@ -58,3 +58,30 @@ impl UnknownCause {
         }
     }
 }
+
+// The core tracker's coded cause and the app's worded one carry the same
+// data (ADR 0068); the app adds only the sentence.
+impl From<UnknownCause> for tablepro_core::edits::UnknownCause {
+    fn from(cause: UnknownCause) -> Self {
+        match cause {
+            UnknownCause::CommitAckLost { token } => Self::CommitAckLost { token },
+            UnknownCause::PartiallyApplied => Self::PartiallyApplied,
+            UnknownCause::Interrupted => Self::Interrupted,
+            UnknownCause::Panicked => Self::Panicked,
+            UnknownCause::Closed => Self::Closed,
+        }
+    }
+}
+
+impl From<tablepro_core::edits::UnknownCause> for UnknownCause {
+    fn from(cause: tablepro_core::edits::UnknownCause) -> Self {
+        use tablepro_core::edits::UnknownCause as Core;
+        match cause {
+            Core::CommitAckLost { token } => Self::CommitAckLost { token },
+            Core::PartiallyApplied => Self::PartiallyApplied,
+            Core::Interrupted => Self::Interrupted,
+            Core::Panicked => Self::Panicked,
+            Core::Closed => Self::Closed,
+        }
+    }
+}

@@ -6,6 +6,10 @@ namespace TablePro.App.Services;
 internal sealed partial class Workbench
 {
     private McpServer? _mcp;
+    private IMcpAppHost? _mcpHost;
+
+    // The one host the MCP server and the in-app agent both answer connection opens through. Set at launch.
+    public IMcpAppHost? McpHost => _mcpHost;
 
     // Raised on the UI thread after the server's status or the clients it saw changed.
     public event EventHandler? McpChanged;
@@ -18,6 +22,7 @@ internal sealed partial class Workbench
     public void StartMcp(IMcpAppHost host)
     {
         ArgumentNullException.ThrowIfNull(host);
+        _mcpHost = host;
         if (_mcp is not null)
         {
             return;

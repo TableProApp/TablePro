@@ -36,6 +36,16 @@ impl SaveOutcome {
         }
     }
 
+    /// The coded outcome the core tracker settles on; it needs only
+    /// committed, rolled back or unknown, never the cause's wording.
+    pub fn core_outcome(&self) -> tablepro_core::edits::SaveOutcome {
+        match self {
+            Self::Committed { rows } => tablepro_core::edits::SaveOutcome::Committed { rows: *rows },
+            Self::RolledBack(_) => tablepro_core::edits::SaveOutcome::RolledBack,
+            Self::Unknown(cause) => tablepro_core::edits::SaveOutcome::Unknown(cause.clone().into()),
+        }
+    }
+
     fn from_driver(error: DriverError) -> Self {
         match error {
             DriverError::RolledBack { .. } | DriverError::RowGuardFailed { .. } | DriverError::ReadOnly(_) => {

@@ -142,6 +142,13 @@ pub trait AccountFlows: Send + Sync {
         unimplemented("keys.open_personal_envelope")
     }
 
+    // The version a personal envelope is written under now; None while this device writes none (0056, Writing). One
+    // held under an older version is sealed again, so after a rotation no secret rests under a key a removed device
+    // held (0044, Removing a device).
+    async fn personal_envelope_version(&self) -> Result<Option<Version>, SyncError> {
+        unimplemented("keys.personal_envelope_version")
+    }
+
     // A history entry encrypted at push time under the newest HK version.
     async fn seal_history_entry(&self, entry: HistoryId, plaintext: Value) -> Result<Value, SyncError> {
         let _ = (entry, plaintext);

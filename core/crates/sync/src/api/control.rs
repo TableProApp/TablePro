@@ -88,7 +88,8 @@ pub trait SyncControl: Send + Sync {
         unimplemented("sync.delete_icloud_zone")
     }
 
-    async fn approvals(&self) -> Result<Vec<PendingApproval>, SyncError> {
+    // The values waiting for the person, one entry per record (0044, Fields a pull applies only with approval).
+    async fn approvals(&self) -> Result<Vec<RecordApproval>, SyncError> {
         unimplemented("sync.approvals")
     }
 
@@ -104,6 +105,13 @@ pub trait SyncControl: Send + Sync {
     ) -> Result<(), SyncError> {
         let _ = (key, field, seen, approve);
         unimplemented("sync.decide_approval")
+    }
+
+    // Every value of the record that waits, decided at once. `seen` is the record's `digest` as listed: a pull that
+    // changed any of its values since decides nothing and answers `sync.changed`.
+    async fn decide_record_approval(&self, key: RecordKey, seen: [u8; 32], approve: bool) -> Result<(), SyncError> {
+        let _ = (key, seen, approve);
+        unimplemented("sync.decide_record_approval")
     }
 
     async fn conflicts(&self) -> Result<Vec<TeamConflict>, SyncError> {
@@ -167,9 +175,13 @@ pub enum NewIdentityChoice {
 pub struct SyncStatus {
     pub provider: Option<Provider>,
     pub phase: SyncPhase,
+    // When the last pass ended, whatever it ended in; it tells the app a pass ran.
     pub last_pass_ms: Option<i64>,
+    // When a pass last ended without an error, kept in the state file across launches.
+    pub last_synced_ms: Option<i64>,
     // The last pass's error code, as `SyncError::code` gives it.
     pub problem: Option<&'static str>,
+    // Records with a value waiting for the person.
     pub waiting_approvals: u32,
     pub conflicts: u32,
     pub held: u32,
@@ -181,6 +193,7 @@ impl SyncStatus {
         provider: None,
         phase: SyncPhase::Unavailable,
         last_pass_ms: None,
+        last_synced_ms: None,
         problem: Some("sync.unimplemented"),
         waiting_approvals: 0,
         conflicts: 0,
@@ -203,6 +216,18 @@ pub enum SyncPhase {
     ZoneRemoved,
     // Another account or server waits for Move my data or Start empty.
     NewIdentity,
+    // Idle, with values waiting for the person.
+    NeedsApproval,
+}
+
+impl SyncStatus {
+    // What an engine shows: an idle engine with values waiting asks the person, so the status never reads as done.
+    pub fn shown(mut self) -> Self {
+        if self.phase == SyncPhase::Idle && self.waiting_approvals > 0 {
+            self.phase = SyncPhase::NeedsApproval;
+        }
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -227,18 +252,44 @@ pub struct NewIdentityPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PendingApproval {
+pub struct RecordApproval {
     pub key: RecordKey,
+    // The record's name, else its settings category: from the store's copy, else from the pulled one.
+    pub name: Option<String>,
+    // The store holds no copy: the record lands only once every value is approved.
+    pub new_record: bool,
+    // `record_approval_digest(&fields)`, which `decide_record_approval` carries back.
+    pub digest: [u8; 32],
+    pub fields: Vec<PendingApproval>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingApproval {
+    // A JSON Pointer into the record.
     pub field: String,
+    // Null when the pull removes the value.
     pub pulled: Value,
     // `approval_digest(&pulled)`, which `decide_approval` carries back.
     pub digest: [u8; 32],
+    // None when the store holds no value.
     pub current: Option<Value>,
 }
 
 // SHA-256 of a pulled value as its JSON text, which names the value a person decided on.
 pub fn approval_digest(pulled: &Value) -> [u8; 32] {
     Sha256::digest(pulled.to_string().as_bytes()).into()
+}
+
+// SHA-256 over each waiting value of a record in the order listed, each its pointer after a length, then its value's
+// digest, which names every value a person decided on at once.
+pub fn record_approval_digest(fields: &[PendingApproval]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    for field in fields {
+        hasher.update(u64::try_from(field.field.len()).unwrap_or(u64::MAX).to_be_bytes());
+        hasher.update(field.field.as_bytes());
+        hasher.update(field.digest);
+    }
+    hasher.finalize().into()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

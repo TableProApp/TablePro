@@ -10,7 +10,7 @@ use tablepro_records::cloudkit::{CloudFields, from_wire, record_name, record_typ
 use tablepro_records::move_marker::MEMBER;
 use tablepro_sync::api::adapter::RecordAdapter;
 use tablepro_sync::api::cloudkit::CloudKitTransport;
-use tablepro_sync::api::control::{MovePlan, PassReason};
+use tablepro_sync::api::control::{MovePlan, PassReason, SyncControl};
 use tablepro_sync::api::ids::{RecordKey, ScopeName};
 use tablepro_sync::api::state::{MovePhase, Row, RowKey, RowRange, StateFiles, StateIdentity, Table};
 use tablepro_sync::cloudkit::fetch::Categories;
@@ -495,6 +495,83 @@ async fn a_first_upload_from_off_takes_the_server_s_copy_and_sends_what_the_serv
     assert_eq!(live(&server, 2), Some(carried(2, "Only here", 2)));
     assert!(!mac.files.exists(&icloud_file()));
     assert_eq!(mac.device.sync.mode(), ServiceMode::Personal);
+}
+
+// 0054's upgrade rule: what a device brings into the service counts as approved on it. A first upload from Off asks
+// nothing for the values the device holds, sends what the server lacks without asking, and a value the server holds
+// otherwise waits beside the device's own.
+#[tokio::test]
+async fn a_first_upload_from_off_asks_only_about_values_the_device_does_not_hold() {
+    let server = FakeServer::new();
+    let cloud = Arc::new(FakeCloudKit::signed_in(USER));
+    let web = on_the_service(&server).await;
+    let at = |fields: Value, host: &str| with(fields, "host", json!(host));
+    web.connections.put(&id(1), at(carried(1, "Prod", 1), "db.example.com"));
+    web.connections
+        .put(&id(3), at(carried(3, "Reports", 3), "theirs.example.com"));
+    web.sync().await;
+    let mac = Apple::on_icloud(&server, &cloud, "dev_mac").await;
+    mac.put(1, at(carried(1, "Prod", 1), "db.example.com"));
+    mac.put(2, at(carried(2, "Only here", 2), "mine.example.com"));
+    mac.put(3, at(carried(3, "Reports", 3), "mine.example.com"));
+    mac.icloud.stop_signal().stop();
+
+    mac.mover(false).first_upload().await.unwrap();
+    let asked: Vec<(String, String, Option<Value>, Value)> = mac
+        .device
+        .waiting()
+        .await
+        .into_iter()
+        .map(|value| (value.key.record_id, value.field, value.current, value.pulled))
+        .collect();
+
+    assert_eq!(
+        asked,
+        [(
+            id(3),
+            "/host".to_owned(),
+            Some(json!("mine.example.com")),
+            json!("theirs.example.com")
+        )]
+    );
+    assert_eq!(mac.get(1), Some(at(carried(1, "Prod", 1), "db.example.com")));
+    assert_eq!(
+        mac.get(3).map(|fields| fields["host"].clone()),
+        Some(json!("mine.example.com"))
+    );
+    assert_eq!(
+        live(&server, 2).map(|fields| fields["host"].clone()),
+        Some(json!("mine.example.com"))
+    );
+    assert_eq!(
+        live(&server, 3).map(|fields| fields["host"].clone()),
+        Some(json!("theirs.example.com"))
+    );
+}
+
+// The same rule from iCloud: devices that held a connection on iCloud move to the service and are asked nothing for it.
+#[tokio::test]
+async fn a_move_from_icloud_asks_nothing_for_the_values_the_device_held_there() {
+    let server = FakeServer::new();
+    let cloud = Arc::new(FakeCloudKit::signed_in(USER));
+    let mac = Apple::on_icloud(&server, &cloud, "dev_mac").await;
+    let phone = Apple::on_icloud(&server, &cloud, "dev_phone").await;
+    let prod = with(carried(1, "Prod", 1), "host", json!("db.example.com"));
+    mac.put(1, prod.clone());
+    mac.icloud_pass().await;
+    phone.put(1, prod.clone());
+    phone.icloud_pass().await;
+
+    mac.mover(true).move_to_service().await.unwrap();
+    phone.mover(true).move_to_service().await.unwrap();
+
+    assert!(mac.device.waiting().await.is_empty());
+    assert!(phone.device.waiting().await.is_empty());
+    assert_eq!(
+        phone.get(1).map(|fields| fields["host"].clone()),
+        Some(json!("db.example.com"))
+    );
+    assert_eq!(phone.device.sync.status().waiting_approvals, 0);
 }
 
 // The first upload's refill is a mark per kind in the state file, written before its pull, so a restart refills them

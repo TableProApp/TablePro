@@ -32,3 +32,22 @@ pub enum DraftProblem {
     #[error("foreign key {0} pairs a different number of columns on each side")]
     ForeignKeyColumnMismatch(String),
 }
+
+impl DraftProblem {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::EmptyTableName => "draft.empty_table_name",
+            Self::NoColumns => "draft.no_columns",
+            Self::EmptyColumnName => "draft.empty_column_name",
+            Self::DuplicateColumnName(_) => "draft.duplicate_column_name",
+            Self::EmptyColumnType(_) => "draft.empty_column_type",
+            Self::NullablePrimaryKey(_) => "draft.nullable_primary_key",
+            Self::NoPrimaryKey => "draft.no_primary_key",
+            Self::ColumnInUse { .. } => "draft.column_in_use",
+            Self::EmptyIndexName => "draft.empty_index_name",
+            Self::IndexWithoutKeys(_) => "draft.index_without_keys",
+            Self::EmptyForeignKeyName => "draft.empty_foreign_key_name",
+            Self::ForeignKeyColumnMismatch(_) => "draft.foreign_key_column_mismatch",
+        }
+    }
+}

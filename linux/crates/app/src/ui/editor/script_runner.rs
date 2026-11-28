@@ -1,94 +1,28 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Duration;
 
+use tablepro_core::script_run::{
+    BatchReporter, ReportFlow, ScriptBatchReport, ScriptResultStore, run_batches as drive_batches,
+};
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::text_offsets::CharCounter;
 use tablepro_core::sql_syntax::script::{BatchErrorPolicy, LexicalSettings, ScriptDiagnostic, ScriptPlan};
-use tablepro_core::{
-    ByteLimit, DriverError, EditorSession, EditorSessionState, ReadOnlyRefusal, ResultEvent, ResultSink, RowLimit,
-    RunOptions, SinkFlow, TransactionState, UserSql,
-};
+use tablepro_core::{DriverError, EditorSession, EditorSessionState, ReadOnlyRefusal, TransactionState, UserSql};
 use tablepro_session::{MonitorSignal, Session};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::editor_session_slot::{AcquireError, EditorSessionSlot, close_quietly, transaction_open};
-use super::run_log::{BatchCollector, BatchReport, EntryKind, RowRoom, RunEvent, Verdict, continues};
+use super::run_log::{BatchReport, EntryKind, ResultViews, RunEvent, Verdict, continues, entry_kind};
 use super::run_scope::ScopedText;
 
-/// One unit the server is sent: a statement on most engines, a whole
-/// `GO` batch on SQL Server.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RunBatch {
-    pub text: String,
-    /// How many times `GO n` asks for it.
-    pub repeat: u32,
-    /// Where the batch starts in the buffer, in characters.
-    pub error_base: usize,
-    /// Safe Mode is Read-Only and the batch writes, so it is not sent.
-    pub refused: bool,
-}
-
-/// Rows one run keeps across all its results. `row_limit` bounds each
-/// result, and a script of many SELECTs would otherwise hold all of them
-/// until the next run.
-pub const RUN_ROW_LIMIT: u64 = 100_000;
-
-/// What one press of Run sends, and how.
-#[derive(Debug, Clone)]
-pub struct ScriptRun {
-    pub batches: Vec<RunBatch>,
-    pub policy: BatchErrorPolicy,
-    pub statement_timeout: Option<Duration>,
-    pub row_limit: RowLimit,
-    pub run_row_limit: u64,
-    pub byte_limit: ByteLimit,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-struct Kept {
-    rows: u64,
-    bytes: u64,
-}
-
-impl Kept {
-    fn add(&mut self, entries: &[EntryKind]) {
-        for entry in entries {
-            if let EntryKind::ResultSet(result) = entry {
-                self.rows += result.row_count() as u64;
-                self.bytes = result
-                    .rows
-                    .iter()
-                    .flat_map(|row| row.iter())
-                    .map(|value| value.retained_bytes() as u64)
-                    .fold(self.bytes, u64::saturating_add);
-            }
-        }
-    }
-}
-
-/// What a statement may keep once the run has kept `kept`, and the row
-/// and byte limits it goes out with. With no room left it still runs,
-/// for what it changes, and reads one row, which is dropped.
-fn room_after(run: &ScriptRun, kept: Kept) -> (RowRoom, RowLimit, ByteLimit) {
-    let left = run.run_row_limit.saturating_sub(kept.rows);
-    let own = run.row_limit.get();
-    let bytes_left = run.byte_limit.get().saturating_sub(kept.bytes);
-    let room = RowRoom {
-        run_limit: run.run_row_limit,
-        left,
-        limits_statement: left < own,
-        run_bytes: run.byte_limit.get(),
-        bytes_left,
-    };
-    (
-        room,
-        RowLimit::new(left.clamp(1, own)).unwrap_or(run.row_limit),
-        ByteLimit::new(bytes_left.max(1)).unwrap_or(run.byte_limit),
-    )
-}
+// The batch loop, the error policy, the run-wide budget and the
+// structured log live in the core (`tablepro_core::script_run`). This
+// file plans the batches, drives the core loop on the tab's session and
+// words the core's reports for the GTK results pane.
+pub use tablepro_core::script_run::{AfterRun, RUN_ROW_LIMIT, RunBatch, ScriptRun};
 
 /// The batches of the scoped text and what the plan warns about.
 ///
@@ -144,20 +78,10 @@ pub fn sql_preview(sql: &str) -> String {
     }
 }
 
-/// Where a run left the session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct AfterRun {
-    /// Where the transaction stands, as far as a connection still there
-    /// said.
-    pub transaction: Option<TransactionState>,
-    /// The run lost the connection with a transaction open, and its
-    /// results already say the transaction was rolled back.
-    pub rollback_told: bool,
-}
-
-/// Send each batch in turn, reporting each one as it ends. `transaction`
-/// is where the session's transaction stood before the run. The caller
-/// says `Finished` once the tab knows where the run left it.
+/// Send each batch in turn on the tab's editor session, reporting each
+/// one as it ends. Rows go to the `ResultViews` the reports draw from.
+/// `transaction` is where the session's transaction stood before the run;
+/// the caller says `Finished` once the tab knows where the run left it.
 pub async fn run_batches(
     editor: &Arc<dyn EditorSession>,
     run: &ScriptRun,
@@ -165,69 +89,55 @@ pub async fn run_batches(
     events: &mpsc::Sender<RunEvent>,
     transaction: Option<TransactionState>,
 ) -> AfterRun {
-    let mut after = AfterRun {
-        transaction,
-        rollback_told: false,
+    let views = Arc::new(ResultViews::default());
+    let store: Arc<dyn ScriptResultStore> = views.clone();
+    let mut reporter = EditorReporter {
+        run,
+        views,
+        events: events.clone(),
     };
-    let mut kept = Kept::default();
-    'batches: for (index, batch) in run.batches.iter().enumerate() {
-        if batch.refused {
-            if events.send(RunEvent::Batch(refusal(index))).await.is_err() {
-                return after;
-            }
-            if !continues(Verdict::Failed, run.policy) {
-                break;
-            }
-            continue;
-        }
-        for _ in 0..batch.repeat.max(1) {
-            if cancel.is_cancelled() {
-                break 'batches;
-            }
-            let sql = UserSql::new(batch.text.as_str());
-            let (room, row_limit, byte_limit) = room_after(run, kept);
-            let collector = Arc::new(Mutex::new(BatchCollector::new(sql.clone()).within(room)));
-            let options = RunOptions::new(cancel.child_token())
-                .with_deadline(run.statement_timeout)
-                .with_row_limit(row_limit)
-                .with_byte_limit(byte_limit);
-            let sink = Box::new(CollectingSink {
-                collector: collector.clone(),
-            });
-            let started = Instant::now();
-            let outcome = editor.run(sql.clone(), options, sink).await;
-            let elapsed_ms = started.elapsed().as_millis();
-            let collected = std::mem::replace(&mut *lock(&collector), BatchCollector::new(sql));
-            let state = editor.state();
-            let lost = state == EditorSessionState::Lost;
-            let in_transaction = transaction_open(after.transaction);
-            let (entries, verdict, reported) = collected.finish(outcome, state, in_transaction, batch.error_base);
-            // A lost session's last word describes a connection that is
-            // gone, not the transaction the user had.
-            if !lost && reported.is_some() {
-                after.transaction = reported;
-            }
-            after.rollback_told |=
-                lost && in_transaction && entries.iter().any(|entry| matches!(entry, EntryKind::Failed { .. }));
-            kept.add(&entries);
-            let report = BatchReport {
-                batch: index,
-                entries,
-                verdict,
-                transaction: reported,
-                lost,
-                elapsed_ms,
-            };
-            if events.send(RunEvent::Batch(report)).await.is_err() {
+    drive_batches(editor, run, cancel, &store, &mut reporter, transaction).await
+}
+
+// Words each batch's structured report into a results-list report and
+// sends it on the run's channel.
+struct EditorReporter<'a> {
+    run: &'a ScriptRun,
+    views: Arc<ResultViews>,
+    events: mpsc::Sender<RunEvent>,
+}
+
+impl BatchReporter for EditorReporter<'_> {
+    fn report<'a>(&'a mut self, report: ScriptBatchReport) -> Pin<Box<dyn Future<Output = ReportFlow> + Send + 'a>> {
+        let statement = UserSql::new(
+            self.run
+                .batches
+                .get(report.batch)
+                .map_or("", |batch| batch.text.as_str()),
+        );
+        let entries: Vec<EntryKind> = report
+            .entries
+            .into_iter()
+            .map(|entry| entry_kind(entry, &self.views, &statement))
+            .collect();
+        let batch_report = BatchReport {
+            batch: report.batch,
+            entries,
+            verdict: report.verdict,
+            transaction: report.transaction,
+            lost: report.lost,
+            elapsed_ms: report.elapsed_ms,
+        };
+        let events = self.events.clone();
+        Box::pin(async move {
+            if events.send(RunEvent::Batch(batch_report)).await.is_err() {
                 // The tab went away; nobody is left to show the rest.
-                return after;
+                ReportFlow::ConsumerGone
+            } else {
+                ReportFlow::Continue
             }
-            if !continues(verdict, run.policy) {
-                break 'batches;
-            }
-        }
+        })
     }
-    after
 }
 
 /// Run a script on the tab's editor session, opening one first when
@@ -332,32 +242,10 @@ async fn refuse(events: &mpsc::Sender<RunEvent>, message: String, lost: bool) {
     let _ = events.send(RunEvent::Finished).await;
 }
 
-struct CollectingSink {
-    collector: Arc<Mutex<BatchCollector>>,
-}
-
-impl ResultSink for CollectingSink {
-    fn accept<'life0, 'async_trait>(
-        &'life0 mut self,
-        event: ResultEvent,
-    ) -> Pin<Box<dyn Future<Output = SinkFlow> + Send + 'async_trait>>
-    where
-        'life0: 'async_trait,
-        Self: 'async_trait,
-    {
-        lock(&self.collector).record(event);
-        Box::pin(std::future::ready(SinkFlow::Continue))
-    }
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
 #[cfg(test)]
 mod tests {
     use tablepro_core::column::{ColumnType, ResultColumn};
-    use tablepro_core::{DriverError, LossPhase, RunEnd, TransactionState, Truncation, Value};
+    use tablepro_core::{ByteLimit, LossPhase, ResultEvent, RowLimit, RunEnd, TransactionState, Truncation, Value};
     use tablepro_test_support::{FakeEditorSession, FakeRun, Replies};
 
     use super::super::editor_session_slot::tests::session_opening;
@@ -771,18 +659,14 @@ mod tests {
     }
 
     fn sixty_rows() -> FakeRun {
-        let columns: Arc<[tablepro_core::column::ResultColumn]> = vec![tablepro_core::column::ResultColumn::new(
-            "n",
-            tablepro_core::column::ColumnType::untyped_text("int4"),
-        )]
-        .into();
+        let columns: Arc<[ResultColumn]> = vec![ResultColumn::new("n", ColumnType::untyped_text("int4"))].into();
         FakeRun::completed(vec![
             ResultEvent::ResultSetStarted { columns },
-            ResultEvent::Rows((0..60).map(|n| vec![tablepro_core::Value::Int(n)]).collect()),
+            ResultEvent::Rows((0..60).map(|n| vec![Value::Int(n)]).collect()),
             ResultEvent::ResultSetFinished {
                 retained: 60,
                 total_rows: None,
-                truncation: tablepro_core::Truncation::Complete,
+                truncation: Truncation::Complete,
             },
         ])
     }
@@ -807,36 +691,6 @@ mod tests {
             })
             .collect();
         assert_eq!(kept, [(60, None), (40, Some(100)), (0, Some(100))]);
-    }
-
-    #[test]
-    fn a_statement_reads_only_the_rows_its_run_has_room_for() {
-        let (mut run, _, _) = script("SELECT 1", SqlGrammar::PostgreSql);
-        run.run_row_limit = 100_000;
-        let limit = |rows| {
-            let (room, limit, _) = room_after(&run, Kept { rows, bytes: 0 });
-            (room.left, room.limits_statement, limit.get())
-        };
-
-        assert_eq!(limit(0), (100_000, false, 10_000));
-        assert_eq!(limit(95_000), (5_000, true, 5_000));
-        assert_eq!(limit(100_000), (0, true, 1));
-        assert_eq!(limit(250_000), (0, true, 1));
-    }
-
-    #[test]
-    fn a_statement_goes_out_with_the_bytes_its_run_has_left() {
-        let (mut run, _, _) = script("SELECT 1", SqlGrammar::PostgreSql);
-        run.byte_limit = ByteLimit::new(1_000).unwrap();
-        let bytes = |bytes| {
-            let (room, _, limit) = room_after(&run, Kept { rows: 0, bytes });
-            (room.run_bytes, room.bytes_left, limit.get())
-        };
-
-        assert_eq!(bytes(0), (1_000, 1_000, 1_000));
-        assert_eq!(bytes(600), (1_000, 400, 400));
-        assert_eq!(bytes(1_000), (1_000, 0, 1));
-        assert_eq!(bytes(5_000), (1_000, 0, 1));
     }
 
     fn wide_rows(rows: usize) -> FakeRun {
@@ -919,27 +773,6 @@ mod tests {
         for (index, batch) in batches.iter().enumerate() {
             assert_eq!(batch.error_base, 7 + index * width, "batch {index}");
         }
-    }
-
-    #[test]
-    fn a_timed_out_run_is_a_stop() {
-        assert!(!continues(Verdict::Stopped, BatchErrorPolicy::ContinueNextBatch));
-        let collector = BatchCollector::new(UserSql::new("SELECT pg_sleep(60)"));
-        let (entries, verdict, _) = collector.finish(
-            Ok(tablepro_core::RunSummary {
-                elapsed: Duration::from_secs(30),
-                end: RunEnd::TimedOut { server_cancelled: true },
-                transaction_state: TransactionState::Idle,
-            }),
-            EditorSessionState::Ready,
-            false,
-            0,
-        );
-        assert_eq!(verdict, Verdict::Stopped);
-        assert!(matches!(
-            entries.as_slice(),
-            [EntryKind::TimedOut { server_cancelled: true }]
-        ));
     }
 
     #[test]

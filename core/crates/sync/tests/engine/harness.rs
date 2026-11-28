@@ -12,13 +12,13 @@ use tablepro_keys::envelope::EnvelopeId;
 use tablepro_keys::keys::Ed25519Seed;
 use tablepro_records::Kind;
 use tablepro_sync::api::adapter::{LocalChange, LocalRecord, LocalRecords, RecordAdapter, StoreStamp};
-use tablepro_sync::api::control::{ConflictChoice, SyncControl};
+use tablepro_sync::api::control::{ConflictChoice, RecordApproval, SyncControl};
 use tablepro_sync::api::device_store::HostDeviceStore;
 use tablepro_sync::api::error::{AdapterError, StateError, SyncError};
 use tablepro_sync::api::ids::{ChangeTag, DeviceRowId, IdempotencyKey, KindName, RecordKey, ScopeName};
 use tablepro_sync::api::key_flows::{
-    AccountFlows, ApprovalFlows, ArrivalOrder, DeviceFlows, KeyApplied, KeyArrival, KeyChangeSet, KeyState,
-    OpenedEnvelope, PushBackVerdict, ResetFlows, RestoreFlows, Roster, StopAction, StopFlows, TeamFlows,
+    AccountDevice, AccountFlows, ApprovalFlows, ArrivalOrder, DeviceFlows, KeyApplied, KeyArrival, KeyChangeSet,
+    KeyState, OpenedEnvelope, PushBackVerdict, ResetFlows, RestoreFlows, Roster, StopAction, StopFlows, TeamFlows,
 };
 use tablepro_sync::api::scopes::ScopesAnswer;
 use tablepro_sync::api::state::{
@@ -28,7 +28,7 @@ use tablepro_sync::api::transport::{
     Change, ChangeOp, ChangeOutcome, DpopKey, Proof, PullRequest, PulledPage, PushAnswer, PushBatch, ServiceTransport,
     Transport, TransportError,
 };
-use tablepro_sync::engine::{Adapters, Clock, EngineHooks, Journal, StopSignal, Wake};
+use tablepro_sync::engine::{Adapters, Clock, EngineEvents, EngineHooks, Journal, StopSignal, Wake};
 use tablepro_sync::service::{PassReport, ServiceMode, ServiceParts, ServiceSync};
 use tablepro_sync::state::SqliteStateFiles;
 use tablepro_sync_testing::service::ScopeOwner;
@@ -156,6 +156,8 @@ pub struct MemoryAdapter {
     on_apply: Mutex<Option<Box<dyn Fn() + Send>>>,
     // Ids whose pulled change the store cannot take: a write that touches one fails whole.
     refused_values: Mutex<std::collections::HashSet<String>>,
+    // A store with no identity of its own, as the device's secret store, never puts its kind into refill.
+    refills: AtomicBool,
 }
 
 impl MemoryAdapter {
@@ -169,7 +171,12 @@ impl MemoryAdapter {
             elsewhere: Mutex::default(),
             on_apply: Mutex::new(None),
             refused_values: Mutex::default(),
+            refills: AtomicBool::new(true),
         })
+    }
+
+    pub fn without_identity(&self) {
+        self.refills.store(false, Ordering::SeqCst);
     }
 
     fn home(&self) -> ScopeName {
@@ -268,6 +275,10 @@ impl RecordAdapter for MemoryAdapter {
 
     fn store(&self) -> &str {
         &self.name
+    }
+
+    fn refills(&self) -> bool {
+        self.refills.load(Ordering::SeqCst)
     }
 
     async fn identity(&self) -> Result<StoreStamp, AdapterError> {
@@ -505,6 +516,8 @@ pub struct KeyLog {
     rebuilding: AtomicBool,
     // The device's key, which the builder sets.
     proof: Mutex<Option<DpopKey>>,
+    // The key devices the account certifies, as another device's approval or removal leaves them.
+    devices: Mutex<Vec<KeyDeviceId>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -542,6 +555,10 @@ impl KeyLog {
 
     pub fn rebuilt(&self) {
         self.rebuilding.store(false, Ordering::SeqCst);
+    }
+
+    pub fn set_devices(&self, devices: &[KeyDeviceId]) {
+        *lock(&self.devices) = devices.to_vec();
     }
 
     pub fn events(&self) -> Vec<KeyEvent> {
@@ -692,7 +709,23 @@ impl ApprovalFlows for KeyLog {
     }
 }
 
-impl DeviceFlows for KeyLog {}
+#[async_trait]
+impl DeviceFlows for KeyLog {
+    async fn account_devices(&self) -> Result<Vec<AccountDevice>, SyncError> {
+        Ok(lock(&self.devices)
+            .iter()
+            .map(|key_device| AccountDevice {
+                key_device: *key_device,
+                device: None,
+                name: None,
+                platform: None,
+                added_at_us: None,
+                this_device: false,
+                compared: false,
+            })
+            .collect())
+    }
+}
 
 #[async_trait]
 impl ResetFlows for KeyLog {
@@ -855,6 +888,7 @@ pub struct DeviceBuilder {
     keys: Option<Arc<KeyLog>>,
     seed: Option<Arc<Ed25519Seed>>,
     follows: Option<u64>,
+    events: Option<Arc<dyn EngineEvents>>,
 }
 
 impl DeviceBuilder {
@@ -872,7 +906,14 @@ impl DeviceBuilder {
             keys: None,
             seed: None,
             follows: None,
+            events: None,
         }
+    }
+
+    // What the app hears from the engine.
+    pub fn events(mut self, events: Arc<dyn EngineEvents>) -> Self {
+        self.events = Some(events);
+        self
     }
 
     // The core's own stores in place of the in-memory connections, as an app opens the engine over them.
@@ -960,7 +1001,7 @@ impl DeviceBuilder {
         let keys = self.keys.unwrap_or_default();
         *lock(&keys.proof) = Some(DpopKey(Arc::clone(&seed)));
         let wake = Wake::new();
-        let hooks = Arc::new(EngineHooks::new(wake.clone(), None));
+        let hooks = Arc::new(EngineHooks::new(wake.clone(), self.events.clone()));
         let stop = StopSignal::new();
         let clock = Arc::new(TestClock::default());
         let sync = Arc::new(ServiceSync::new(ServiceParts {
@@ -972,7 +1013,7 @@ impl DeviceBuilder {
             clock: Arc::clone(&clock) as Arc<dyn Clock>,
             stop: stop.clone(),
             journal: Journal::new(wake),
-            events: None,
+            events: self.events,
             categories: tablepro_sync::api::control::SyncCategories {
                 off: Vec::new(),
                 passwords: true,
@@ -980,6 +1021,7 @@ impl DeviceBuilder {
             mode: self.mode,
             follows: self.follows,
         }));
+        sync.read_last_synced().await;
         Device {
             server: self.server,
             wire,
@@ -1003,14 +1045,33 @@ impl Device {
 
     // Decides the approval as the person would: on the value `approvals` shows now.
     pub async fn decide(&self, key: RecordKey, field: &str, approve: bool) -> Result<(), SyncError> {
-        let seen = self
-            .sync
-            .approvals()
-            .await?
+        let seen = values(self.sync.approvals().await?)
             .into_iter()
             .find(|approval| approval.key == key && approval.field == field)
             .map_or([0; 32], |approval| approval.digest);
         self.sync.decide_approval(key, field.to_owned(), seen, approve).await
+    }
+
+    // Decides every value of a connection that waits, as the review listed it now.
+    pub async fn decide_record(&self, record: &str, approve: bool) {
+        let key = RecordKey::new(ScopeName::Personal, Kind::Connection, record);
+        let listed = self
+            .sync
+            .approvals()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|listed| listed.key == key)
+            .unwrap();
+        self.sync
+            .decide_record_approval(key, listed.digest, approve)
+            .await
+            .unwrap();
+    }
+
+    // The values waiting, one per field, as `approvals` lists them record by record.
+    pub async fn waiting(&self) -> Vec<WaitingValue> {
+        values(self.sync.approvals().await.unwrap())
     }
 
     // Resolves the conflict as the person would: as `conflicts` shows it now.
@@ -1070,6 +1131,32 @@ pub fn write(kind: &str, id: &str, base: Option<ChangeTag>, fields: Value) -> Ch
             fields,
         },
     }
+}
+
+// A value waiting for the person, with the record it belongs to.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WaitingValue {
+    pub key: RecordKey,
+    pub field: String,
+    pub pulled: Value,
+    pub digest: [u8; 32],
+    pub current: Option<Value>,
+}
+
+pub fn values(records: Vec<RecordApproval>) -> Vec<WaitingValue> {
+    records
+        .into_iter()
+        .flat_map(|record| {
+            let key = record.key;
+            record.fields.into_iter().map(move |field| WaitingValue {
+                key: key.clone(),
+                field: field.field,
+                pulled: field.pulled,
+                digest: field.digest,
+                current: field.current,
+            })
+        })
+        .collect()
 }
 
 pub fn connection(name: &str) -> Value {

@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
+use tablepro_records::record_id::parse_envelope_id;
 use tablepro_records::schema::{Type, schema};
 use tablepro_records::{Kind, limits, merge_patch, settings};
 use uuid::Uuid;
@@ -218,6 +219,16 @@ pub(crate) fn owner(kind: Kind, fields: &Value) -> Option<Uuid> {
         .and_then(|id| Uuid::parse_str(id).ok())
 }
 
+// The connection whose secret an envelope holds, which its id names: its fields are ciphertext.
+fn envelope_owner(kind: Kind, record_id: &str) -> Option<Uuid> {
+    if kind != Kind::SecretEnvelope {
+        return None;
+    }
+    parse_envelope_id(record_id)
+        .filter(|(parent, _, _)| *parent == Kind::Connection)
+        .and_then(|(_, id, _)| Uuid::parse_str(id).ok())
+}
+
 // The digest Start empty keeps of a settings copy it left on the device, over what a push would send of it.
 pub fn left_behind_digest(fields: &Value) -> [u8; 32] {
     use sha2::Digest as _;
@@ -264,11 +275,13 @@ pub fn forget_kept_off(diffed: &mut Diffed, kind: Kind, kept_off: &KeptOff) {
         let owner = if kind == Kind::Connection {
             Uuid::parse_str(&pending.key.record_id).ok()
         } else {
-            pending
-                .base
-                .as_ref()
-                .and_then(|base| base.fields.as_ref())
-                .and_then(|fields| owner(kind, fields))
+            envelope_owner(kind, &pending.key.record_id).or_else(|| {
+                pending
+                    .base
+                    .as_ref()
+                    .and_then(|base| base.fields.as_ref())
+                    .and_then(|fields| owner(kind, fields))
+            })
         };
         let gone = owner.is_some_and(|owner| kept_off.gone.contains(&owner));
         if gone {
@@ -289,8 +302,8 @@ pub fn hold_kept_off(diffed: &mut Diffed, kind: Kind, kept_off: &KeptOff) -> Vec
             PendingOp::Write { fields, .. } => Some(fields),
             PendingOp::Delete => pending.base.as_ref().and_then(|base| base.fields.as_ref()),
         };
-        let held = fields
-            .and_then(|fields| owner(kind, fields))
+        let held = envelope_owner(kind, &pending.key.record_id)
+            .or_else(|| fields.and_then(|fields| owner(kind, fields)))
             .is_some_and(|owner| kept_off.holds(owner));
         if held {
             kept.push(pending.key.clone());

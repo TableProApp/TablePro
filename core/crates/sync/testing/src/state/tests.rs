@@ -51,13 +51,6 @@ async fn a_commit_lands_whole_and_raises_the_counter() {
     txn.put(base("A")).await.unwrap();
     txn.put(Row::Scope(ScopeRow::new(ScopeName::Personal))).await.unwrap();
 
-    let before = store
-        .begin()
-        .await
-        .unwrap()
-        .scan(&RowRange::Table(Table::Bases))
-        .await
-        .unwrap();
     let committed = txn.commit().await.unwrap();
     let after = store
         .begin()
@@ -67,9 +60,43 @@ async fn a_commit_lands_whole_and_raises_the_counter() {
         .await
         .unwrap();
 
-    assert!(before.is_empty());
     assert_eq!(after, [base("A")]);
     assert_eq!(committed.counter, 1);
+}
+
+#[tokio::test]
+async fn a_begin_waits_for_the_open_transaction_to_end() {
+    let files = MemoryStateFiles::new();
+    let store = files.open(identity(1)).await.unwrap();
+    let mut txn = store.begin().await.unwrap();
+    txn.put(base("A")).await.unwrap();
+
+    let (read, ()) = tokio::join!(
+        async {
+            store
+                .begin()
+                .await
+                .unwrap()
+                .scan(&RowRange::Table(Table::Bases))
+                .await
+                .unwrap()
+        },
+        async {
+            txn.commit().await.unwrap();
+        }
+    );
+
+    assert_eq!(read, [base("A")]);
+}
+
+#[tokio::test(start_paused = true)]
+#[should_panic(expected = "a state transaction began while its caller held one open")]
+async fn a_begin_under_an_open_transaction_fails_at_once() {
+    let files = MemoryStateFiles::new();
+    let store = files.open(identity(1)).await.unwrap();
+    let _held = store.begin().await.unwrap();
+
+    let _nested = store.begin().await;
 }
 
 #[tokio::test]

@@ -121,7 +121,7 @@ crates/app/src/services/mcp_clients.rs
 crates/app/src/services/mcp_service.rs
 crates/app/src/services/mcp_status.rs
 crates/app/src/services/mod.rs
-crates/app/src/services/pending_structure.rs
+crates/app/src/services/pending_structure_tests.rs
 crates/app/src/services/sample_database.rs
 crates/app/src/services/save_batch.rs
 crates/app/src/services/saved_connection_editor.rs
@@ -148,10 +148,8 @@ crates/app/src/services/tab_registry.rs
 crates/app/src/services/tab_tracker_handle.rs
 crates/app/src/services/telemetry.rs
 crates/app/src/services/telemetry_connector.rs
-crates/app/src/services/touch.rs
 crates/app/src/services/tracker_delta.rs
 crates/app/src/services/tracker_edit.rs
-crates/app/src/services/undo_op.rs
 crates/app/src/storage.rs
 crates/app/src/test_support/accept_loop.rs
 crates/app/src/test_support/access_keys.rs
@@ -241,8 +239,6 @@ crates/app/src/ui/browse_tab/tests/rows.rs
 crates/app/src/ui/browse_tab/tests/save.rs
 crates/app/src/ui/browse_tab/tests/total.rs
 crates/app/src/ui/clipboard/clipboard_copy.rs
-crates/app/src/ui/clipboard/clipboard_format.rs
-crates/app/src/ui/clipboard/clipboard_payload.rs
 crates/app/src/ui/clipboard/clipboard_writer.rs
 crates/app/src/ui/clipboard/copy_renderer.rs
 crates/app/src/ui/clipboard/mod.rs

@@ -59,6 +59,18 @@ public sealed partial class KeyTabView : UserControl, ITabContent, IKeyTabView
 
     public bool GridIsTarget => _gridIsTarget && KeyGrid.Visibility == Visibility.Visible;
 
+    public bool CanUndoEdit => false;
+
+    public bool CanRedoEdit => false;
+
+    public void UndoEdit()
+    {
+    }
+
+    public void RedoEdit()
+    {
+    }
+
     public TextBox? MessagesTarget => null;
 
     public bool Shows(string key) => string.Equals(_model.Key, key, StringComparison.Ordinal);

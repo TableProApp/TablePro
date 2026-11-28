@@ -27,7 +27,8 @@ public sealed class SessionRecoveryTests : IDisposable
 
         Assert.NotNull(loaded);
         Assert.Equal(4, loaded.Rows.Count);
-        var (named, cleared, deleted, added) = (loaded.Rows[0], loaded.Rows[1], loaded.Rows[2], loaded.Rows[3]);
+        // Rows read in row order: the note cleared on row 10, the name set on row 20, the delete, then the new row.
+        var (cleared, named, deleted, added) = (loaded.Rows[0], loaded.Rows[1], loaded.Rows[2], loaded.Rows[3]);
         Assert.Equal(Id("20"), Assert.Single(named.Key!).Value);
         Assert.Equal(new SavedCell { Kind = "Text", Text = "Grace Hopper" }, named.Cells["name"]);
         Assert.Equal(new SavedCell { Kind = "Null" }, cleared.Cells["note"]);
@@ -88,7 +89,7 @@ public sealed class SessionRecoveryTests : IDisposable
     public void RowsAreFoundByTheirKeyAfterThePageReordersThem()
     {
         var saved = SavedEdits.From(Edited(), Page("10", "20", "30"))!;
-        var edits = new TableEdits(Columns, dataRows: 3);
+        var edits = NewEdits(3);
 
         var (restored, _, waiting) = saved.RestoreTo(edits, Page("30", "10", "20"), Typed(edits));
 
@@ -99,8 +100,6 @@ public sealed class SessionRecoveryTests : IDisposable
         Assert.True(edits.IsDeleted(0));
         Assert.Equal(4, edits.RowCount);
         Assert.Equal(new CellEdit.Text("Ada"), edits.GetCell(3, 1));
-        // Each row at its latest change, as the save before the end would have sent them.
-        Assert.Equal<int>([2, 1, 0, 3], edits.ToRowEdits().Rows);
     }
 
     [Fact]
@@ -108,12 +107,12 @@ public sealed class SessionRecoveryTests : IDisposable
     {
         var bytes = new StoredValue(ValueKind.Bytes, "0x01");
         var text = new StoredValue(ValueKind.Text, "0x01");
-        var edits = new TableEdits(Columns, dataRows: 2);
-        edits.SetCell(1, 1, new CellEdit.Text("the blob's row"), stored: "a");
+        var edits = NewEdits(2);
+        edits.SetCell(1, 1, new CellEdit.Text("the blob's row"));
         var saved = SavedEdits.From(edits, Keys(text, bytes))!;
         Assert.Equal(new SavedKeyPart { Kind = "Bytes", Text = "0x01" }, saved.Rows[0].Key!["id"]);
 
-        var restoring = new TableEdits(Columns, dataRows: 2);
+        var restoring = NewEdits(2);
         var (restored, _, waiting) = saved.RestoreTo(restoring, Keys(bytes, text), Typed(restoring));
 
         Assert.Equal(1, restored);
@@ -129,7 +128,7 @@ public sealed class SessionRecoveryTests : IDisposable
         {
             Rows = [Update("10", ("name", Text("x"))), new SavedRowEdit { Key = Key("10"), Deleted = true }],
         };
-        var edits = new TableEdits(Columns, dataRows: 3);
+        var edits = NewEdits(3);
 
         var (restored, _, waiting) = saved.RestoreTo(edits, Page("10", "20", "10"), Typed(edits));
 
@@ -143,7 +142,7 @@ public sealed class SessionRecoveryTests : IDisposable
     {
         var key = new Dictionary<string, SavedKeyPart> { ["id"] = new() { Kind = "Text" } };
         var saved = new SavedEdits { Rows = [new SavedRowEdit { Key = key, Cells = Cells(("name", Text("x"))) }] };
-        var edits = new TableEdits(Columns, dataRows: 2);
+        var edits = NewEdits(2);
         var page = Keys(Integer("1"), new StoredValue(ValueKind.Integer, null));
 
         var (restored, _, _) = saved.RestoreTo(edits, page, Typed(edits));
@@ -169,7 +168,7 @@ public sealed class SessionRecoveryTests : IDisposable
                 },
             ],
         };
-        var edits = new TableEdits(Columns, dataRows: 2);
+        var edits = NewEdits(2);
 
         var (restored, _, waiting) = saved.RestoreTo(edits, Page("10", "30"), Typed(edits));
 
@@ -191,7 +190,7 @@ public sealed class SessionRecoveryTests : IDisposable
     public void ACellTheTableRefusesNowWaitsAndANewRowWaitsWhole()
     {
         var saved = SavedEdits.From(Edited(), Page("10", "20", "30"))!;
-        var edits = new TableEdits(Columns, dataRows: 3);
+        var edits = NewEdits(3);
 
         var (restored, _, waiting) = saved.RestoreTo(edits, Page("10", "20", "30"), (row, column, edit) =>
             column != 1 && Typed(edits)(row, column, edit));
@@ -230,7 +229,7 @@ public sealed class SessionRecoveryTests : IDisposable
             Column("name", editable: true, CellEdit.Null.Instance, nullable: true),
         ];
         var saved = new SavedEdits { Rows = [Update("10", ("name", Text("x")))] };
-        var edits = new TableEdits(keyless, dataRows: 2);
+        var edits = NewEdits(keyless, 2);
 
         var (restored, _, waiting) = saved.RestoreTo(edits, Page("10", "20"), Typed(edits));
 
@@ -246,21 +245,21 @@ public sealed class SessionRecoveryTests : IDisposable
             Column("name", editable: true, CellEdit.Null.Instance, nullable: true),
             Column("note", editable: true, CellEdit.Null.Instance, nullable: true),
         ];
-        var edits = new TableEdits(keyless, dataRows: 2);
-        edits.SetCell(0, 0, new CellEdit.Text("x"), stored: "a");
+        var edits = NewEdits(keyless, 2);
+        edits.SetCell(0, 0, new CellEdit.Text("x"));
         edits.AddRow();
 
         Assert.True(edits.HasChanges);
         Assert.Null(SavedEdits.From(edits, (_, _, count) => [.. Enumerable.Repeat(Integer("1"), count)]));
-        Assert.Null(SavedEdits.From(new TableEdits(Columns, dataRows: 2), Page("10", "20")));
+        Assert.Null(SavedEdits.From(NewEdits(2), Page("10", "20")));
     }
 
     [Fact]
     public void ARowWhoseKeyCannotBeReadIsNotKept()
     {
-        var edits = new TableEdits(Columns, dataRows: 2);
-        edits.SetCell(0, 1, new CellEdit.Text("x"), stored: "a");
-        edits.SetCell(1, 1, new CellEdit.Text("y"), stored: "b");
+        var edits = NewEdits(2);
+        edits.SetCell(0, 1, new CellEdit.Text("x"));
+        edits.SetCell(1, 1, new CellEdit.Text("y"));
 
         var unreadable = new TableProException(Errors.Of("ffi.out_of_range"));
         var saved = SavedEdits.From(edits, (column, first, count) =>
@@ -332,7 +331,7 @@ public sealed class SessionRecoveryTests : IDisposable
             """);
 
         var tab = Assert.Single(Assert.Single(new SessionStore(path).Load().Connections).Tabs);
-        var edits = new TableEdits(Columns, dataRows: 1);
+        var edits = NewEdits(1);
 
         var (restored, _, waiting) = tab.Edits!.RestoreTo(edits, Page("10"), Typed(edits));
 
@@ -409,14 +408,20 @@ public sealed class SessionRecoveryTests : IDisposable
         Assert.Equal(1, state.Recovered().Front);
     }
 
+    // A table-edits over the spy editor; the core tracker's keying, undo and touch order are tested in core::edits.
+    private static TableEdits NewEdits(int dataRows) => NewEdits(Columns, dataRows);
+
+    private static TableEdits NewEdits(IReadOnlyList<EditColumn> columns, int dataRows) =>
+        new(new FakeTableEditor { Columns = columns, DataRows = dataRows }, source: null, dataRows);
+
     private static TableEdits Edited()
     {
-        var edits = new TableEdits(Columns, dataRows: 3);
-        edits.SetCell(1, 1, new CellEdit.Text("Grace Hopper"), stored: "Grace");
-        edits.SetCell(0, 2, CellEdit.Null.Instance, stored: "kept");
+        var edits = NewEdits(3);
+        edits.SetCell(1, 1, new CellEdit.Text("Grace Hopper"));
+        edits.SetCell(0, 2, CellEdit.Null.Instance);
         edits.DeleteRows([2]);
         var added = edits.AddRow();
-        edits.SetCell(added, 1, new CellEdit.Text("Ada"), stored: null);
+        edits.SetCell(added, 1, new CellEdit.Text("Ada"));
         return edits;
     }
 
@@ -437,7 +442,7 @@ public sealed class SessionRecoveryTests : IDisposable
     // As the tab keeps a typed edit, against the page's stored text.
     private static Func<int, int, CellEdit, bool> Typed(TableEdits edits) => (row, column, edit) =>
     {
-        edits.SetCell(row, column, edit, stored: edits.IsAdded(row) ? null : FakeTableEditor.Stored(row, column));
+        edits.SetCell(row, column, edit);
         return true;
     };
 
