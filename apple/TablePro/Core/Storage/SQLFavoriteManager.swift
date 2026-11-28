@@ -35,13 +35,19 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
         self.syncJournal = syncJournal
         self.appEvents = appEvents
         coreMirror = core.map { database in
-            let adapter = SavedQueryCoreAdapter(storage: storage, database: database) { queries, folders in
-                await MainActor.run {
-                    syncJournal.recorded(.favorite, written: queries.map(\.uuidString))
-                    syncJournal.recorded(.favoriteFolder, written: folders.map(\.uuidString))
-                    appEvents().sqlFavoritesDidUpdate.send(nil)
+            let adapter = SavedQueryCoreAdapter(
+                storage: storage,
+                database: database,
+                announceSettled: { queries, folders in
+                    await MainActor.run {
+                        syncJournal.recorded(.favorite, written: queries.map(\.uuidString))
+                        syncJournal.recorded(.favoriteFolder, written: folders.map(\.uuidString))
+                    }
+                },
+                applied: {
+                    await MainActor.run { appEvents().sqlFavoritesDidUpdate.send(nil) }
                 }
-            }
+            )
             return CoreMirror(adapter: adapter, defaults: mirrorDefaults)
         }
     }

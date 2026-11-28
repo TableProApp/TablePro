@@ -136,8 +136,8 @@ final class SyncEngineHost {
     }
 
     // The provider is fixed when the service opens, and one opened Off refuses every provider call, so iCloud turned
-    // on after that opens a new service. One opened for iCloud is kept when iCloud stops, and told Off. A failed open
-    // is tried again by the next caller.
+    // on after that opens a new service in its place. One opened for iCloud is kept when iCloud stops, and told Off. A
+    // failed open is tried again by the next caller.
     func engine(for provider: SyncProviderTag) async throws -> any SyncEngine {
         while true {
             if let opened, Self.serves(opened.provider, provider) {
@@ -179,13 +179,21 @@ final class SyncEngineHost {
         return opened.engine
     }
 
+    // One service holds the state file at a time: the open one goes before another provider's opens, so no caller is
+    // handed it once the switch began (E2E F17).
     private func startOpening(_ provider: SyncProviderTag) -> Opening {
+        if let old = opened?.engine {
+            retire(old)
+            opened = nil
+        }
         let started = signIn
         let task = Task { [weak self, open, listener = SyncEngineListener(host: self)] in
             let engine = try await open(provider, listener)
             if let self, signIn == started {
                 opened = (provider, engine)
                 keepServiceAccount(engine.serviceAccount())
+                // Its launch pass may have signalled before it was in place, when no one could read it.
+                statusChanges.send()
             }
             return engine
         }

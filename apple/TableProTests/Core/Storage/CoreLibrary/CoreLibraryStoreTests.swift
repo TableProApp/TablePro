@@ -446,7 +446,7 @@ struct CoreLibraryStoreTests {
     func aCoreWriteIsReadInAfterAPass() async throws {
         let storage = fixture.launch()
         #expect(storage.addConnection(connection("alpha")))
-        try await writeAsTheCore { $0.connections[0].connection.name = "renamed by a pull" }
+        try await fixture.writeAsTheCore { $0.connections[0].connection.name = "renamed by a pull" }
 
         storage.readCoreWrites()
 
@@ -467,7 +467,7 @@ struct CoreLibraryStoreTests {
     func aRebuildAfterATrustedReadKeepsStoredValues() async throws {
         let storage = fixture.launch()
         #expect(storage.addConnection(connection("alpha")))
-        try await writeAsTheCore { $0.connections[0].connection.color = "teal" }
+        try await fixture.writeAsTheCore { $0.connections[0].connection.color = "teal" }
         #expect(fixture.stampCore(try Data(contentsOf: fixture.coreURL)))
         let relaunched = fixture.launch()
         _ = relaunched.loadConnections()
@@ -476,7 +476,7 @@ struct CoreLibraryStoreTests {
 
         #expect(relaunched.addConnection(connection("beta")))
 
-        let colors = try await coreLibrary().libraryContents().connections.map { $0.connection.color }
+        let colors = try await fixture.coreLibrary().libraryContents().connections.map { $0.connection.color }
         #expect(colors == ["teal", nil])
         #expect(relaunched.loadConnections().map(\.name) == ["alpha", "beta"])
     }
@@ -509,38 +509,6 @@ struct CoreLibraryStoreTests {
         #expect(reopened.storeIsTrusted)
     }
 
-    // Another core over the same folder. Reporting, it seals its own writes as the app's core does for its engine.
-    private func coreLibrary(reporting: Bool = false) throws -> ConnectionLibrary {
-        let core = try Core(
-            config: HostConfig(clientVersion: "test", storageDir: fixture.coreURL.deletingLastPathComponent().path),
-            secrets: ConnectionKeychainSecrets(keychain: fixture.keychain) { _ in false }
-        )
-        if reporting, let key = ConnectionStoreIntegrity.shared.libraryReportKey() {
-            try core.reportLibraryWrites(key: key)
-        }
-        return try core.library()
-    }
-
-    // A write the core makes on its own, as its engine does for a pull, which this Mac's store is not told of.
-    private func writeAsTheCore(_ edit: (inout LibraryContents) -> Void) async throws {
-        let library = try coreLibrary()
-        var contents = try await library.libraryContents()
-        edit(&contents)
-        _ = try await library.replaceLibrary(
-            library: LibraryWriteRecord(
-                connections: contents.connections,
-                groups: contents.groups,
-                tags: contents.tags,
-                favorites: contents.favorites,
-                projects: contents.projects,
-                sshProfiles: contents.sshProfiles,
-                credentialProfiles: contents.credentialProfiles,
-                removing: []
-            ),
-            over: contents.digest
-        )
-    }
-
     @Test("A credential profile another device deleted hands its credentials to a Local only connection here")
     func aPulledProfileDeletionHandsOverItsCredentials() async throws {
         let storage = fixture.launch()
@@ -554,7 +522,7 @@ struct CoreLibraryStoreTests {
         linked.username = reader.username
         #expect(storage.addConnection(linked))
 
-        try await writeAsTheCore { $0.credentialProfiles = [] }
+        try await fixture.writeAsTheCore { $0.credentialProfiles = [] }
         storage.readCoreWrites()
 
         let handedOver = try #require(storage.loadConnection(id: linked.id))
@@ -591,7 +559,7 @@ struct CoreLibraryStoreTests {
         #expect(storage.addConnection(alpha))
         #expect(storage.storeIsTrusted)
 
-        try await coreLibrary(reporting: true).renameConnection(id: alpha.id.uuidString, name: "renamed by a pull")
+        try await fixture.coreLibrary(reporting: true).renameConnection(id: alpha.id.uuidString, name: "renamed by a pull")
         storage.readCoreWrites()
 
         #expect(storage.loadConnections().map(\.name) == ["renamed by a pull"])
@@ -608,7 +576,7 @@ struct CoreLibraryStoreTests {
         #expect(storage.addConnection(alpha))
         try plantReadableCoreConnection(named: "planted")
 
-        try await coreLibrary(reporting: true).renameConnection(id: alpha.id.uuidString, name: "renamed over the plant")
+        try await fixture.coreLibrary(reporting: true).renameConnection(id: alpha.id.uuidString, name: "renamed over the plant")
         storage.readCoreWrites()
 
         #expect(Set(storage.loadConnections().map(\.name)) == ["renamed over the plant", "planted"])

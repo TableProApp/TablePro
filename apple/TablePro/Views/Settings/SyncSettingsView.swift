@@ -78,7 +78,7 @@ struct SyncSettingsView: View {
                 }
 
                 if let status = layout.serviceStatus {
-                    serviceStatusRow(status)
+                    serviceStatusRow(status, problem: serviceSyncProblem ?? layout.serviceProblem)
                 }
 
                 ForEach(layout.serverPolicies, id: \.self) { serverPolicy in
@@ -261,7 +261,7 @@ struct SyncSettingsView: View {
         }
     }
 
-    private func serviceStatusRow(_ status: SyncServiceStatus) -> some View {
+    private func serviceStatusRow(_ status: SyncServiceStatus, problem: String?) -> some View {
         LabeledContent {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 if status == .syncing {
@@ -279,8 +279,8 @@ struct SyncSettingsView: View {
             }
         } label: {
             Text("Status")
-            if let serviceSyncProblem {
-                Text(serviceSyncProblem)
+            if let problem {
+                Text(problem)
             }
         }
     }

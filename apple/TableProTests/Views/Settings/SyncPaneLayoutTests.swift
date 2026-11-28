@@ -197,6 +197,25 @@ struct SyncPaneLayoutTests {
         #expect(failed.serviceStatus == .unavailable)
     }
 
+    @Test("A pass that failed never reads Up to Date: one the core tries again waits, any other is unavailable and says why")
+    func failedPassIsNotUpToDate() {
+        let retried = ["sync.network", "sync.server", "sync.rate_limited", "sync.state.busy", "account.unreachable"]
+        for problem in retried {
+            let layout = Self.layout(provider: .tableproSync, engine: Self.engine(.tableproSync, problem: problem))
+            #expect(layout.serviceStatus == .waiting, "\(problem)")
+            #expect(layout.serviceProblem == nil, "\(problem)")
+        }
+        for problem in ["sync.signed_out", "sync.device_not_approved", "sync.feature_required", "sync.state.io"] {
+            let layout = Self.layout(provider: .tableproSync, engine: Self.engine(.tableproSync, problem: problem))
+            #expect(layout.serviceStatus == .unavailable, "\(problem)")
+            #expect(layout.serviceProblem == ProviderMoves.message(forCode: problem), "\(problem)")
+        }
+        for problem in ["sync.cancelled", "sync.adapter.unreadable"] {
+            let layout = Self.layout(provider: .tableproSync, engine: Self.engine(.tableproSync, problem: problem))
+            #expect(layout.serviceStatus == .upToDate, "\(problem)")
+        }
+    }
+
     @Test("The prompt for another account says how many changes here were never uploaded")
     func newIdentityMessageCountsUnsent() {
         let plain = SyncNewIdentityNotice.message(nil)

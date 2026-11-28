@@ -127,7 +127,9 @@ internal final class TeamLibrary: ObservableObject {
             let unsent = (try? await engine.unsentTeamEdits()) ?? self.unsent
             guard started == generation, session == shownSession else { return }
             commit(teams: teams, statuses: statuses, unsent: unsent)
-            await conflicts.refresh()
+            // From the same service: one read while another provider's service opens would wait for the state file
+            // this one still holds (E2E F17).
+            await conflicts.refresh(from: engine)
         } catch {
             guard started == generation, session == shownSession else { return }
             Self.logger.error("Reading the team library failed: \(error.publicLogShape, privacy: .public)")
