@@ -428,6 +428,10 @@ impl Core {
         self.vault.clone()
     }
 
+    pub(crate) fn vault(&self) -> Arc<dyn SecretVault> {
+        self.vault.clone()
+    }
+
     pub(crate) fn connection_store(&self) -> Result<ConnectionStore, CoreError> {
         self.store.clone().ok_or_else(no_storage)
     }
