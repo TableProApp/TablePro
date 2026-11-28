@@ -60,7 +60,7 @@ struct SyncPaneLayoutTests {
 
     @Test("TablePro Sync up to date with changes waiting: the status row names the count, never Up to Date")
     func approvalsReplaceUpToDateOnService() {
-        let layout = Self.layout(provider: .tableproSync, engine: Self.engine(.tableproSync, .idle), waitingApprovals: 1)
+        let layout = Self.layout(provider: .tableproSync, engine: Self.engine(.tableproSync, .needsApproval), waitingApprovals: 1)
         #expect(layout.serviceStatus == .upToDate)
         #expect(layout.approvalsInStatus)
         #expect(layout.offersReview)
@@ -81,7 +81,7 @@ struct SyncPaneLayoutTests {
 
     @Test("Sync off with Team Library values waiting: the count gets a row of its own")
     func approvalsRowWithSyncOff() {
-        let layout = Self.layout(provider: .off, engine: Self.engine(.off, .off), waitingApprovals: 4)
+        let layout = Self.layout(provider: .off, engine: Self.engine(.off, .needsApproval), waitingApprovals: 4)
         #expect(!layout.showsICloudStatus)
         #expect(layout.serviceStatus == nil)
         #expect(layout.showsApprovalsRow)
@@ -231,6 +231,7 @@ struct SyncPaneLayoutTests {
         let phases: [(SyncPhaseTag, SyncServiceStatus?)] = [
             (.idle, .upToDate), (.syncing, .syncing), (.waiting(retryInMs: 500), .waiting), (.pullOnly, .downloadOnly),
             (.off, .off), (.unavailable, .unavailable), (.zoneRemoved, .unavailable), (.newIdentity, nil),
+            (.needsApproval, .upToDate),
         ]
         for (phase, status) in phases {
             let layout = Self.layout(provider: .tableproSync, engine: Self.engine(.tableproSync, phase))
