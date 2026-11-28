@@ -364,6 +364,18 @@ impl Mac {
     }
 }
 
+// The fake server at this machine's time: the engine's key flows read the system clock, and an approval session the
+// server dated months back would read as expired.
+fn server_now() -> Arc<FakeServer> {
+    let server = FakeServer::new();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_micros();
+    server.advance_clock(i64::try_from(now).unwrap() - server.now_us());
+    server
+}
+
 fn typed(text: &SecretString, check: &[u8]) -> Vec<SecretString> {
     let groups: Vec<String> = text.expose_secret().split('-').map(str::to_lowercase).collect();
     check
@@ -394,7 +406,7 @@ fn kv(fields: &serde_json::Value) -> u64 {
 #[tokio::test]
 async fn a_password_saved_on_one_mac_opens_on_the_next_one_and_never_reaches_the_server_in_the_clear() {
     let tasks = runtime::tasks().unwrap();
-    let server = FakeServer::new();
+    let server = server_now();
     let account = AccountId(Uuid::new_v4());
     let first = Mac::open(&tasks, &server, account, "dev_01k8d6wpggfd68tbhz818p4ww4").await;
     let connection = first.save("prod", "db.internal", "hunter2").await;
@@ -436,7 +448,7 @@ async fn a_password_saved_on_one_mac_opens_on_the_next_one_and_never_reaches_the
 #[tokio::test]
 async fn a_password_changed_on_either_mac_reaches_the_other_and_a_removed_one_is_removed() {
     let tasks = runtime::tasks().unwrap();
-    let server = FakeServer::new();
+    let server = server_now();
     let account = AccountId(Uuid::new_v4());
     let first = Mac::open(&tasks, &server, account, "dev_01k8d6wpggfd68tbhz818p4ww4").await;
     let connection = first.save("prod", "db.internal", "hunter2").await;
@@ -462,7 +474,7 @@ async fn a_password_changed_on_either_mac_reaches_the_other_and_a_removed_one_is
 #[tokio::test]
 async fn a_new_recovery_key_seals_every_password_again_under_the_new_key_and_both_macs_still_read_it() {
     let tasks = runtime::tasks().unwrap();
-    let server = FakeServer::new();
+    let server = server_now();
     let account = AccountId(Uuid::new_v4());
     let first = Mac::open(&tasks, &server, account, "dev_01k8d6wpggfd68tbhz818p4ww4").await;
     let connection = first.save("prod", "db.internal", "hunter2").await;
@@ -508,7 +520,7 @@ async fn a_new_recovery_key_seals_every_password_again_under_the_new_key_and_bot
 #[tokio::test]
 async fn with_password_sync_off_no_password_goes_up_the_scope_says_why_and_each_mac_keeps_its_own() {
     let tasks = runtime::tasks().unwrap();
-    let server = FakeServer::new();
+    let server = server_now();
     let account = AccountId(Uuid::new_v4());
     server.set_policies(Policies {
         password_sync: false,
@@ -548,7 +560,7 @@ async fn with_password_sync_off_no_password_goes_up_the_scope_says_why_and_each_
 #[tokio::test]
 async fn before_the_recovery_key_is_confirmed_a_password_stays_on_the_mac() {
     let tasks = runtime::tasks().unwrap();
-    let server = FakeServer::new();
+    let server = server_now();
     let account = AccountId(Uuid::new_v4());
     let first = Mac::open(&tasks, &server, account, "dev_01k8d6wpggfd68tbhz818p4ww4").await;
     let connection = first.save("prod", "db.internal", "hunter2").await;
@@ -572,7 +584,7 @@ async fn a_profile_s_secret_goes_through_the_app_and_a_connection_s_through_this
     use tablepro_sync::api::secrets::{DeviceSecrets, SecretRef};
 
     let tasks = runtime::tasks().unwrap();
-    let server = FakeServer::new();
+    let server = server_now();
     let mac = Mac::open(
         &tasks,
         &server,
@@ -647,7 +659,7 @@ async fn a_profile_s_secret_goes_through_the_app_and_a_connection_s_through_this
 #[tokio::test]
 async fn secrets_are_read_between_library_writes_never_during_one() {
     let tasks = runtime::tasks().unwrap();
-    let server = FakeServer::new();
+    let server = server_now();
     let mac = Mac::open(
         &tasks,
         &server,
@@ -658,7 +670,7 @@ async fn secrets_are_read_between_library_writes_never_during_one() {
     mac.save("prod", "db.internal", "hunter2").await;
     let saving = Arc::clone(&mac.core.writes()).lock_owned().await;
     let service = Arc::clone(&mac.service);
-    let mut plan = tokio::spawn(async move { service.plan_move_to_service().await });
+    let mut plan = tasks.spawn_task(async move { service.plan_move_to_service().await });
 
     let during = tokio::time::timeout(std::time::Duration::from_millis(300), &mut plan).await;
     drop(saving);
