@@ -511,6 +511,12 @@ struct CoreLibraryStoreTests {
 
     // Another core over the same folder. Reporting, it seals its own writes as the app's core does for its engine.
     private func coreLibrary(reporting: Bool = false) throws -> ConnectionLibrary {
+        try core(reporting: reporting).library()
+    }
+
+    // A second core over the store's folder, as the engine's writes reach it; with the store's key, it reads and
+    // acknowledges the same reports.
+    private func core(reporting: Bool) throws -> Core {
         let core = try Core(
             config: HostConfig(clientVersion: "test", storageDir: fixture.coreURL.deletingLastPathComponent().path),
             secrets: ConnectionKeychainSecrets(keychain: fixture.keychain) { _ in false }
@@ -518,7 +524,7 @@ struct CoreLibraryStoreTests {
         if reporting, let key = ConnectionStoreIntegrity.shared.libraryReportKey() {
             try core.reportLibraryWrites(key: key)
         }
-        return try core.library()
+        return core
     }
 
     // A write the core makes on its own, as its engine does for a pull, which this Mac's store is not told of.
@@ -591,14 +597,58 @@ struct CoreLibraryStoreTests {
         #expect(storage.addConnection(alpha))
         #expect(storage.storeIsTrusted)
 
-        try await coreLibrary(reporting: true).renameConnection(id: alpha.id.uuidString, name: "renamed by a pull")
+        let engine = try core(reporting: true)
+        try await engine.library().renameConnection(id: alpha.id.uuidString, name: "renamed by a pull")
         storage.readCoreWrites()
 
         #expect(storage.loadConnections().map(\.name) == ["renamed by a pull"])
         #expect(storage.storeIsTrusted)
+        #expect(try await engine.peekLibraryWrites().isEmpty)
         let reopened = fixture.launch()
         #expect(reopened.loadConnections().map(\.name) == ["renamed by a pull"])
         #expect(reopened.storeIsTrusted)
+    }
+
+    @Test("A stop between the tag and the acknowledgement hands the same writes over again, and tagging them again changes nothing")
+    func aTaggedWriteNotAcknowledgedComesAgainHarmlessly() async throws {
+        let storage = fixture.launch()
+        let alpha = connection("alpha")
+        #expect(storage.addConnection(alpha))
+        let engine = try core(reporting: true)
+        try await engine.library().renameConnection(id: alpha.id.uuidString, name: "renamed by a pull")
+        let reported = try await engine.peekLibraryWrites()
+        let written = try Data(contentsOf: fixture.coreURL)
+        #expect(reported.map(\.digest) == [LegacyLibraryMirror.digest(of: written)])
+
+        // What the store does after a peek, then a stop before it acknowledges.
+        #expect(fixture.stampCore(written))
+        let tagURL = ConnectionStoreIntegrity.tagURL(for: fixture.coreURL)
+        let tag = try Data(contentsOf: tagURL)
+        #expect(try await engine.peekLibraryWrites() == reported)
+
+        let relaunched = fixture.launch()
+
+        #expect(relaunched.loadConnections().map(\.name) == ["renamed by a pull"])
+        #expect(relaunched.storeIsTrusted)
+        #expect(try Data(contentsOf: tagURL) == tag)
+        #expect(try Data(contentsOf: fixture.coreURL) == written)
+        #expect(try await engine.peekLibraryWrites().isEmpty)
+    }
+
+    @Test("A write the core reports, then a stop before the store looked, is tagged and acknowledged at the next launch")
+    func aReportedWriteBeforeAStopIsTaggedAtLaunch() async throws {
+        let storage = fixture.launch()
+        let alpha = connection("alpha")
+        #expect(storage.addConnection(alpha))
+        let engine = try core(reporting: true)
+        try await engine.library().renameConnection(id: alpha.id.uuidString, name: "renamed by a pull")
+        #expect(try await engine.peekLibraryWrites().count == 1)
+
+        let relaunched = fixture.launch()
+
+        #expect(relaunched.loadConnections().map(\.name) == ["renamed by a pull"])
+        #expect(relaunched.storeIsTrusted)
+        #expect(try await engine.peekLibraryWrites().isEmpty)
     }
 
     @Test("A write the core reports, made over a file planted outside TablePro, is never tagged")
@@ -608,11 +658,13 @@ struct CoreLibraryStoreTests {
         #expect(storage.addConnection(alpha))
         try plantReadableCoreConnection(named: "planted")
 
-        try await coreLibrary(reporting: true).renameConnection(id: alpha.id.uuidString, name: "renamed over the plant")
+        let engine = try core(reporting: true)
+        try await engine.library().renameConnection(id: alpha.id.uuidString, name: "renamed over the plant")
         storage.readCoreWrites()
 
         #expect(Set(storage.loadConnections().map(\.name)) == ["renamed over the plant", "planted"])
         #expect(!storage.storeIsTrusted)
+        #expect(try await engine.peekLibraryWrites().count == 1)
     }
 
     @Test("A connections.json changed outside TablePro hands its doubt to the core")

@@ -125,7 +125,13 @@ enum SettingsRoute: Hashable, Sendable {
 }
 
 extension SettingsRoute: SettingsDrillIdentifying {
-    var settingsDrillIdentifier: String? { page?.drillIdentifier }
+    var settingsDrillIdentifier: String? {
+        switch self {
+        case .page(let page): page.drillIdentifier
+        case .team(let id, _): "settings-drill-team-\(id)"
+        case .plugin, .rejectedPlugin, .aiProvider: nil
+        }
+    }
 }
 
 struct SettingsLocation: Hashable, Sendable {
