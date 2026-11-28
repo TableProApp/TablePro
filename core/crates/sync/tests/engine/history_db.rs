@@ -269,7 +269,7 @@ fn run(connection: &str, query: &str, executed_ms: u64) -> NewEntry {
         connection_id: uuid(connection),
         connection_name: "shop".to_owned(),
         executed_at: at(executed_ms),
-        duration_ms: Some(4),
+        duration_us: Some(4),
         rows_affected: Some(1),
         outcome: Outcome::Success,
         details: RunDetails::default(),

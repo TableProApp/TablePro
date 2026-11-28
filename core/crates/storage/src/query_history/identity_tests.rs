@@ -31,7 +31,7 @@ fn run(query: &str, connection: Uuid) -> NewEntry {
         connection_id: connection,
         connection_name: "prod".to_owned(),
         executed_at: SystemTime::now(),
-        duration_ms: Some(1),
+        duration_us: Some(1),
         rows_affected: None,
         outcome: Outcome::Success,
         details: RunDetails::default(),

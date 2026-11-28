@@ -97,7 +97,7 @@ mod tests {
             connection_id: Uuid::nil(),
             connection_name: String::new(),
             executed_at: SystemTime::UNIX_EPOCH,
-            duration_ms: None,
+            duration_us: None,
             rows_affected: None,
             success: true,
             cancelled: false,

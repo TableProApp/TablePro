@@ -31984,7 +31984,7 @@ internal record HistoryEntryInfo (
     string ConnectionName, 
     string DriverId, 
     long ExecutedAtMs, 
-    long? DurationMs, 
+    long? DurationUs, 
     long? RowsAffected, 
     HistoryOutcomeTag Outcome, 
     bool Pinned, 
@@ -32004,7 +32004,7 @@ class FfiConverterTypeHistoryEntryInfo: FfiConverterRustBuffer<HistoryEntryInfo>
             ConnectionName: FfiConverterString.INSTANCE.Read(stream),
             DriverId: FfiConverterString.INSTANCE.Read(stream),
             ExecutedAtMs: FfiConverterInt64.INSTANCE.Read(stream),
-            DurationMs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            DurationUs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
             RowsAffected: FfiConverterOptionalInt64.INSTANCE.Read(stream),
             Outcome: FfiConverterTypeHistoryOutcomeTag.INSTANCE.Read(stream),
             Pinned: FfiConverterBoolean.INSTANCE.Read(stream),
@@ -32021,7 +32021,7 @@ class FfiConverterTypeHistoryEntryInfo: FfiConverterRustBuffer<HistoryEntryInfo>
             + FfiConverterString.INSTANCE.AllocationSize(value.ConnectionName)
             + FfiConverterString.INSTANCE.AllocationSize(value.DriverId)
             + FfiConverterInt64.INSTANCE.AllocationSize(value.ExecutedAtMs)
-            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.DurationMs)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.DurationUs)
             + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.RowsAffected)
             + FfiConverterTypeHistoryOutcomeTag.INSTANCE.AllocationSize(value.Outcome)
             + FfiConverterBoolean.INSTANCE.AllocationSize(value.Pinned)
@@ -32036,7 +32036,7 @@ class FfiConverterTypeHistoryEntryInfo: FfiConverterRustBuffer<HistoryEntryInfo>
             FfiConverterString.INSTANCE.Write(value.ConnectionName, stream);
             FfiConverterString.INSTANCE.Write(value.DriverId, stream);
             FfiConverterInt64.INSTANCE.Write(value.ExecutedAtMs, stream);
-            FfiConverterOptionalInt64.INSTANCE.Write(value.DurationMs, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.DurationUs, stream);
             FfiConverterOptionalInt64.INSTANCE.Write(value.RowsAffected, stream);
             FfiConverterTypeHistoryOutcomeTag.INSTANCE.Write(value.Outcome, stream);
             FfiConverterBoolean.INSTANCE.Write(value.Pinned, stream);
@@ -32053,7 +32053,7 @@ internal record HistoryEntryRecord (
     string ConnectionId, 
     string ConnectionName, 
     long ExecutedAtMs, 
-    long? DurationMs, 
+    long? DurationUs, 
     long? RowsAffected, 
     HistoryOutcomeTag Outcome, 
     HistoryRunDetails Details
@@ -32071,7 +32071,7 @@ class FfiConverterTypeHistoryEntryRecord: FfiConverterRustBuffer<HistoryEntryRec
             ConnectionId: FfiConverterString.INSTANCE.Read(stream),
             ConnectionName: FfiConverterString.INSTANCE.Read(stream),
             ExecutedAtMs: FfiConverterInt64.INSTANCE.Read(stream),
-            DurationMs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            DurationUs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
             RowsAffected: FfiConverterOptionalInt64.INSTANCE.Read(stream),
             Outcome: FfiConverterTypeHistoryOutcomeTag.INSTANCE.Read(stream),
             Details: FfiConverterTypeHistoryRunDetails.INSTANCE.Read(stream)
@@ -32086,7 +32086,7 @@ class FfiConverterTypeHistoryEntryRecord: FfiConverterRustBuffer<HistoryEntryRec
             + FfiConverterString.INSTANCE.AllocationSize(value.ConnectionId)
             + FfiConverterString.INSTANCE.AllocationSize(value.ConnectionName)
             + FfiConverterInt64.INSTANCE.AllocationSize(value.ExecutedAtMs)
-            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.DurationMs)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.DurationUs)
             + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.RowsAffected)
             + FfiConverterTypeHistoryOutcomeTag.INSTANCE.AllocationSize(value.Outcome)
             + FfiConverterTypeHistoryRunDetails.INSTANCE.AllocationSize(value.Details);
@@ -32099,7 +32099,7 @@ class FfiConverterTypeHistoryEntryRecord: FfiConverterRustBuffer<HistoryEntryRec
             FfiConverterString.INSTANCE.Write(value.ConnectionId, stream);
             FfiConverterString.INSTANCE.Write(value.ConnectionName, stream);
             FfiConverterInt64.INSTANCE.Write(value.ExecutedAtMs, stream);
-            FfiConverterOptionalInt64.INSTANCE.Write(value.DurationMs, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.DurationUs, stream);
             FfiConverterOptionalInt64.INSTANCE.Write(value.RowsAffected, stream);
             FfiConverterTypeHistoryOutcomeTag.INSTANCE.Write(value.Outcome, stream);
             FfiConverterTypeHistoryRunDetails.INSTANCE.Write(value.Details, stream);
@@ -32251,7 +32251,7 @@ class FfiConverterTypeHistoryPageInfo: FfiConverterRustBuffer<HistoryPageInfo> {
 internal record HistoryRun (
     string Sql, 
     long ExecutedAtMs, 
-    long? DurationMs, 
+    long? DurationUs, 
     long? RowsAffected, 
     HistoryOutcomeTag Outcome, 
     HistoryRunDetails Details
@@ -32265,7 +32265,7 @@ class FfiConverterTypeHistoryRun: FfiConverterRustBuffer<HistoryRun> {
         return new HistoryRun(
             Sql: FfiConverterString.INSTANCE.Read(stream),
             ExecutedAtMs: FfiConverterInt64.INSTANCE.Read(stream),
-            DurationMs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            DurationUs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
             RowsAffected: FfiConverterOptionalInt64.INSTANCE.Read(stream),
             Outcome: FfiConverterTypeHistoryOutcomeTag.INSTANCE.Read(stream),
             Details: FfiConverterTypeHistoryRunDetails.INSTANCE.Read(stream)
@@ -32276,7 +32276,7 @@ class FfiConverterTypeHistoryRun: FfiConverterRustBuffer<HistoryRun> {
         return 0
             + FfiConverterString.INSTANCE.AllocationSize(value.Sql)
             + FfiConverterInt64.INSTANCE.AllocationSize(value.ExecutedAtMs)
-            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.DurationMs)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.DurationUs)
             + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.RowsAffected)
             + FfiConverterTypeHistoryOutcomeTag.INSTANCE.AllocationSize(value.Outcome)
             + FfiConverterTypeHistoryRunDetails.INSTANCE.AllocationSize(value.Details);
@@ -32285,7 +32285,7 @@ class FfiConverterTypeHistoryRun: FfiConverterRustBuffer<HistoryRun> {
     public override void Write(HistoryRun value, BigEndianStream stream) {
             FfiConverterString.INSTANCE.Write(value.Sql, stream);
             FfiConverterInt64.INSTANCE.Write(value.ExecutedAtMs, stream);
-            FfiConverterOptionalInt64.INSTANCE.Write(value.DurationMs, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.DurationUs, stream);
             FfiConverterOptionalInt64.INSTANCE.Write(value.RowsAffected, stream);
             FfiConverterTypeHistoryOutcomeTag.INSTANCE.Write(value.Outcome, stream);
             FfiConverterTypeHistoryRunDetails.INSTANCE.Write(value.Details, stream);
@@ -32299,8 +32299,8 @@ internal record HistoryRunDetails (
     string? Schema, 
     HistorySourceTag? Source, 
     StatementTypeTag? StatementType, 
-    long? FirstRowMs, 
-    long? ServerMs, 
+    long? FirstRowUs, 
+    long? ServerUs, 
     long? Fingerprint
 ) {
 }
@@ -32314,8 +32314,8 @@ class FfiConverterTypeHistoryRunDetails: FfiConverterRustBuffer<HistoryRunDetail
             Schema: FfiConverterOptionalString.INSTANCE.Read(stream),
             Source: FfiConverterOptionalTypeHistorySourceTag.INSTANCE.Read(stream),
             StatementType: FfiConverterOptionalTypeStatementTypeTag.INSTANCE.Read(stream),
-            FirstRowMs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
-            ServerMs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            FirstRowUs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            ServerUs: FfiConverterOptionalInt64.INSTANCE.Read(stream),
             Fingerprint: FfiConverterOptionalInt64.INSTANCE.Read(stream)
         );
     }
@@ -32326,8 +32326,8 @@ class FfiConverterTypeHistoryRunDetails: FfiConverterRustBuffer<HistoryRunDetail
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Schema)
             + FfiConverterOptionalTypeHistorySourceTag.INSTANCE.AllocationSize(value.Source)
             + FfiConverterOptionalTypeStatementTypeTag.INSTANCE.AllocationSize(value.StatementType)
-            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.FirstRowMs)
-            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.ServerMs)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.FirstRowUs)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.ServerUs)
             + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.Fingerprint);
     }
 
@@ -32336,8 +32336,8 @@ class FfiConverterTypeHistoryRunDetails: FfiConverterRustBuffer<HistoryRunDetail
             FfiConverterOptionalString.INSTANCE.Write(value.Schema, stream);
             FfiConverterOptionalTypeHistorySourceTag.INSTANCE.Write(value.Source, stream);
             FfiConverterOptionalTypeStatementTypeTag.INSTANCE.Write(value.StatementType, stream);
-            FfiConverterOptionalInt64.INSTANCE.Write(value.FirstRowMs, stream);
-            FfiConverterOptionalInt64.INSTANCE.Write(value.ServerMs, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.FirstRowUs, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.ServerUs, stream);
             FfiConverterOptionalInt64.INSTANCE.Write(value.Fingerprint, stream);
     }
 }

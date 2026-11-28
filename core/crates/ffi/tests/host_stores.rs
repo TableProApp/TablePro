@@ -263,7 +263,7 @@ async fn history_entries_move_in_under_their_record_ids() {
         connection_id: SHOP.to_owned(),
         connection_name: "shop".to_owned(),
         executed_at_ms: 1_700_000_000_000,
-        duration_ms: Some(5),
+        duration_us: Some(5),
         rows_affected: Some(1),
         outcome: HistoryOutcomeTag::Succeeded,
         details: Default::default(),
@@ -295,7 +295,7 @@ fn moved_in(record_id: &str, executed_at_ms: i64, source: HistorySourceTag) -> H
         connection_id: SHOP.to_owned(),
         connection_name: "shop".to_owned(),
         executed_at_ms,
-        duration_ms: Some(5),
+        duration_us: Some(5),
         rows_affected: Some(1),
         outcome: HistoryOutcomeTag::Succeeded,
         details: HistoryRunDetails {
@@ -303,8 +303,8 @@ fn moved_in(record_id: &str, executed_at_ms: i64, source: HistorySourceTag) -> H
             schema: None,
             source: Some(source),
             statement_type: Some(StatementTypeTag::Select),
-            first_row_ms: Some(2),
-            server_ms: Some(1),
+            first_row_us: Some(2),
+            server_us: Some(1),
             fingerprint: None,
         },
     }
@@ -414,8 +414,8 @@ async fn details_fill_in_on_runs_mirrored_without_them() {
         schema: Some("public".to_owned()),
         source: Some(HistorySourceTag::Editor),
         statement_type: Some(StatementTypeTag::Select),
-        first_row_ms: Some(3),
-        server_ms: Some(2),
+        first_row_us: Some(3),
+        server_us: Some(2),
         fingerprint: Some(7),
     };
 

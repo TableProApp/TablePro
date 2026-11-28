@@ -130,8 +130,8 @@ pub fn entry_fields(entry: &Entry) -> Value {
         "succeeded": entry.success,
         "cancelled": entry.cancelled,
     });
-    if let Some(duration) = entry.duration_ms {
-        fields["duration_ms"] = json!(duration);
+    if let Some(duration) = entry.duration_us {
+        fields["duration_us"] = json!(duration);
     }
     if let Some(rows) = entry.rows_affected {
         fields["row_count"] = json!(rows);
@@ -149,8 +149,8 @@ pub fn entry_fields(entry: &Entry) -> Value {
             "statement_type",
             details.statement_type.map(|kind| json!(kind.as_str())),
         ),
-        ("first_row_ms", details.first_row_ms.map(|millis| json!(millis))),
-        ("server_ms", details.server_ms.map(|millis| json!(millis))),
+        ("first_row_us", details.first_row_us.map(|micros| json!(micros))),
+        ("server_us", details.server_us.map(|micros| json!(micros))),
     ] {
         if let Some(value) = value {
             fields[member] = value;
@@ -190,7 +190,7 @@ pub fn entry_from(record_id: &str, fields: &Value) -> Result<Option<NewEntry>, A
         connection_id,
         connection_name: text(fields, "connection_name")?.unwrap_or_default(),
         executed_at: from_millis(executed_at),
-        duration_ms: integer(fields, "duration_ms")?,
+        duration_us: integer(fields, "duration_us")?,
         rows_affected: integer(fields, "row_count")?,
         outcome,
         // A source or statement type a newer build named reads as none.
@@ -201,8 +201,8 @@ pub fn entry_from(record_id: &str, fields: &Value) -> Result<Option<NewEntry>, A
             statement_type: text(fields, "statement_type")?
                 .as_deref()
                 .and_then(StatementType::parse),
-            first_row_ms: integer(fields, "first_row_ms")?,
-            server_ms: integer(fields, "server_ms")?,
+            first_row_us: integer(fields, "first_row_us")?,
+            server_us: integer(fields, "server_us")?,
             fingerprint: None,
         },
     }))

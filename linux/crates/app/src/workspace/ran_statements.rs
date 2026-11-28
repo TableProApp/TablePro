@@ -60,11 +60,11 @@ impl RanStatements {
             connection_id: connection.id,
             connection_name: connection.name,
             executed_at: self.started_at,
-            duration_ms: self
+            duration_us: self
                 .started_at
                 .elapsed()
                 .ok()
-                .and_then(|elapsed| i64::try_from(elapsed.as_millis()).ok()),
+                .and_then(|elapsed| i64::try_from(elapsed.as_micros()).ok()),
             rows_affected,
             details: Default::default(),
             outcome,

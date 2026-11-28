@@ -170,7 +170,7 @@ fn ran(sql: &str, at_secs: i64) -> HistoryRun {
     HistoryRun {
         sql: sql.to_owned(),
         executed_at_ms: at_secs * 1_000,
-        duration_ms: Some(1),
+        duration_us: Some(1),
         rows_affected: None,
         outcome: HistoryOutcomeTag::Succeeded,
         details: HistoryRunDetails::default(),

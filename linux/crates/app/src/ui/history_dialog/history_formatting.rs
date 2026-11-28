@@ -27,8 +27,8 @@ pub(super) fn subtitle(entry: &Entry, now: SystemTime) -> String {
         entry.driver_id.clone(),
         relative_time(entry.executed_at, now),
     ];
-    if let Some(ms) = entry.duration_ms {
-        parts.push(format!("{} ms", format_thousands(u64::try_from(ms).unwrap_or(0))));
+    if let Some(micros) = entry.duration_us {
+        parts.push(duration_text(micros));
     }
     if entry.cancelled {
         parts.push(gettext("cancelled"));
@@ -44,6 +44,15 @@ pub(super) fn subtitle(entry: &Entry, now: SystemTime) -> String {
         ));
     }
     parts.join(" · ")
+}
+
+// As the Mac's history reads a run: under a millisecond as `<1 ms`, else in whole milliseconds.
+fn duration_text(micros: i64) -> String {
+    let micros = u64::try_from(micros).unwrap_or(0);
+    if micros < 1_000 {
+        return gettext("<1 ms");
+    }
+    format!("{} ms", format_thousands(micros.saturating_add(500) / 1_000))
 }
 
 /// What the status icon stands for, for a screen reader.
@@ -115,7 +124,7 @@ mod tests {
             connection_id: Uuid::nil(),
             connection_name: "local".to_owned(),
             executed_at,
-            duration_ms: Some(12),
+            duration_us: Some(12_000),
             rows_affected: Some(2),
             success: true,
             cancelled: false,
@@ -150,6 +159,18 @@ mod tests {
         let text = subtitle(&entry(now - Duration::from_secs(120)), now);
 
         assert_eq!(text, "local · postgres · 2 minutes ago · 12 ms · 2 rows");
+    }
+
+    #[test]
+    fn a_run_under_a_millisecond_reads_as_under_one_not_as_none() {
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000);
+        let mut quick = entry(now - Duration::from_secs(120));
+        quick.duration_us = Some(90);
+
+        let text = subtitle(&quick, now);
+
+        assert_eq!(text, "local · postgres · 2 minutes ago · <1 ms · 2 rows");
+        assert_eq!(duration_text(1_500), "2 ms");
     }
 
     #[test]

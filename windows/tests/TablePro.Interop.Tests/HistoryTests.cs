@@ -59,6 +59,22 @@ public sealed class HistoryTests : IDisposable
     }
 
     [Fact]
+    public async Task ARunUnderAMillisecondKeepsItsMicroseconds()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var session = await OpenAsync("quick.sqlite", cancellationToken);
+        using var history = await _core.OpenHistoryAsync(cancellationToken);
+
+        await history.RecordAsync(
+            session,
+            Ran("SELECT 1", At) with { Duration = TimeSpan.FromMicroseconds(90) },
+            cancellationToken);
+        var found = await history.SearchAsync(string.Empty, null, null, null, 50, cancellationToken);
+
+        Assert.Equal(TimeSpan.FromMicroseconds(90), Assert.Single(found.Entries).Duration);
+    }
+
+    [Fact]
     public async Task ASearchKeepsToTheConnectionItNames()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

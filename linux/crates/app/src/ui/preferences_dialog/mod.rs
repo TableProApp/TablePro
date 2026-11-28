@@ -367,7 +367,7 @@ mod tests {
             connection_id: uuid::Uuid::new_v4(),
             connection_name: "local".to_owned(),
             executed_at: std::time::SystemTime::now(),
-            duration_ms: Some(1),
+            duration_us: Some(1),
             rows_affected: Some(0),
             details: Default::default(),
             outcome: tablepro_storage::query_history::Outcome::Success,

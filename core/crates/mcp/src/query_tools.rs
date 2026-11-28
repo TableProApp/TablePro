@@ -447,7 +447,7 @@ fn history_entry(
         connection_id: connection.id,
         connection_name: connection.name.clone(),
         executed_at,
-        duration_ms: i64::try_from(elapsed.as_millis()).ok(),
+        duration_us: i64::try_from(elapsed.as_micros()).ok(),
         rows_affected,
         outcome,
         details: tablepro_storage::query_history::RunDetails {
