@@ -290,12 +290,41 @@ async fn the_scheduler_waits_out_retry_after_before_it_tries_again() {
     assert!(matches!(waits.first(), Some(Some(wait)) if *wait >= 30_000));
 }
 
-// The events logged on this thread, each with its level, its text and its public `code`.
+// Every event the test process logs, with the thread that logged it, through the one subscriber the process takes.
+// A scoped one misses an event whose callsite another test's thread reached first, which tracing then caches as
+// wanted by no one.
 #[derive(Clone, Default)]
-struct Logged(Arc<Mutex<Vec<Line>>>);
+struct Logged(Arc<Mutex<Vec<(std::thread::ThreadId, Line)>>>);
 
 // An event's level, text and public `code`.
 type Line = (tracing::Level, String, Option<String>);
+
+impl Logged {
+    fn installed() -> Self {
+        static LOGGED: std::sync::OnceLock<Logged> = std::sync::OnceLock::new();
+        LOGGED
+            .get_or_init(|| {
+                let logged = Logged::default();
+                tracing::subscriber::set_global_default(logged.clone()).unwrap();
+                logged
+            })
+            .clone()
+    }
+
+    fn len(&self) -> usize {
+        self.0.lock().unwrap().len()
+    }
+
+    // What this thread logged from `from` on.
+    fn here(&self, from: usize) -> Vec<Line> {
+        let thread = std::thread::current().id();
+        self.0.lock().unwrap()[from..]
+            .iter()
+            .filter(|(logged_on, _)| *logged_on == thread)
+            .map(|(_, line)| line.clone())
+            .collect()
+    }
+}
 
 impl tracing::Subscriber for Logged {
     fn register_callsite(&self, _: &'static tracing::Metadata<'static>) -> tracing::subscriber::Interest {
@@ -335,10 +364,10 @@ impl tracing::Subscriber for Logged {
         }
         let mut fields = Fields::default();
         event.record(&mut fields);
-        self.0
-            .lock()
-            .unwrap()
-            .push((*event.metadata().level(), fields.text, fields.code));
+        self.0.lock().unwrap().push((
+            std::thread::current().id(),
+            (*event.metadata().level(), fields.text, fields.code),
+        ));
     }
 
     fn enter(&self, _: &tracing::span::Id) {}
@@ -349,8 +378,8 @@ impl tracing::Subscriber for Logged {
 // A device offline for hours warns with the failure's code once, when its passes start failing, not on every retry.
 #[tokio::test(start_paused = true)]
 async fn failed_passes_warn_once_with_their_code_until_one_succeeds() {
-    let logged = Logged::default();
-    let _logging = tracing::subscriber::set_default(logged.clone());
+    let logged = Logged::installed();
+    let from = logged.len();
     let pass = Flaky::new(3, None);
     let wake = Wake::new();
     let _scheduler = spawn(pass.clone(), wake.clone(), StopSignal::new(), Backoff::STANDARD);
@@ -364,7 +393,7 @@ async fn failed_passes_warn_once_with_their_code_until_one_succeeds() {
         retry_after_ms: Some(30_000),
     })
     .code();
-    let lines = logged.0.lock().unwrap().clone();
+    let lines = logged.here(from);
     let passes: Vec<_> = lines
         .iter()
         .filter(|(_, text, _)| text.starts_with("sync pass"))

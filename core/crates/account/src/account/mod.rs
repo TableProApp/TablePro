@@ -1647,12 +1647,41 @@ mod tests {
         );
     }
 
-    // The events logged on this thread, each with its level, its text and its public `code`.
+    // Every event the test process logs, with the thread that logged it, through the one subscriber the process takes.
+    // A scoped one misses an event whose callsite another test's thread reached first, which tracing then caches as
+    // wanted by no one.
     #[derive(Clone, Default)]
-    struct Logged(Arc<std::sync::Mutex<Vec<Line>>>);
+    struct Logged(Arc<std::sync::Mutex<Vec<(std::thread::ThreadId, Line)>>>);
 
     // An event's level, text and public `code`.
     type Line = (tracing::Level, String, Option<String>);
+
+    impl Logged {
+        fn installed() -> Self {
+            static LOGGED: std::sync::OnceLock<Logged> = std::sync::OnceLock::new();
+            LOGGED
+                .get_or_init(|| {
+                    let logged = Logged::default();
+                    tracing::subscriber::set_global_default(logged.clone()).unwrap();
+                    logged
+                })
+                .clone()
+        }
+
+        fn len(&self) -> usize {
+            self.0.lock().unwrap().len()
+        }
+
+        // What this thread logged from `from` on.
+        fn here(&self, from: usize) -> Vec<Line> {
+            let thread = std::thread::current().id();
+            self.0.lock().unwrap()[from..]
+                .iter()
+                .filter(|(logged_on, _)| *logged_on == thread)
+                .map(|(_, line)| line.clone())
+                .collect()
+        }
+    }
 
     impl tracing::Subscriber for Logged {
         fn register_callsite(&self, _: &'static tracing::Metadata<'static>) -> tracing::subscriber::Interest {
@@ -1692,10 +1721,10 @@ mod tests {
             }
             let mut fields = Fields::default();
             event.record(&mut fields);
-            self.0
-                .lock()
-                .unwrap()
-                .push((*event.metadata().level(), fields.text, fields.code));
+            self.0.lock().unwrap().push((
+                std::thread::current().id(),
+                (*event.metadata().level(), fields.text, fields.code),
+            ));
         }
 
         fn enter(&self, _: &tracing::span::Id) {}
@@ -1710,8 +1739,8 @@ mod tests {
         let dir = tempfile::tempdir().expect("a temporary directory");
         keep(dir.path(), None).await;
         let account = account(dir.path(), Keyring::holding(Some("refresh")));
-        let logged = Logged::default();
-        let _logging = tracing::subscriber::set_default(logged.clone());
+        let logged = Logged::installed();
+        let from = logged.len();
 
         let running = tokio::spawn({
             let account = account.clone();
@@ -1724,14 +1753,14 @@ mod tests {
                 .cloned()
         };
         for _ in 0..500 {
-            if failed(&logged.0.lock().unwrap()).is_some() {
+            if failed(&logged.here(from)).is_some() {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         running.abort();
 
-        let failed = failed(&logged.0.lock().unwrap()).expect("the failed refresh is logged");
+        let failed = failed(&logged.here(from)).expect("the failed refresh is logged");
         assert_eq!(failed.0, tracing::Level::WARN);
         assert_eq!(failed.2.as_deref(), Some("account.unreachable"));
     }
