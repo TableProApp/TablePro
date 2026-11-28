@@ -14,6 +14,7 @@ use tablepro_session::runtime::Tasks;
 use tablepro_storage::ConnectionStore;
 use tablepro_sync::SyncError;
 use tablepro_sync::api::ScopeName;
+use tablepro_sync::api::control::{PassReason, SyncControl};
 use tablepro_sync::api::key_flows::{
     Acceptance, AccountFlows, ApprovalFlows, CancelWith, DeviceFlows, LockCause, RemovalReview, ResetFlows,
     ReviewedMember, TeamFlows, TeamKeys,
@@ -648,6 +649,13 @@ impl SyncService {
     pub async fn cancel_approval_session(&self, request: String) -> Result<(), CoreError> {
         let request = request_arg(&request)?;
         self.on_keys(move |keys| async move { keys.cancel_session(request).await })
+            .await
+    }
+
+    // A pass of the engine that holds the account's keys, with no iCloud pass: a key screen asks for one as it opens,
+    // so it shows a device another one approved or removed since this one's last pass (E2E F21).
+    pub async fn sync_keys_now(&self) -> Result<(), CoreError> {
+        self.on_engine(move |engine| async move { engine.sync.sync_now(PassReason::Person).await })
             .await
     }
 

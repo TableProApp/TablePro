@@ -17,8 +17,8 @@ use tablepro_sync::api::device_store::HostDeviceStore;
 use tablepro_sync::api::error::{AdapterError, StateError, SyncError};
 use tablepro_sync::api::ids::{ChangeTag, DeviceRowId, IdempotencyKey, KindName, RecordKey, ScopeName};
 use tablepro_sync::api::key_flows::{
-    AccountFlows, ApprovalFlows, ArrivalOrder, DeviceFlows, KeyApplied, KeyArrival, KeyChangeSet, KeyState,
-    OpenedEnvelope, PushBackVerdict, ResetFlows, RestoreFlows, Roster, StopAction, StopFlows, TeamFlows,
+    AccountDevice, AccountFlows, ApprovalFlows, ArrivalOrder, DeviceFlows, KeyApplied, KeyArrival, KeyChangeSet,
+    KeyState, OpenedEnvelope, PushBackVerdict, ResetFlows, RestoreFlows, Roster, StopAction, StopFlows, TeamFlows,
 };
 use tablepro_sync::api::scopes::ScopesAnswer;
 use tablepro_sync::api::state::{
@@ -516,6 +516,8 @@ pub struct KeyLog {
     rebuilding: AtomicBool,
     // The device's key, which the builder sets.
     proof: Mutex<Option<DpopKey>>,
+    // The key devices the account certifies, as another device's approval or removal leaves them.
+    devices: Mutex<Vec<KeyDeviceId>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -553,6 +555,10 @@ impl KeyLog {
 
     pub fn rebuilt(&self) {
         self.rebuilding.store(false, Ordering::SeqCst);
+    }
+
+    pub fn set_devices(&self, devices: &[KeyDeviceId]) {
+        *lock(&self.devices) = devices.to_vec();
     }
 
     pub fn events(&self) -> Vec<KeyEvent> {
@@ -703,7 +709,23 @@ impl ApprovalFlows for KeyLog {
     }
 }
 
-impl DeviceFlows for KeyLog {}
+#[async_trait]
+impl DeviceFlows for KeyLog {
+    async fn account_devices(&self) -> Result<Vec<AccountDevice>, SyncError> {
+        Ok(lock(&self.devices)
+            .iter()
+            .map(|key_device| AccountDevice {
+                key_device: *key_device,
+                device: None,
+                name: None,
+                platform: None,
+                added_at_us: None,
+                this_device: false,
+                compared: false,
+            })
+            .collect())
+    }
+}
 
 #[async_trait]
 impl ResetFlows for KeyLog {
@@ -979,7 +1001,7 @@ impl DeviceBuilder {
         let keys = self.keys.unwrap_or_default();
         *lock(&keys.proof) = Some(DpopKey(Arc::clone(&seed)));
         let wake = Wake::new();
-        let hooks = Arc::new(EngineHooks::new(wake.clone(), None));
+        let hooks = Arc::new(EngineHooks::new(wake.clone(), self.events.clone()));
         let stop = StopSignal::new();
         let clock = Arc::new(TestClock::default());
         let sync = Arc::new(ServiceSync::new(ServiceParts {
@@ -999,6 +1021,7 @@ impl DeviceBuilder {
             mode: self.mode,
             follows: self.follows,
         }));
+        sync.read_last_synced().await;
         Device {
             server: self.server,
             wire,

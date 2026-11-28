@@ -90,6 +90,7 @@ impl StateFiles for MemoryStateFiles {
                     opened: opened.clone(),
                     rows: Arc::new(Mutex::new(rows)),
                     writer: Arc::new(Semaphore::new(1)),
+                    last_synced: Arc::default(),
                 })
             })
             .clone();
@@ -98,6 +99,7 @@ impl StateFiles for MemoryStateFiles {
             opened,
             rows: Arc::clone(&file.rows),
             writer: Arc::clone(&file.writer),
+            last_synced: Arc::clone(&file.last_synced),
         };
         Ok(Arc::new(reopened))
     }
@@ -114,6 +116,7 @@ pub struct MemoryState {
     opened: Opened,
     rows: Arc<Mutex<Rows>>,
     writer: Arc<Semaphore>,
+    last_synced: Arc<Mutex<Option<i64>>>,
 }
 
 #[async_trait]
@@ -147,6 +150,15 @@ impl StateStore for MemoryState {
             writes: Vec::new(),
             _writer: writer,
         }))
+    }
+
+    async fn last_synced_ms(&self) -> Result<Option<i64>, StateError> {
+        Ok(*lock(&self.last_synced))
+    }
+
+    async fn set_last_synced_ms(&self, at_ms: i64) -> Result<(), StateError> {
+        *lock(&self.last_synced) = Some(at_ms);
+        Ok(())
     }
 }
 
