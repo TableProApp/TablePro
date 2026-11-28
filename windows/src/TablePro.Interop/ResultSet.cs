@@ -69,6 +69,17 @@ public sealed class ResultSet : IDisposable
     // Each thread that reads windows opens its own.
     public ResultCursor OpenCursor() => new(_set.OpenCursor());
 
+    // rows and columns are result indices in the order the grid shows them. A copy of every row can stall a window,
+    // so the host calls this off the UI thread.
+    public GridCopy Copy(IReadOnlyList<long> rows, IReadOnlyList<int> columns, GridCopyFormat format)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        ArgumentNullException.ThrowIfNull(columns);
+        var nativeRows = Mapping.RowIndices(rows);
+        var nativeColumns = Mapping.ColumnIndices(columns);
+        return Mapping.GridCopy(CoreCall.Run(() => _set.Copy(nativeRows, nativeColumns, Mapping.CopyFormat(format))));
+    }
+
     // The share sheet's columns as it starts them, from the first visibleColumns columns and the first maxRows rows:
     // what the detectors saw in each column's name and values.
     public async Task<IReadOnlyList<ShareColumnMasking>> GetShareMaskingAsync(int visibleColumns, long maxRows)

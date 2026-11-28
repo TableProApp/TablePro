@@ -1977,6 +1977,14 @@ static class _UniFFILib {
     
     
     
+    
+    
+    
+    
+    
+    
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -4240,6 +4248,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_resultset_copy(ulong @ptr,RustBuffer @rows,RustBuffer @columns,RustBuffer @format,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      RustBuffer uniffi_tablepro_ffi_fn_method_resultset_cell_bytes(ulong @ptr,ulong @row,uint @column,ulong @maxBytes,ref UniffiRustCallStatus _uniffi_out_err
     );
 
@@ -5000,6 +5019,39 @@ static class _UniFFILib {
     public static extern
 #endif
      ulong uniffi_tablepro_ffi_fn_method_databasesession_complete(ulong @ptr,RustBuffer @text,uint @caret,sbyte @asked,RustBuffer @database,RustBuffer @cancel
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_databasesession_copy_result_as_insert(ulong @ptr,ulong @result,RustBuffer @rows,RustBuffer @columns,RustBuffer @schema,RustBuffer @table,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_databasesession_copy_result_as_values(ulong @ptr,ulong @result,RustBuffer @rows,RustBuffer @columns,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     RustBuffer uniffi_tablepro_ffi_fn_method_databasesession_copy_result_in_clause(ulong @ptr,ulong @result,RustBuffer @rows,uint @column,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -9674,6 +9726,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_resultset_copy(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_resultset_cell_bytes(
     );
 
@@ -10302,6 +10365,39 @@ static class _UniFFILib {
     public static extern
 #endif
      ushort uniffi_tablepro_ffi_checksum_method_databasesession_complete(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_databasesession_copy_result_as_insert(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_databasesession_copy_result_as_values(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_databasesession_copy_result_in_clause(
     );
 
     #if NET8_0_OR_GREATER
@@ -13302,6 +13398,12 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_resultset_copy();
+            if (checksum != 23042) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_copy` checksum `23042`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_resultset_cell_bytes();
             if (checksum != 40157) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_cell_bytes` checksum `40157`, library returned `{checksum}`");
@@ -13647,6 +13749,24 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_complete();
             if (checksum != 48089) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_complete` checksum `48089`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_copy_result_as_insert();
+            if (checksum != 18136) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_copy_result_as_insert` checksum `18136`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_copy_result_as_values();
+            if (checksum != 18617) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_copy_result_as_values` checksum `18617`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_copy_result_in_clause();
+            if (checksum != 60201) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_copy_result_in_clause` checksum `60201`, library returned `{checksum}`");
             }
         }
         {
@@ -18785,6 +18905,12 @@ internal interface IDatabaseSession {
     Task<ColumnEntry[]> Columns(TableName @table, CancelToken? @cancel);
     /// <exception cref="CoreException"></exception>
     Task<CompletionList?> Complete(string @text, uint @caret, bool @asked, string? @database, CancelToken? @cancel);
+    /// <exception cref="CoreException"></exception>
+    GridCopy CopyResultAsInsert(ResultSet @result, ulong[] @rows, uint[] @columns, string? @schema, string @table);
+    /// <exception cref="CoreException"></exception>
+    GridCopy CopyResultAsValues(ResultSet @result, ulong[] @rows, uint[] @columns);
+    /// <exception cref="CoreException"></exception>
+    GridCopy CopyResultInClause(ResultSet @result, ulong[] @rows, uint @column);
     string? Database();
     DatabaseLayoutTag DatabaseLayout();
     /// <exception cref="CoreException"></exception>
@@ -19145,6 +19271,33 @@ internal class DatabaseSession : IDatabaseSession, IDisposable {
         FfiConverterTypeCoreError.INSTANCE
     );
     }
+    
+    /// <exception cref="CoreException"></exception>
+    public GridCopy CopyResultAsInsert(ResultSet @result, ulong[] @rows, uint[] @columns, string? @schema, string @table) {
+        return CallWithPointer(thisPtr => FfiConverterTypeGridCopy.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_databasesession_copy_result_as_insert(thisPtr, FfiConverterTypeResultSet.INSTANCE.Lower(@result), FfiConverterSequenceUInt64.INSTANCE.Lower(@rows), FfiConverterSequenceUInt32.INSTANCE.Lower(@columns), FfiConverterOptionalString.INSTANCE.Lower(@schema), FfiConverterString.INSTANCE.Lower(@table), ref _status)
+)));
+    }
+    
+    
+    /// <exception cref="CoreException"></exception>
+    public GridCopy CopyResultAsValues(ResultSet @result, ulong[] @rows, uint[] @columns) {
+        return CallWithPointer(thisPtr => FfiConverterTypeGridCopy.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_databasesession_copy_result_as_values(thisPtr, FfiConverterTypeResultSet.INSTANCE.Lower(@result), FfiConverterSequenceUInt64.INSTANCE.Lower(@rows), FfiConverterSequenceUInt32.INSTANCE.Lower(@columns), ref _status)
+)));
+    }
+    
+    
+    /// <exception cref="CoreException"></exception>
+    public GridCopy CopyResultInClause(ResultSet @result, ulong[] @rows, uint @column) {
+        return CallWithPointer(thisPtr => FfiConverterTypeGridCopy.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_databasesession_copy_result_in_clause(thisPtr, FfiConverterTypeResultSet.INSTANCE.Lower(@result), FfiConverterSequenceUInt64.INSTANCE.Lower(@rows), FfiConverterUInt32.INSTANCE.Lower(@column), ref _status)
+)));
+    }
+    
     
     public string? Database() {
         return CallWithPointer(thisPtr => FfiConverterOptionalString.INSTANCE.Lift(
@@ -22156,6 +22309,12 @@ internal interface IResultSet {
     Task<ResultSet> SharePreview(uint @visibleColumns, uint @maxRows, ShareColumnChoice[] @columns);
     /// <exception cref="CoreException"></exception>
     Task<ShareSummary> ShareSummary(uint @visibleColumns, uint @maxRows, ShareColumnChoice[] @columns);
+    /// <summary>
+    /// Copy `rows` under `columns` (result-column indices, in the order the
+    /// grid shows them) in a dialect-free format.
+    /// </summary>
+    /// <exception cref="CoreException"></exception>
+    GridCopy Copy(ulong[] @rows, uint[] @columns, GridCopyFormat @format);
     /// <exception cref="CoreException"></exception>
     CellBytes? CellBytes(ulong @row, uint @column, ulong @maxBytes);
     /// <exception cref="CoreException"></exception>
@@ -22332,6 +22491,19 @@ internal class ResultSet : IResultSet, IDisposable {
         FfiConverterTypeCoreError.INSTANCE
     );
     }
+    
+    /// <summary>
+    /// Copy `rows` under `columns` (result-column indices, in the order the
+    /// grid shows them) in a dialect-free format.
+    /// </summary>
+    /// <exception cref="CoreException"></exception>
+    public GridCopy Copy(ulong[] @rows, uint[] @columns, GridCopyFormat @format) {
+        return CallWithPointer(thisPtr => FfiConverterTypeGridCopy.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_resultset_copy(thisPtr, FfiConverterSequenceUInt64.INSTANCE.Lower(@rows), FfiConverterSequenceUInt32.INSTANCE.Lower(@columns), FfiConverterTypeGridCopyFormat.INSTANCE.Lower(@format), ref _status)
+)));
+    }
+    
     
     /// <exception cref="CoreException"></exception>
     public CellBytes? CellBytes(ulong @row, uint @column, ulong @maxBytes) {
@@ -29178,6 +29350,52 @@ class FfiConverterTypeFormattedSql: FfiConverterRustBuffer<FormattedSql> {
     public override void Write(FormattedSql value, BigEndianStream stream) {
             FfiConverterString.INSTANCE.Write(value.Text, stream);
             FfiConverterUInt32.INSTANCE.Write(value.Caret, stream);
+    }
+}
+
+
+
+/// <summary>
+/// A rendered copy for the clipboard: the text, the cells a paste reads back,
+/// the type to offer beside plain text, and the row and skip counts.
+/// </summary>
+internal record GridCopy (
+    string Text, 
+    string? Cells, 
+    string? MimeType, 
+    ulong Rows, 
+    ulong Skipped
+) {
+}
+
+class FfiConverterTypeGridCopy: FfiConverterRustBuffer<GridCopy> {
+    public static FfiConverterTypeGridCopy INSTANCE = new FfiConverterTypeGridCopy();
+
+    public override GridCopy Read(BigEndianStream stream) {
+        return new GridCopy(
+            Text: FfiConverterString.INSTANCE.Read(stream),
+            Cells: FfiConverterOptionalString.INSTANCE.Read(stream),
+            MimeType: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Rows: FfiConverterUInt64.INSTANCE.Read(stream),
+            Skipped: FfiConverterUInt64.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(GridCopy value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Text)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Cells)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.MimeType)
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.Rows)
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.Skipped);
+    }
+
+    public override void Write(GridCopy value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Text, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Cells, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.MimeType, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.Rows, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.Skipped, stream);
     }
 }
 
@@ -38527,6 +38745,64 @@ class FfiConverterTypeGenesisOutcomeTag: FfiConverterRustBuffer<GenesisOutcomeTa
             case GenesisOutcomeTag.Created: stream.WriteInt(1); break;
             case GenesisOutcomeTag.AnotherDeviceWon: stream.WriteInt(2); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeGenesisOutcomeTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+/// <summary>
+/// A grid copy format that needs no SQL dialect: the engine-independent
+/// spreadsheet and text shapes.
+/// </summary>
+internal enum GridCopyFormat: int {
+    Tsv,
+    TsvWithHeaders,
+    Csv,
+    CsvWithHeaders,
+    Json,
+    JsonLines,
+    Markdown,
+    TextTable
+}
+
+class FfiConverterTypeGridCopyFormat: FfiConverterRustBuffer<GridCopyFormat> {
+    public static FfiConverterTypeGridCopyFormat INSTANCE = new FfiConverterTypeGridCopyFormat();
+
+    public override GridCopyFormat Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return GridCopyFormat.Tsv;
+            case 2: return GridCopyFormat.TsvWithHeaders;
+            case 3: return GridCopyFormat.Csv;
+            case 4: return GridCopyFormat.CsvWithHeaders;
+            case 5: return GridCopyFormat.Json;
+            case 6: return GridCopyFormat.JsonLines;
+            case 7: return GridCopyFormat.Markdown;
+            case 8: return GridCopyFormat.TextTable;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeGridCopyFormat.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(GridCopyFormat value) {
+        return 4;
+    }
+
+    public override void Write(GridCopyFormat value, BigEndianStream stream) {
+        switch (value) {
+            case GridCopyFormat.Tsv: stream.WriteInt(1); break;
+            case GridCopyFormat.TsvWithHeaders: stream.WriteInt(2); break;
+            case GridCopyFormat.Csv: stream.WriteInt(3); break;
+            case GridCopyFormat.CsvWithHeaders: stream.WriteInt(4); break;
+            case GridCopyFormat.Json: stream.WriteInt(5); break;
+            case GridCopyFormat.JsonLines: stream.WriteInt(6); break;
+            case GridCopyFormat.Markdown: stream.WriteInt(7); break;
+            case GridCopyFormat.TextTable: stream.WriteInt(8); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeGridCopyFormat.Write()", value));
         }
     }
 }
@@ -49452,6 +49728,98 @@ class FfiConverterSequenceUInt16: FfiConverterRustBuffer<ushort[]> {
 
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterUInt16.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceUInt32: FfiConverterRustBuffer<uint[]> {
+    public static FfiConverterSequenceUInt32 INSTANCE = new FfiConverterSequenceUInt32();
+
+    public override uint[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new uint[length];
+        var readFn = FfiConverterUInt32.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(uint[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterUInt32.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(uint[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterUInt32.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceUInt64: FfiConverterRustBuffer<ulong[]> {
+    public static FfiConverterSequenceUInt64 INSTANCE = new FfiConverterSequenceUInt64();
+
+    public override ulong[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new ulong[length];
+        var readFn = FfiConverterUInt64.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(ulong[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterUInt64.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(ulong[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterUInt64.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
     }
 }

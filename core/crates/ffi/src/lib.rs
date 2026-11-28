@@ -146,7 +146,7 @@ pub use mcp::{
 };
 pub use prompter::{HostPrompter, PromptAnswer, PromptFieldInfo, PromptPurposeTag, PromptReasonTag, PromptRequest};
 pub use references::{FollowedReference, ReferenceRefusal, RowReferenceChoice, RowReferences, TableKeys};
-pub use results::{CellBytes, CellTextHead, ResultColumnInfo, ResultSet, ValueKind};
+pub use results::{CellBytes, CellTextHead, GridCopy, GridCopyFormat, ResultColumnInfo, ResultSet, ValueKind};
 pub use row_edits::{
     CellChange, CellEdit, EditColumnInfo, EditLock, EditStart, PlannedStatement, RowEdit, RowSave, RowSaveOutcome,
     SaveGate, TableEditor,
