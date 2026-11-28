@@ -341,6 +341,7 @@ impl SyncService {
             }) as Arc<dyn sync::CloudKitTransport>
         });
         let (cloudkit, files) = (parts.cloudkit.clone(), parts.files.clone());
+        let secrets = parts.secrets.clone();
         let signals = Arc::new(Signals::default());
         let forwarding = forward(Arc::clone(&signals), Arc::clone(&parts.listener), &tasks);
         let hosts = parts.hosts(signals);
@@ -403,6 +404,7 @@ impl SyncService {
             icloud,
             service: Arc::new(slot),
             connections: parts.connections,
+            secrets,
             legacy_marks,
             _marks_hear_stores: marks_hear_stores,
             cloudkit,

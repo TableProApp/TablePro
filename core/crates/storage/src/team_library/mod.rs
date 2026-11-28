@@ -48,11 +48,21 @@ pub struct TeamLibraryItem {
     pub fields: Value,
 }
 
+// A team envelope as sealed under the team key (core ADR 0056, Envelopes and history): its record id names the library
+// connection and the secret, and `fields` are the ciphertext the server holds. Nothing here is plaintext.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeamLibraryEnvelope {
+    pub id: String,
+    pub fields: Value,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeamLibraryTeam {
     pub team_id: String,
     #[serde(default)]
     pub items: Vec<TeamLibraryItem>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub envelopes: Vec<TeamLibraryEnvelope>,
 }
 
 // An item by its kind and the id the team stores. Shipped Macs match ids without case, so a ref does too.
@@ -417,6 +427,42 @@ impl TeamLibraryStore {
         })
     }
 
+    // The journal hears nothing: an envelope goes up with the pass its connection's write asks for.
+    pub fn put_envelopes_blocking(
+        &self,
+        team_id: &str,
+        envelopes: Vec<TeamLibraryEnvelope>,
+    ) -> Result<(), StorageError> {
+        if envelopes
+            .iter()
+            .any(|envelope| !matches!(envelope.fields, Value::Object(_)))
+        {
+            return Err(StorageError::Schema(
+                "the fields of a team envelope are not an object".to_owned(),
+            ));
+        }
+        self.write(|document| {
+            let team = team_mut(document, team_id);
+            for envelope in envelopes {
+                match team.envelopes.iter_mut().find(|held| held.id == envelope.id) {
+                    Some(held) => *held = envelope,
+                    None => team.envelopes.push(envelope),
+                }
+            }
+            Vec::new()
+        })
+    }
+
+    // Ids match exactly.
+    pub fn remove_envelopes_blocking(&self, team_id: &str, ids: &[String]) -> Result<(), StorageError> {
+        self.write(|document| {
+            if let Some(team) = document.teams.iter_mut().find(|team| team.team_id == team_id) {
+                team.envelopes.retain(|held| !ids.contains(&held.id));
+            }
+            Vec::new()
+        })
+    }
+
     // A team the account left or lost goes with every item and everything this device knew of it.
     pub fn remove_team_blocking(&self, team_id: &str) -> Result<(), StorageError> {
         self.write(|document| {
@@ -504,7 +550,9 @@ impl TeamLibraryStore {
             let before = self.read()?;
             let mut document = before.clone();
             let entries = change(&mut document);
-            document.teams.retain(|team| !team.items.is_empty());
+            document
+                .teams
+                .retain(|team| !team.items.is_empty() || !team.envelopes.is_empty());
             document.local.retain(|local| !local.holds_nothing());
             if document == before {
                 return Ok(());
@@ -701,7 +749,7 @@ fn team_mut<'a>(document: &'a mut TeamLibraryDocument, team_id: &str) -> &'a mut
         None => {
             document.teams.push(TeamLibraryTeam {
                 team_id: team_id.to_owned(),
-                items: Vec::new(),
+                ..TeamLibraryTeam::default()
             });
             document.teams.len() - 1
         }

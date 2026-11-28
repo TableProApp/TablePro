@@ -460,3 +460,54 @@ async fn a_due_team_waits_only_for_an_account_rotation_that_has_not_rotated_it_y
     assert_eq!(waited, Some(v(1)));
     assert_eq!(t.owner.service.team_keys(t.team).await.unwrap().version, Some(v(2)));
 }
+
+// A copy the device's own store holds opens with no rollback floor and records nothing, so reading a newer copy that has
+// not gone up never turns away the older one the server still holds; opening it as a pulled copy does (0079).
+#[tokio::test]
+async fn a_held_copy_opens_without_raising_the_floor_a_pulled_copy_is_judged_against() {
+    let leaves = new_account();
+    let t = created(&[(leaves, Role::Editor)]).await;
+    t.confirmed(leaves, "leaves-row").await;
+    let older = t
+        .owner
+        .service
+        .seal_team_envelope(t.team, envelope(), SecretString::from("old"), json!({}))
+        .await
+        .unwrap();
+    team_pass(&t.owner, t.team).await;
+    t.server.set_role(t.team, leaves, None);
+    team_pass(&t.owner, t.team).await;
+    t.server.set_rotation_due(t.team, false);
+    let newer = t
+        .owner
+        .service
+        .seal_team_envelope(t.team, envelope(), SecretString::from("new"), json!({}))
+        .await
+        .unwrap();
+
+    let held = t
+        .owner
+        .service
+        .open_held_team_envelope(t.team, envelope(), newer.clone())
+        .await
+        .unwrap();
+    let older_after_held = t
+        .owner
+        .service
+        .open_team_envelope(t.team, envelope(), older.clone(), None)
+        .await;
+    t.owner
+        .service
+        .open_team_envelope(t.team, envelope(), newer, None)
+        .await
+        .unwrap();
+    let older_after_pulled = t
+        .owner
+        .service
+        .open_team_envelope(t.team, envelope(), older, None)
+        .await;
+
+    assert_eq!((held.secret.expose_secret(), held.kv), ("new", v(2)));
+    assert_eq!(older_after_held.unwrap().secret.expose_secret(), "old");
+    assert!(older_after_pulled.is_err());
+}
