@@ -400,6 +400,13 @@ impl RecordAdapter for EnvelopeAdapter {
         SECRETS_STORE
     }
 
+    // A refill would let the server's copy win over a secret this device holds, as no move of personal data does
+    // (0054, Moving between providers), and would hold a refused envelope as a refill's, never as one waiting for its
+    // record (0076).
+    fn refills(&self) -> bool {
+        false
+    }
+
     // A team's envelopes are its library's secrets, which this store does not keep.
     fn serves(&self, scope: ScopeName) -> bool {
         scope == ScopeName::Personal

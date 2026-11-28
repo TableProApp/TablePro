@@ -156,6 +156,8 @@ pub struct MemoryAdapter {
     on_apply: Mutex<Option<Box<dyn Fn() + Send>>>,
     // Ids whose pulled change the store cannot take: a write that touches one fails whole.
     refused_values: Mutex<std::collections::HashSet<String>>,
+    // A store with no identity of its own, as the device's secret store, never puts its kind into refill.
+    refills: AtomicBool,
 }
 
 impl MemoryAdapter {
@@ -169,7 +171,12 @@ impl MemoryAdapter {
             elsewhere: Mutex::default(),
             on_apply: Mutex::new(None),
             refused_values: Mutex::default(),
+            refills: AtomicBool::new(true),
         })
+    }
+
+    pub fn without_identity(&self) {
+        self.refills.store(false, Ordering::SeqCst);
     }
 
     fn home(&self) -> ScopeName {
@@ -268,6 +275,10 @@ impl RecordAdapter for MemoryAdapter {
 
     fn store(&self) -> &str {
         &self.name
+    }
+
+    fn refills(&self) -> bool {
+        self.refills.load(Ordering::SeqCst)
     }
 
     async fn identity(&self) -> Result<StoreStamp, AdapterError> {
