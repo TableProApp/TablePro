@@ -14,12 +14,9 @@ public sealed class ResultEditTests
         using var editor = await database.Session.OpenResultEditorAsync(sql, rows, cancellationToken);
         var copies = editor.CopiesExactly(rows, 0);
 
-        using var save = editor.Plan(rows,
-        [
-            new RowEdit.Update(0, [new CellChange(0, new CellEdit.Text("first"))]),
-            new RowEdit.Delete(2),
-        ]);
-        var outcome = await save.RunAsync(confirmed: false, cancellationToken);
+        editor.SetCell(rows, 0, 0, new CellEdit.Text("first"));
+        editor.DeleteRows(rows, [2]);
+        var outcome = await editor.SaveAsync(rows, confirmed: false, cancellationToken);
         using var after = database.Editor.Run("SELECT coalesce(note, 'NULL') FROM people ORDER BY id", cancellationToken: cancellationToken);
         Assert.IsType<QueryOutcome.Completed>(await after.Completion);
         using var notes = after.GetResultSet(0) ?? throw new InvalidOperationException("The read held no set.");

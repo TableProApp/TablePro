@@ -377,17 +377,6 @@ extension DataGridViewController {
     }
 }
 
-private extension NSView {
-    var enclosingTableView: NSTableView? {
-        var ancestor = superview
-        while let current = ancestor {
-            if let table = current as? NSTableView { return table }
-            ancestor = current.superview
-        }
-        return nil
-    }
-}
-
 @MainActor
 final class DataGridFieldEditorDelegate: NSObject, NSTextFieldDelegate {
     weak var controller: DataGridViewController?

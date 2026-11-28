@@ -343,6 +343,14 @@ impl AccountFlows for FakeKeyFlows {
         Ok(opened(kv, &plaintext))
     }
 
+    async fn personal_envelope_version(&self) -> Result<Option<Version>, SyncError> {
+        let model = self.lock();
+        if require_approved(&model, "write a personal secret").is_err() {
+            return Ok(None);
+        }
+        Ok(Some(version(model.av)?))
+    }
+
     async fn seal_history_entry(&self, entry: HistoryId, plaintext: Value) -> Result<Value, SyncError> {
         let model = self.lock();
         require_approved(&model, "seal a history entry")?;

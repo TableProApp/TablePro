@@ -5508,6 +5508,33 @@ New fingerprint: {2}</value>
   <data name="AssistantConsentAllow" xml:space="preserve">
     <value>Allow</value>
   </data>
+  <data name="AssistantAgentToggle.Label" xml:space="preserve">
+    <value>Agent mode</value>
+  </data>
+  <data name="AssistantAgentToggle.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Let the assistant run tools, with your approval for writes</value>
+  </data>
+  <data name="AssistantAgentUnavailable" xml:space="preserve">
+    <value>Agent mode is not ready yet. Try again in a moment.</value>
+  </data>
+  <data name="AssistantToolRunning" xml:space="preserve">
+    <value>Running the tool</value>
+  </data>
+  <data name="AssistantWriteTitle" xml:space="preserve">
+    <value>Run this statement?</value>
+  </data>
+  <data name="AssistantWriteMessage" xml:space="preserve">
+    <value>The assistant wants to run this statement on “{0}”.</value>
+  </data>
+  <data name="AssistantWriteDestructive" xml:space="preserve">
+    <value>The assistant wants to run this statement on “{0}”. It drops, empties or rewrites a whole table.</value>
+  </data>
+  <data name="AssistantWriteAllow" xml:space="preserve">
+    <value>Run</value>
+  </data>
+  <data name="AssistantWriteDeny" xml:space="preserve">
+    <value>Don't run</value>
+  </data>
   <data name="AiDestinationServer" xml:space="preserve">
     <value>the server at {0}</value>
   </data>

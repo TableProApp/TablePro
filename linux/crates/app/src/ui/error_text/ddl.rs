@@ -4,7 +4,7 @@
 use tablepro_core::ddl::{BuildDdlError, CatalogOption, DdlOperation, DraftProblem, RefusalReason};
 
 use super::syntax::{literal_message, type_syntax_message};
-use crate::services::pending_structure::SaveBlocker;
+use tablepro_core::ddl::SaveBlocker;
 
 /// Why a control is off, for its tooltip.
 pub fn refusal_text(reason: &RefusalReason) -> String {

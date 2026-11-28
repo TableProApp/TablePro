@@ -119,9 +119,9 @@ use self::structure_tab_widgets::StructureTabWidgets;
 pub(crate) use self::table_input::TableInput;
 use self::table_options::NextAutoIncrement;
 use crate::runtime::{FailedRequests, RequestSequencer};
-use crate::services::pending_structure::PendingStructure;
 use crate::services::structure_tracker_handle::StructureTrackerHandle;
 use crate::ui::tab_load::{ContentLoad, FirstLoad, start_first_load};
+use tablepro_core::ddl::PendingStructure;
 
 glib::wrapper! {
     pub struct StructureTab(ObjectSubclass<imp::StructureTab>)

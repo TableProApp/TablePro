@@ -116,7 +116,8 @@ impl Core {
         drivers
     }
 
-    // Every assistant shares the core's one AI client.
+    // Every assistant shares the core's one AI client, and agent mode reaches the same open sessions and
+    // history store as the MCP server.
     pub fn ai_assistant(&self) -> Arc<AiAssistant> {
         Arc::new(AiAssistant::new(
             self.items.clone(),
@@ -125,6 +126,8 @@ impl Core {
             self.client_version.clone(),
             self.ai_client.clone(),
             self.ai_catalog.clone(),
+            self.open_sessions(),
+            self.history_access(),
         ))
     }
 
@@ -422,6 +425,10 @@ impl Core {
     }
 
     pub fn secret_vault(&self) -> Arc<dyn SecretVault> {
+        self.vault.clone()
+    }
+
+    pub(crate) fn vault(&self) -> Arc<dyn SecretVault> {
         self.vault.clone()
     }
 

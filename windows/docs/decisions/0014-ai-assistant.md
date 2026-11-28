@@ -25,6 +25,15 @@ The macOS and Linux apps have an AI assistant: a chat about the connection's tab
 
 ## Consequences
 
-- No inline suggestions while typing, no agent mode, no saved conversations, no `@` context and no AI rules per connection (roadmap A-06), and three providers (A-07).
+- No inline suggestions while typing, no `@` context and no AI rules per connection (roadmap A-06), and three providers (A-07).
 - Tables named in SQL outside the editor's schema are not described until the completion scope moves into the core (C-08).
 - A connection opened from a file without saving it has no policy of its own, so the assistant asks under Ask.
+
+## Amendment: agent mode (2026-11-27)
+
+Agent mode ships, so "no agent mode" and "no saved conversations" above no longer hold.
+
+- The core owns the loop (`reply_agentic`, core ADR 0014's Design A): model, tool call, dispatch, tool result, model, until a final answer. It offers the model the 11 MCP tools and dispatches them in process through `core/crates/mcp`, not over the HTTP server.
+- Approvals surface in the assistant pane, not the connection's window. A read runs on its own; a write is gated by Safe Mode and asked through the agent's approver; a destructive write always asks. The gate is the one in `execute_query`, reused.
+- The pane shows a card per tool call with its arguments, an approve-or-deny dialog for a write, and the result. A conversation and its cards stay for the session's life; durable cross-restart persistence is open (A-06).
+- `AiReplyEvent` gains `ToolCall`, `ToolStarted` and `ToolFinished`; the agent host is a first-class approver callback, apart from the external-client consent window.

@@ -10,6 +10,7 @@ use tablepro_records::Kind;
 use tablepro_storage::{ConnectionStore, QueryHistory, SavedQueryDatabase};
 use tablepro_sync::SyncError;
 use tablepro_sync::adapters::categories::DeviceCategories;
+use tablepro_sync::adapters::envelopes::EnvelopeAdapter;
 use tablepro_sync::adapters::history::HistoryAdapter;
 use tablepro_sync::adapters::library::{self, DriverNames, Provider};
 use tablepro_sync::adapters::saved_queries::SavedQueryAdapter;
@@ -20,8 +21,8 @@ use tablepro_sync::api::control::{PassReason, SyncCategories, SyncControl};
 use tablepro_sync::api::key_flows::KeyFlows;
 use tablepro_sync::api::state::StateIdentity;
 use tablepro_sync::api::{
-    CloudKitTransport, DeviceRowId, DeviceStoreError, HostDeviceStore, HostSettings, LegacyMirror, RecordAdapter,
-    ServiceTransport, StateError, StateFiles, TransportError,
+    CloudKitTransport, DeviceRowId, DeviceSecrets, DeviceStoreError, HostDeviceStore, HostSettings, LegacyMirror,
+    RecordAdapter, ServiceTransport, StateError, StateFiles, StateStore, TransportError,
 };
 use tablepro_sync::cloudkit::LegacyMarks;
 use tablepro_sync::cloudkit::fetch::Categories;
@@ -95,6 +96,9 @@ pub(crate) struct Hosts {
     pub(crate) store_journal: Arc<StoreJournal>,
     // Team Library's store and sign-in, which only the service engine syncs.
     pub(crate) team_library: Option<TeamLibraryHost>,
+    // The device's secrets, which go up sealed into envelopes on TablePro Sync only; iCloud carries them in iCloud
+    // Keychain (0054, Providers).
+    pub(crate) secrets: Option<Arc<dyn DeviceSecrets>>,
 }
 
 impl Hosts {
@@ -125,6 +129,20 @@ impl Hosts {
             adapters.push(Arc::new(HistoryAdapter::new(history.clone(), Arc::clone(standing))));
         }
         adapters
+    }
+
+    // The personal envelopes over the device's secrets, sealed and opened by this sign-in's keys and compared with the
+    // copies its state file agreed on.
+    fn envelopes(&self, keys: &Arc<KeyService>, state: &Arc<dyn StateStore>) -> Option<Arc<dyn RecordAdapter>> {
+        let (store, secrets) = (self.library.as_ref()?, self.secrets.as_ref()?);
+        Some(Arc::new(EnvelopeAdapter::new(
+            store,
+            self.names,
+            self.publisher,
+            Arc::clone(secrets),
+            Arc::clone(keys) as Arc<dyn KeyFlows>,
+            Arc::clone(state),
+        )))
     }
 
     // The stores' writes tell `listener` until the handle drops with what holds it.
@@ -315,6 +333,7 @@ impl ServiceEngine {
             clock: Arc::new(tablepro_sync::keys::SystemClock),
         }));
         let mut adapters = hosts.adapters(Provider::TableproSync);
+        adapters.extend(hosts.envelopes(&keys, &state));
         adapters.extend(team_library.iter().flat_map(TeamLibraryAdapter::all));
         let sync = Arc::new(ServiceSync::new(ServiceParts {
             transport: link.transport,
@@ -330,6 +349,7 @@ impl ServiceEngine {
             mode,
             follows,
         }));
+        sync.read_last_synced().await;
         if let (Some(host), Some(store)) = (&hosts.team_library, team_library) {
             let session = binding
                 .as_ref()
@@ -341,6 +361,7 @@ impl ServiceEngine {
         if previous.is_some() {
             sync.hold_for_account_choice().await?;
         }
+        sync.read_counts().await;
         let scheduler = spawn(
             Arc::clone(&sync) as Arc<dyn Pass>,
             wake,
@@ -415,9 +436,10 @@ pub(crate) const FILE_POLL: Duration = Duration::from_millis(100);
 const FILE_WAIT_TRIES: u32 = 50;
 const FILE_POLL_MAX: Duration = Duration::from_secs(5);
 
-// The TablePro Sync engine, or why it is not running. A start that failed for a reason that passes, as the network or
-// a locked device store, is tried again by the next call that needs the engine, for the same sign-in only; any other
-// failure holds until the app opens sync again. A start that found the state file busy goes on by itself once the file
+// The TablePro Sync engine, or why it is not running. It starts with the server out of reach, since the transport binds
+// to the sign-in the account holds; a start that failed for a reason that passes, as a locked device store, is tried
+// again by the next call that needs the engine, for the same sign-in only; any other failure holds until the app opens
+// sync again. A start that found the state file busy goes on by itself once the file
 // is free.
 pub(crate) struct ServiceSlot {
     held: Mutex<Result<Arc<ServiceEngine>, SyncError>>,

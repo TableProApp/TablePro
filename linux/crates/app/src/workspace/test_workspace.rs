@@ -20,13 +20,13 @@ use super::{
 use crate::services::active_session::ActiveSession;
 use crate::services::change_tracker::RowKey;
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
-use crate::services::pending_structure::PendingStructure;
 use crate::services::save_batch::SaveTarget;
 use crate::services::structure_tracker_handle::StructureTrackerHandle;
 use crate::services::structure_tracker_registry::StructureTrackerRegistry;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::services::tracker_edit::TrackerEdit;
 use crate::test_support::{FakeSession, OwnedWindow, wait_until};
+use tablepro_core::ddl::PendingStructure;
 
 pub(crate) const WAIT: Duration = Duration::from_secs(10);
 

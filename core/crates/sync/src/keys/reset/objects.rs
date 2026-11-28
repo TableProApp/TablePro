@@ -159,8 +159,8 @@ impl KeyService {
             // A write's records come in no set order, so the activation's versions may follow its tombstone: only a
             // cancel or another certificate verified at its `av` ends this device's own reset here, and an overdue
             // one ends when the wait is past (0051, Resets).
-            if self.activation_present(&record).await? {
-                return Ok((record.pending() && self.own_activation_applied(&record).await?).then_some(reset));
+            if self.activation_present(txn, &record).await? {
+                return Ok((record.pending() && self.now_us() >= record.held_until_us).then_some(reset));
             }
             let state = if cancelled {
                 ResetState::Cancelled

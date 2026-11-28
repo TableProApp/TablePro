@@ -507,3 +507,152 @@ async fn envelopes_held_while_the_key_tables_rebuild_are_read_again_once_the_reb
 fn personal_key(record_id: &str) -> tablepro_sync::api::ids::RecordKey {
     tablepro_sync::api::ids::RecordKey::new(ScopeName::Personal, Kind::SecretEnvelope, record_id)
 }
+
+fn stored_envelope(server: &FakeServer, n: u8) -> Option<Value> {
+    server
+        .stored(super::harness::personal(), "secret_envelope", &envelope_id(n))
+        .filter(|record| record.deleted.is_none())
+        .and_then(|record| record.fields)
+}
+
+// A `policy` refusal stands only while the switch that refused it is off: turned on again, the same change goes up,
+// which a refusal of any other code would hold until the change differs (0076, Policies).
+#[tokio::test]
+async fn an_envelope_the_policy_refused_goes_up_once_password_sync_is_on_again() {
+    use tablepro_sync::api::control::HeldRecordReason;
+    use tablepro_sync_testing::service::Policies;
+
+    let server = FakeServer::new();
+    let secrets = envelopes();
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&secrets))
+        .build()
+        .await;
+    let other = Device::new(&server, "dev_other").await;
+    rotate(&other, 1).await;
+    mac.sync().await;
+    secrets.put(&envelope_id(1), sealed(1));
+    let (reached, release) = mac.wire.hold_next_pull(ScopeName::Personal);
+    let turn_off = async {
+        reached.notified().await;
+        server.set_policies(Policies {
+            password_sync: false,
+            ..Policies::default()
+        });
+        release.notify_one();
+    };
+
+    let (raced, ()) = tokio::join!(mac.pass(), turn_off);
+    let refused = mac.sync.held_records().await.unwrap();
+    mac.sync().await;
+    let while_off = stored_envelope(&server, 1);
+    server.set_policies(Policies::default());
+    mac.sync().await;
+
+    assert!(raced.is_ok(), "{raced:?}");
+    assert!(
+        refused.iter().any(|held| held.reason
+            == HeldRecordReason::Refused {
+                code: "policy".to_owned()
+            }),
+        "{refused:?}"
+    );
+    assert_eq!(while_off, None);
+    assert_eq!(stored_envelope(&server, 1), Some(sealed(1)));
+}
+
+// A connection kept on the device and then deleted there takes its envelope's deletion with it: other devices keep both
+// (0054, Rules for both providers; 0076).
+#[tokio::test]
+async fn the_envelope_of_a_connection_kept_on_the_device_is_not_deleted_on_the_server_with_it() {
+    let server = FakeServer::new();
+    let secrets = envelopes();
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&secrets))
+        .build()
+        .await;
+    let other = Device::new(&server, "dev_other").await;
+    rotate(&other, 1).await;
+    mac.connections.put(&id(1), connection("Prod"));
+    secrets.put(&envelope_id(1), sealed(1));
+    mac.sync().await;
+    let synced = stored_envelope(&server, 1);
+    mac.connections.put_local_only(&id(1), connection("Prod"));
+    mac.sync().await;
+
+    mac.connections.remove(&id(1));
+    secrets.remove(&envelope_id(1));
+    mac.sync().await;
+
+    assert_eq!(synced, Some(sealed(1)));
+    assert_eq!(stored_envelope(&server, 1), Some(sealed(1)));
+}
+
+// An envelope update pulled while the device's own copy cannot be read, as with a locked keychain, waits for the store
+// and lands once it reads again, with no new edit on the server (0076).
+#[tokio::test]
+async fn an_envelope_pulled_while_the_store_cannot_read_its_copy_lands_once_it_can() {
+    let server = FakeServer::new();
+    let (mac_secrets, other_secrets) = (envelopes(), envelopes());
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&mac_secrets))
+        .build()
+        .await;
+    let other = DeviceBuilder::new(&server, "dev_other")
+        .adapter(ScopeName::Personal, Arc::clone(&other_secrets))
+        .build()
+        .await;
+    rotate(&other, 1).await;
+    mac_secrets.put(&envelope_id(1), sealed(1));
+    mac.sync().await;
+    other.sync().await;
+    let changed = json!({"suite": "tp1", "kv": 1, "nonce": "n2", "ct": "c2"});
+    other_secrets.put(&envelope_id(1), changed.clone());
+    other.sync().await;
+
+    mac_secrets.hide(&envelope_id(1));
+    mac.sync().await;
+    let waiting = mac.row(RowKey::Held(personal_key(&envelope_id(1)))).await;
+    mac_secrets.show(&envelope_id(1));
+    mac.sync().await;
+
+    assert!(
+        matches!(&waiting, Some(Row::Held(held)) if held.reason == HeldReason::AwaitingStore),
+        "{waiting:?}"
+    );
+    assert_eq!(mac_secrets.get(&envelope_id(1)), Some(changed.clone()));
+    assert_eq!(stored_envelope(&server, 1), Some(changed));
+}
+
+// A secret store meets its first pass with no refill: an envelope its record keeps out of the store waits as one
+// waiting for its record, never as a refill's, and takes no pull-wins over a secret the device holds (0076).
+#[tokio::test]
+async fn an_envelope_store_seen_for_the_first_time_holds_a_refused_envelope_as_waiting_for_its_record() {
+    let server = FakeServer::new();
+    let other_secrets = envelopes();
+    let other = DeviceBuilder::new(&server, "dev_other")
+        .adapter(ScopeName::Personal, Arc::clone(&other_secrets))
+        .build()
+        .await;
+    rotate(&other, 1).await;
+    other_secrets.put(&envelope_id(1), sealed(1));
+    other.sync().await;
+    let secrets = envelopes();
+    secrets.without_identity();
+    secrets.refuse_value(&envelope_id(1), true);
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&secrets))
+        .build()
+        .await;
+
+    mac.sync().await;
+    let waiting = mac.row(RowKey::Held(personal_key(&envelope_id(1)))).await;
+    secrets.refuse_value(&envelope_id(1), false);
+    mac.sync().await;
+
+    assert!(
+        matches!(&waiting, Some(Row::Held(held)) if held.reason == HeldReason::AwaitingStore),
+        "{waiting:?}"
+    );
+    assert_eq!(secrets.get(&envelope_id(1)), Some(sealed(1)));
+}

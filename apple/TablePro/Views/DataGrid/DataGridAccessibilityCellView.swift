@@ -97,6 +97,10 @@ final class DataGridAccessibilityCellView: NSTableCellView {
         return controller?.presenter.accessibilityText(of: rowModel, column: column.model) ?? ""
     }
 
+    override func accessibilityPerformShowMenu() -> Bool {
+        showEnclosingRowContextMenu() || super.accessibilityPerformShowMenu()
+    }
+
     override func accessibilityPerformPress() -> Bool {
         guard let controller, let column, let rowModel,
               controller.toggleCheckbox(rowID: rowModel.id, column: column.model, displayRow: row) else { return false }

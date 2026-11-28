@@ -335,41 +335,119 @@ fn settled(
             Some(fields) => put(kind, names, projects, list, id, &fields)?,
         });
     }
-    Some(if kind == Kind::CredentialProfile {
-        unique_profile_names(list, settled)
-    } else {
-        settled
+    Some(match kind {
+        Kind::CredentialProfile => unique_profile_names::<tablepro_storage::CredentialProfile>(list, settled),
+        Kind::SshProfile => unique_profile_names::<SshProfile>(list, settled),
+        _ => settled,
     })
 }
 
-// Every picker offers a credential profile by its name alone and the editor refuses two of one name, so a pull that
-// brings a second profile of a name settles it as 0052's Collisions do: the lowest id compared as bytes keeps the
-// name, since a profile keeps no creation date, and each other takes the first free `<name> (2)`, `<name> (3)` and on,
-// compared without case. A renamed profile this device held goes up as its own edit, as the Mac renamed the arriving
-// one; one rule on every device converges.
-fn unique_profile_names(list: &ConnectionList, mut changes: Vec<LibraryChange>) -> Vec<LibraryChange> {
-    let mut held: std::collections::BTreeMap<Uuid, tablepro_storage::CredentialProfile> = list
-        .credential_profiles
+// A profile kind every picker offers by its name alone, as a credential or an SSH profile.
+trait NamedProfile: Clone {
+    fn id(&self) -> Uuid;
+    fn name(&self) -> &str;
+    fn rename(&mut self, name: String);
+    fn held(list: &ConnectionList) -> &[Self];
+    fn put(change: &LibraryChange) -> Option<&Self>;
+    fn gone(change: &LibraryChange) -> Option<Uuid>;
+    fn change(self) -> LibraryChange;
+}
+
+impl NamedProfile for tablepro_storage::CredentialProfile {
+    fn id(&self) -> Uuid {
+        self.id
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn rename(&mut self, name: String) {
+        self.name = name;
+    }
+
+    fn held(list: &ConnectionList) -> &[Self] {
+        &list.credential_profiles
+    }
+
+    fn put(change: &LibraryChange) -> Option<&Self> {
+        match change {
+            LibraryChange::CredentialProfile(profile) => Some(profile),
+            _ => None,
+        }
+    }
+
+    fn gone(change: &LibraryChange) -> Option<Uuid> {
+        match change {
+            LibraryChange::CredentialProfileGone(id) => Some(*id),
+            _ => None,
+        }
+    }
+
+    fn change(self) -> LibraryChange {
+        LibraryChange::CredentialProfile(self)
+    }
+}
+
+impl NamedProfile for SshProfile {
+    fn id(&self) -> Uuid {
+        self.id
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn rename(&mut self, name: String) {
+        self.name = name;
+    }
+
+    fn held(list: &ConnectionList) -> &[Self] {
+        &list.ssh_profiles
+    }
+
+    fn put(change: &LibraryChange) -> Option<&Self> {
+        match change {
+            LibraryChange::SshProfile(profile) => Some(profile),
+            _ => None,
+        }
+    }
+
+    fn gone(change: &LibraryChange) -> Option<Uuid> {
+        match change {
+            LibraryChange::SshProfileGone(id) => Some(*id),
+            _ => None,
+        }
+    }
+
+    fn change(self) -> LibraryChange {
+        LibraryChange::SshProfile(self)
+    }
+}
+
+// A picker tells two profiles of one name apart by nothing else, so a pull that brings a second profile of a name
+// settles it as 0052's Collisions do: the lowest id compared as bytes keeps the name, since a profile keeps no creation
+// date, and each other takes the first free `<name> (2)`, `<name> (3)` and on, compared without case. A renamed
+// profile this device held goes up as its own edit, as the Mac renamed the arriving one; one rule on every device
+// converges (0075).
+fn unique_profile_names<P: NamedProfile>(list: &ConnectionList, mut changes: Vec<LibraryChange>) -> Vec<LibraryChange> {
+    let mut held: std::collections::BTreeMap<Uuid, P> = P::held(list)
         .iter()
-        .map(|profile| (profile.id, profile.clone()))
+        .map(|profile| (profile.id(), profile.clone()))
         .collect();
     let mut arriving: Vec<Uuid> = Vec::new();
     for change in &changes {
-        match change {
-            LibraryChange::CredentialProfile(profile) => {
-                held.insert(profile.id, profile.clone());
-                arriving.push(profile.id);
-            }
-            LibraryChange::CredentialProfileGone(id) => {
-                held.remove(id);
-            }
-            _ => {}
+        if let Some(profile) = P::put(change) {
+            held.insert(profile.id(), profile.clone());
+            arriving.push(profile.id());
+        } else if let Some(id) = P::gone(change) {
+            held.remove(&id);
         }
     }
     let fold = |name: &str| name.to_lowercase();
     let mut by_name: std::collections::BTreeMap<String, Vec<Uuid>> = std::collections::BTreeMap::new();
     for profile in held.values() {
-        by_name.entry(fold(&profile.name)).or_default().push(profile.id);
+        by_name.entry(fold(profile.name())).or_default().push(profile.id());
     }
     let mut taken: std::collections::HashSet<String> = by_name.keys().cloned().collect();
     for (_, mut ids) in by_name {
@@ -379,13 +457,13 @@ fn unique_profile_names(list: &ConnectionList, mut changes: Vec<LibraryChange>) 
         ids.sort_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
         for id in ids.into_iter().skip(1) {
             let Some(profile) = held.get_mut(&id) else { continue };
-            let name = free_name(&profile.name, |candidate| taken.contains(&fold(candidate)));
+            let name = free_name(profile.name(), |candidate| taken.contains(&fold(candidate)));
             taken.insert(fold(&name));
-            profile.name = name;
-            let renamed = LibraryChange::CredentialProfile(profile.clone());
+            profile.rename(name);
+            let renamed = profile.clone().change();
             match changes
                 .iter_mut()
-                .find(|change| matches!(change, LibraryChange::CredentialProfile(put) if put.id == id))
+                .find(|change| P::put(change).is_some_and(|put| put.id() == id))
             {
                 Some(change) => *change = renamed,
                 None => changes.push(renamed),

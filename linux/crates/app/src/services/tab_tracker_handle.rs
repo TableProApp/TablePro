@@ -138,20 +138,20 @@ impl TabTrackerHandle {
     }
 
     pub(crate) fn pending_state(&self) -> PendingState {
-        self.0.borrow().pending_state()
+        self.0.borrow().pending_state().into()
     }
 
     pub(crate) fn preview_save(&self) -> Result<Option<(SaveTarget, TrackedChanges)>, SaveRejection> {
-        self.0.borrow().preview_save()
+        self.0.borrow().preview_save().map_err(SaveRejection::from)
     }
 
     pub(crate) fn begin_save(&self) -> Result<Option<SaveBatch>, SaveRejection> {
-        self.write().begin_save()
+        self.write().begin_save().map_err(SaveRejection::from)
     }
 
     #[must_use = "the grid shows stale rows until the delta is applied"]
     pub(crate) fn settle_save(&self, outcome: &SaveOutcome, snapshot: SaveSnapshot) -> TrackerDelta {
-        self.write().settle_save(outcome, snapshot)
+        self.write().settle_save(&outcome.core_outcome(), snapshot)
     }
 }
 
@@ -162,6 +162,7 @@ mod tests {
     use tablepro_core::meta::TableRef;
 
     use super::*;
+    use crate::services::cell_overlay::CellOverlayExt;
     use crate::workspace::{RollbackCause, UnknownCause};
 
     fn row(id: i64) -> RowKey {

@@ -578,16 +578,30 @@ impl SignInGuard for SessionGuard {
 }
 
 async fn name_teams(control: Arc<dyn TeamLibraryControl>, account: tablepro_account::Account) {
+    name_teams_from(control, async move { account.profile().await }).await;
+}
+
+// The engine holds the state file, so the profile read, which waits on the network, holds it only weakly: a service
+// that closes meanwhile lets its file go at once, and the names read for it are dropped.
+async fn name_teams_from(
+    control: Arc<dyn TeamLibraryControl>,
+    profile: impl Future<Output = Result<tablepro_account::Profile, tablepro_account::AccountError>>,
+) {
     let due = match control.teams_to_name().await {
         Ok(due) if !due.is_empty() => due,
         _ => return,
     };
-    let profile = match account.profile().await {
+    let held = Arc::downgrade(&control);
+    drop(control);
+    let profile = match profile.await {
         Ok(profile) => profile,
         Err(error) => {
             tracing::debug!(code = error.code(), "the profile gave no team names");
             return;
         }
+    };
+    let Some(control) = held.upgrade() else {
+        return;
     };
     let names = profile
         .teams
@@ -805,6 +819,93 @@ mod tests {
 
     fn wire(n: u128) -> String {
         team_id(TeamId(Uuid::from_u128(n)))
+    }
+
+    // Names what it is asked to, into a list the test keeps past the control.
+    struct Naming(Arc<std::sync::Mutex<Vec<(TeamId, String)>>>);
+
+    #[async_trait::async_trait]
+    impl TeamLibraryControl for Naming {
+        async fn teams_to_name(&self) -> Result<Vec<TeamId>, SyncError> {
+            Ok(vec![TeamId(Uuid::from_u128(5))])
+        }
+
+        async fn name_teams(&self, names: Vec<(TeamId, String)>) -> Result<(), SyncError> {
+            self.0.lock().unwrap().extend(names);
+            Ok(())
+        }
+    }
+
+    fn acme() -> tablepro_account::Profile {
+        tablepro_account::Profile {
+            id: "acct_1".to_owned(),
+            email: "owner@example.com".to_owned(),
+            name: None,
+            licenses: Vec::new(),
+            teams: vec![tablepro_account::Membership {
+                team: tablepro_account::TeamClaim {
+                    id: wire(5),
+                    name: "Acme".to_owned(),
+                },
+                role: "owner".to_owned(),
+                has_seat: true,
+            }],
+        }
+    }
+
+    // A profile read that waits until the test lets it go, and says when it started.
+    fn held_profile() -> (
+        tokio::sync::oneshot::Receiver<()>,
+        tokio::sync::oneshot::Sender<()>,
+        impl Future<Output = Result<tablepro_account::Profile, tablepro_account::AccountError>>,
+    ) {
+        let (reached, reached_rx) = tokio::sync::oneshot::channel();
+        let (go, go_rx) = tokio::sync::oneshot::channel::<()>();
+        let read = async move {
+            reached.send(()).unwrap();
+            go_rx.await.unwrap();
+            Ok(acme())
+        };
+        (reached_rx, go, read)
+    }
+
+    // A slow profile read never keeps the engine, and with it the state file, from closing.
+    #[tokio::test]
+    async fn the_profile_read_holds_no_engine_and_names_the_teams_once_back() {
+        let named = Arc::default();
+        let control = Arc::new(Naming(Arc::clone(&named)));
+        let (reached, go, read) = held_profile();
+        let naming = crate::runtime::tasks().unwrap().spawn_task(name_teams_from(
+            Arc::clone(&control) as Arc<dyn TeamLibraryControl>,
+            read,
+        ));
+
+        reached.await.unwrap();
+        let held_during_the_read = Arc::strong_count(&control);
+        go.send(()).unwrap();
+        naming.await.unwrap();
+
+        assert_eq!(held_during_the_read, 1);
+        assert_eq!(
+            *named.lock().unwrap(),
+            vec![(TeamId(Uuid::from_u128(5)), "Acme".to_owned())]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_service_closed_during_the_profile_read_keeps_no_names() {
+        let named = Arc::default();
+        let control = Arc::new(Naming(Arc::clone(&named)));
+        let (reached, go, read) = held_profile();
+        let naming = crate::runtime::tasks()
+            .unwrap()
+            .spawn_task(name_teams_from(control as Arc<dyn TeamLibraryControl>, read));
+
+        reached.await.unwrap();
+        go.send(()).unwrap();
+        naming.await.unwrap();
+
+        assert!(named.lock().unwrap().is_empty());
     }
 
     #[test]

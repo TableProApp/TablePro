@@ -111,13 +111,20 @@ public abstract class SqlEngineTests : IAsyncDisposable
             _ => CellEdit.Null.Instance,
         };
 
-        using var save = tableEditor.Plan(page.Set,
-        [
-            new RowEdit.Update(rows[1], [new CellChange(columns.IndexOf("note"), new CellEdit.Text("first"))]),
-            new RowEdit.Insert([.. columns.Select(NewCell)]),
-            new RowEdit.Delete(rows[2]),
-        ]);
-        var outcome = await save.RunAsync(confirmed: false, cancellationToken);
+        var draftRow = (long)page.Set.RowCount;
+        tableEditor.SetCell(page.Set, rows[1], columns.IndexOf("note"), new CellEdit.Text("first"));
+        tableEditor.InsertRow();
+        for (var column = 0; column < columns.Count; column++)
+        {
+            var cell = NewCell(columns[column]);
+            if (tableEditor.Check(column, cell, newRow: true) is null)
+            {
+                tableEditor.SetCell(page.Set, draftRow, column, cell);
+            }
+        }
+
+        tableEditor.DeleteRows(page.Set, [rows[2]]);
+        var outcome = await tableEditor.SaveAsync(page.Set, confirmed: false, cancellationToken);
         using var after = await SelectAsync(editor, $"SELECT id, name, note FROM {Qualified(table.Name)}", cancellationToken);
 
         Assert.Null(tableEditor.LockFor(page.Set));
