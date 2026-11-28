@@ -9,7 +9,7 @@ use oauth2::{
     TokenResponse, TokenUrl,
 };
 use secrecy::{ExposeSecret, SecretString};
-use tablepro_cloud_api::{StepUpChallenge, rate_limited, read_capped, schema_mismatch};
+use tablepro_cloud_api::{ANSWER_TIMEOUT, StepUpChallenge, rate_limited, read_capped, schema_mismatch};
 use url::Url;
 
 use crate::account_error::AccountError;
@@ -44,6 +44,8 @@ pub(crate) struct OAuth {
     http: reqwest::Client,
     token: String,
     revoke: String,
+    // How long a token call waits for the server's answer to start.
+    answer_within: Duration,
 }
 
 pub(crate) struct Authorization {
@@ -70,7 +72,14 @@ impl OAuth {
             http,
             token: endpoints.token.clone(),
             revoke: endpoints.revoke.clone(),
+            answer_within: ANSWER_TIMEOUT,
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn answering_within(mut self, within: Duration) -> Self {
+        self.answer_within = within;
+        self
     }
 
     // The machine's fields name it on the confirmation screen. A step-up asks for what its challenge named (RFC 9470
@@ -115,7 +124,7 @@ impl OAuth {
         authorization: Authorization,
     ) -> Result<Tokens, AccountError> {
         let noted = Arc::new(OnceLock::new());
-        let http = |request| execute(self.http.clone(), request, noted.clone());
+        let http = |request| execute(self.http.clone(), request, self.answer_within, noted.clone());
         let answer = self
             .client
             .exchange_code(AuthorizationCode::new(code))
@@ -167,7 +176,7 @@ impl OAuth {
 
     pub(crate) async fn refresh(&self, refresh: &SecretString) -> Result<Tokens, AccountError> {
         let noted = Arc::new(OnceLock::new());
-        let http = |request| execute(self.http.clone(), request, noted.clone());
+        let http = |request| execute(self.http.clone(), request, self.answer_within, noted.clone());
         let token = RefreshToken::new(refresh.expose_secret().to_owned());
         let answer = self.client.exchange_refresh_token(&token).request_async(&http).await;
         answer.map(tokens).map_err(|error| grant_error(error, noted.get()))
@@ -210,20 +219,26 @@ impl OAuth {
 }
 
 // oauth2 keeps neither the status nor the headers of an error answer, so a 429 is noted here, and a 5xx, whose body
-// may be a proxy's page, keeps its status for the caller's backoff.
+// may be a proxy's page, keeps its status for the caller's backoff. A server that sends no answer within `within` is
+// noted as out of reach.
 async fn execute(
     client: reqwest::Client,
     request: HttpRequest,
+    within: Duration,
     noted: Arc<OnceLock<AccountError>>,
 ) -> Result<HttpResponse, HttpClientError<reqwest::Error>> {
     let (parts, body) = request.into_parts();
-    let mut response = client
+    let sent = client
         .request(parts.method, parts.uri.to_string())
         .headers(parts.headers)
         .body(body)
-        .send()
-        .await
-        .map_err(Box::new)?;
+        .send();
+    let Ok(sent) = tokio::time::timeout(within, sent).await else {
+        let detail = format!("no answer within {within:?}");
+        drop(noted.set(AccountError::Unreachable(detail.clone())));
+        return Err(HttpClientError::Other(detail));
+    };
+    let mut response = sent.map_err(Box::new)?;
     let status = response.status();
     if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
         drop(noted.set(rate_limited(response.headers()).into()));
@@ -397,6 +412,31 @@ mod tests {
                 "{error:?}"
             );
         }
+    }
+
+    // E2E F21: a paused server held the launch refresh for the client's whole request timeout.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_refresh_a_server_never_answers_is_out_of_reach_within_the_answer_window() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
+        let base = format!("http://{}", listener.local_addr().expect("its address"));
+        std::thread::spawn(move || {
+            let mut held = Vec::new();
+            for stream in listener.incoming().flatten() {
+                held.push(stream);
+            }
+        });
+        let endpoints = Endpoints::new(&base, &format!("{base}/v2")).expect("the endpoints");
+        let oauth = OAuth::new(AppClient::LINUX, &endpoints, reqwest::Client::new())
+            .expect("a client")
+            .answering_within(Duration::from_millis(300));
+        let started = std::time::Instant::now();
+
+        let Err(refused) = oauth.refresh(&SecretString::from("refresh")).await else {
+            panic!("a server that never answered gave tokens");
+        };
+
+        assert!(matches!(&refused, AccountError::Unreachable(_)), "{refused:?}");
+        assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

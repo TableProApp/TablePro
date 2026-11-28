@@ -4,6 +4,10 @@ use crate::api_error::{ApiError, http_text};
 
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+// How long a call whose answer is small waits for that answer to start. A server that takes the connection and sends
+// nothing back, as a paused container behind a published port, is out of reach after this rather than after
+// `REQUEST_TIMEOUT`; a transfer keeps the client's timeout.
+pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
 
 // The one client every call to a TablePro server goes through. Redirects stay off so a token never follows one to
 // another host. Reads the system's certificates, so it belongs off the UI thread.

@@ -108,6 +108,18 @@ impl AccountError {
     }
 }
 
+// A small call's answer, which must start within `ANSWER_TIMEOUT`: a server that took the connection and sends nothing
+// back is out of reach then. The body reads under the client's own timeout.
+pub(crate) async fn answer(request: reqwest::RequestBuilder) -> Result<reqwest::Response, AccountError> {
+    match tokio::time::timeout(tablepro_cloud_api::ANSWER_TIMEOUT, request.send()).await {
+        Ok(sent) => sent.map_err(AccountError::unreachable),
+        Err(_) => Err(AccountError::Unreachable(format!(
+            "no answer within {:?}",
+            tablepro_cloud_api::ANSWER_TIMEOUT
+        ))),
+    }
+}
+
 impl From<ApiError> for AccountError {
     fn from(error: ApiError) -> Self {
         match error {

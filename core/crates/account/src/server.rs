@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tablepro_cloud_api::{rate_limited, read_capped};
 use url::Url;
 
-use crate::account_error::AccountError;
+use crate::account_error::{AccountError, answer};
 use crate::account_settings::Endpoints;
 use crate::entitlement_keys::EntitlementKeys;
 use crate::license_keys::LicenseKeys;
@@ -359,12 +359,7 @@ async fn fetch_json<T: serde::de::DeserializeOwned>(
     url: &str,
     server: &str,
 ) -> Result<T, AccountError> {
-    let response = http
-        .get(url)
-        .header(reqwest::header::ACCEPT, "application/json")
-        .send()
-        .await
-        .map_err(AccountError::unreachable)?;
+    let response = answer(http.get(url).header(reqwest::header::ACCEPT, "application/json")).await?;
     let status = response.status();
     if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
         return Err(rate_limited(response.headers()).into());

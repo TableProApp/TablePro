@@ -7,6 +7,7 @@ mod errors;
 mod wire;
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use reqwest::header::{AUTHORIZATION, ETAG, HeaderMap, HeaderValue};
@@ -113,6 +114,8 @@ pub struct HttpTransport {
     binding: Binding,
     // The server's last `DPoP-Nonce`, which the next proof carries (RFC 9449 section 8).
     nonce: Mutex<Option<String>>,
+    // How long the scopes body, a pass's first call, waits for its answer to start.
+    answer_within: Duration,
 }
 
 impl std::fmt::Debug for HttpTransport {
@@ -142,7 +145,14 @@ impl HttpTransport {
             http,
             binding,
             nonce: Mutex::new(None),
+            answer_within: tablepro_cloud_api::ANSWER_TIMEOUT,
         })
+    }
+
+    #[must_use]
+    pub fn answering_within(mut self, within: Duration) -> Self {
+        self.answer_within = within;
+        self
     }
 
     pub fn binding(&self) -> &Binding {
@@ -203,19 +213,29 @@ impl HttpTransport {
         Ok(request)
     }
 
-    // One retry with the server's nonce and one with a fresh token; a 401 after both ends the sign-in's calls. Every
-    // other answer goes back to the caller as it came.
     async fn send(&self, call: &Call<'_>) -> Result<Response, TransportError> {
+        self.send_within(call, None).await
+    }
+
+    // One retry with the server's nonce and one with a fresh token; a 401 after both ends the sign-in's calls. Every
+    // other answer goes back to the caller as it came. With `within`, an answer that has not started by then is the
+    // network's failure: a server that took the connection and sends nothing back is out of reach.
+    async fn send_within(&self, call: &Call<'_>, within: Option<Duration>) -> Result<Response, TransportError> {
         let (mut nonce_retried, mut token_retried) = (false, false);
         loop {
             let token = self.token().await?;
-            let answer = self
-                .request(call, &token)?
-                .send()
-                .await
-                .map_err(|error| TransportError::Network {
-                    detail: tablepro_cloud_api::http_text(error),
-                })?;
+            let sent = self.request(call, &token)?.send();
+            let sent = match within {
+                Some(within) => tokio::time::timeout(within, sent)
+                    .await
+                    .map_err(|_| TransportError::Network {
+                        detail: format!("no answer within {within:?}"),
+                    })?,
+                None => sent.await,
+            };
+            let answer = sent.map_err(|error| TransportError::Network {
+                detail: tablepro_cloud_api::http_text(error),
+            })?;
             if let Some(nonce) = dpop_nonce(answer.headers()) {
                 *self.nonce() = Some(nonce);
             }
@@ -344,7 +364,8 @@ impl ServiceTransport for HttpTransport {
             body: None,
             proof: Self::proof(&proof),
         };
-        let (status, headers, body) = Self::body(self.send(&call).await?, ANSWER_BYTES).await?;
+        let answer = self.send_within(&call, Some(self.answer_within)).await?;
+        let (status, headers, body) = Self::body(answer, ANSWER_BYTES).await?;
         match status {
             StatusCode::NOT_MODIFIED if if_none_match.is_some() => Ok(ScopesAnswer::NotModified),
             // 0051, Releases: a server with no `/v2/sync`.

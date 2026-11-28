@@ -11,6 +11,7 @@ use tablepro_sync::api::ids::{RecordKey, ScopeName};
 use tablepro_sync::api::state::{Opened, Row, Standing, StandingRow, StateFiles};
 use tablepro_sync::api::transport::TransportError;
 use tablepro_sync::engine::EngineEvents;
+use tablepro_sync::service::ServiceSync;
 use tablepro_sync_testing::{FakeDeviceStore, FakeServer, MemoryStateFiles};
 use uuid::Uuid;
 
@@ -29,6 +30,35 @@ impl EngineEvents for Heard {
     fn keys_changed(&self) {
         self.keys.fetch_add(1, Ordering::SeqCst);
     }
+
+    fn approvals_changed(&self) {}
+}
+
+// The phase at each status signal, read from the engine it follows.
+#[derive(Default)]
+struct Phases {
+    sync: std::sync::OnceLock<std::sync::Weak<ServiceSync>>,
+    seen: std::sync::Mutex<Vec<SyncPhase>>,
+}
+
+impl Phases {
+    fn follow(&self, sync: &Arc<ServiceSync>) {
+        let _ = self.sync.set(Arc::downgrade(sync));
+    }
+
+    fn take(&self) -> Vec<SyncPhase> {
+        std::mem::take(&mut *self.seen.lock().unwrap())
+    }
+}
+
+impl EngineEvents for Phases {
+    fn status_changed(&self) {
+        if let Some(sync) = self.sync.get().and_then(std::sync::Weak::upgrade) {
+            self.seen.lock().unwrap().push(sync.status().phase);
+        }
+    }
+
+    fn keys_changed(&self) {}
 
     fn approvals_changed(&self) {}
 }
@@ -137,4 +167,42 @@ async fn another_device_joining_the_account_reaches_the_app_as_a_key_change() {
 
     assert_eq!(unchanged, first);
     assert_eq!(joined, first + 1);
+}
+
+// E2E F21: through an outage the status said Syncing for as long as each retry waited out its timeout.
+#[tokio::test]
+async fn a_pass_after_one_the_network_failed_says_syncing_only_once_the_server_answers() {
+    let server = FakeServer::new();
+    let phases = Arc::new(Phases::default());
+    let device = DeviceBuilder::new(&server, ROW)
+        .events(Arc::clone(&phases) as Arc<dyn EngineEvents>)
+        .build()
+        .await;
+    phases.follow(&device.sync);
+    device.sync().await;
+    let first = phases.take();
+    server.fail_next(network());
+    device.pass().await.unwrap_err();
+    phases.take();
+
+    server.fail_next(network());
+    device.pass().await.unwrap_err();
+    let unanswered = phases.take();
+    device.sync().await;
+    let answered = phases.take();
+
+    assert_eq!(first.first(), Some(&SyncPhase::Syncing), "{first:?}");
+    assert_eq!(
+        unanswered.first(),
+        Some(&SyncPhase::Waiting { retry_in_ms: 0 }),
+        "{unanswered:?}"
+    );
+    assert!(!unanswered.contains(&SyncPhase::Syncing), "{unanswered:?}");
+    assert_eq!(
+        answered[..2],
+        [SyncPhase::Waiting { retry_in_ms: 0 }, SyncPhase::Syncing],
+        "{answered:?}"
+    );
+    assert_eq!(device.sync.status().phase, SyncPhase::Idle);
+    assert_eq!(device.sync.status().problem, None);
 }

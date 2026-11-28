@@ -7,7 +7,7 @@ use secrecy::{ExposeSecret, SecretString};
 use crate::v2;
 
 // What each request of a client carries: the access token, none for a public call such as reading a shared link,
-// and a timeout of its own for a call that takes longer than the client's, such as an upload.
+// and a timeout of its own: longer than the client's for an upload, shorter for a small answer.
 #[derive(Clone, Debug)]
 pub struct Bearer {
     token: Option<SecretString>,

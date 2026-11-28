@@ -12,7 +12,7 @@ use serde::Deserialize;
 use tablepro_cloud_api::{ApiError, rate_limited, read_capped, refusal, schema_mismatch};
 
 use super::{AccessToken, Account, Call, Licensed, Server, Session, SignOutCause, SignedInAs, Trust};
-use crate::account_error::AccountError;
+use crate::account_error::{AccountError, answer};
 use crate::account_file::{self, AccountFile};
 use crate::account_settings::SignInKey;
 use crate::account_status::{AccountStatus, EntitlementProblem};
@@ -163,15 +163,14 @@ impl Account {
 
     // By hand, not through the generated client, so a server that sends more than a license is cut off.
     async fn license_token(&self, api: &str, access: &SecretString) -> Result<String, AccountError> {
-        let response = self
-            .inner
-            .http
-            .get(format!("{api}/license"))
-            .header(ACCEPT, "application/json")
-            .header(AUTHORIZATION, format!("Bearer {}", access.expose_secret()))
-            .send()
-            .await
-            .map_err(AccountError::unreachable)?;
+        let response = answer(
+            self.inner
+                .http
+                .get(format!("{api}/license"))
+                .header(ACCEPT, "application/json")
+                .header(AUTHORIZATION, format!("Bearer {}", access.expose_secret())),
+        )
+        .await?;
         let status = response.status();
         if status == StatusCode::TOO_MANY_REQUESTS {
             return Err(rate_limited(response.headers()).into());
@@ -189,14 +188,7 @@ impl Account {
     }
 
     async fn jwks(&self, uri: &str) -> Result<String, AccountError> {
-        let response = self
-            .inner
-            .http
-            .get(uri)
-            .header(ACCEPT, "application/json")
-            .send()
-            .await
-            .map_err(AccountError::unreachable)?;
+        let response = answer(self.inner.http.get(uri).header(ACCEPT, "application/json")).await?;
         let status = response.status();
         if status == StatusCode::TOO_MANY_REQUESTS {
             return Err(rate_limited(response.headers()).into());
@@ -291,18 +283,24 @@ impl Account {
         })
     }
 
-    // With no call, so sync can open the sign-in's state file while the server is out of reach. Each call it then
-    // makes still takes `access_token`, which vouches for a company server first.
+    // With no call, and once a published status names the account and the device no wait for a call in flight, so sync
+    // opens the sign-in's state file at once while a refresh still waits on an unreachable server. Before that, as while
+    // the run restores the sign-in or a refresh registers the device, it reads the session once that call is done. Each
+    // call sync then makes takes `access_token`, which vouches for a company server first.
     pub async fn signed_in_as(&self) -> Result<SignedInAs, AccountError> {
-        let session = self.inner.session.lock().await;
         self.reachable()?;
+        let held = self.held_sign_in().clone();
+        if let Some(held) = held.filter(|held| held.account_id.is_some() && held.device_id.is_some()) {
+            return Ok(held);
+        }
+        let session = self.inner.session.lock().await;
         if session.refresh.is_none() {
             return Err(AccountError::SignedOut);
         }
         Ok(self.signed_in_as_in(&session))
     }
 
-    fn signed_in_as_in(&self, session: &Session) -> SignedInAs {
+    pub(super) fn signed_in_as_in(&self, session: &Session) -> SignedInAs {
         let server = self.current();
         SignedInAs {
             api: server.api.clone(),
