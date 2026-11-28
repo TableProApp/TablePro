@@ -133,6 +133,9 @@ struct Inner {
     held: AtomicBool,
     // Held, never across an await, while the values or the server change, so each change sees the other's result.
     switching: std::sync::Mutex<()>,
+    // The sign-in as the last published status had it, read without the session's lock, which a call to an
+    // unreachable server can hold for as long as it waits.
+    signed_in_as: std::sync::Mutex<Option<SignedInAs>>,
 }
 
 #[derive(Default)]
@@ -263,6 +266,7 @@ impl Account {
                 gate: Arc::default(),
                 held: AtomicBool::new(held),
                 switching: std::sync::Mutex::new(()),
+                signed_in_as: std::sync::Mutex::new(None),
             }),
         })
     }
@@ -977,12 +981,21 @@ impl Account {
 
     fn signed_out(&self, session: &mut Session) {
         *session = Session::default();
+        *self.held_sign_in() = None;
         self.inner.license.send_replace(None);
         self.inner.status.send_replace(AccountStatus::SignedOut);
     }
 
+    fn held_sign_in(&self) -> std::sync::MutexGuard<'_, Option<SignedInAs>> {
+        self.inner
+            .signed_in_as
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     // The license first, so an app told of the status reads the license that goes with it.
     fn publish(&self, session: &Session, entitlement: Option<Entitlement>, problem: Option<EntitlementProblem>) {
+        *self.held_sign_in() = session.refresh.is_some().then(|| self.signed_in_as_in(session));
         self.inner
             .license
             .send_replace(session.licensed.as_ref().map(|licensed| licensed.license.clone()));
@@ -1047,8 +1060,14 @@ impl Account {
         }
     }
 
+    // Every answer the account reads through the generated client is small: one that has not come within
+    // `ANSWER_TIMEOUT` is from a server out of reach. Shares upload and read with their own client and timeout.
     fn api(&self, bearer: Bearer) -> v2::Client {
-        v2::Client::new_with_client(&self.current().api, self.inner.http.clone(), bearer)
+        v2::Client::new_with_client(
+            &self.current().api,
+            self.inner.http.clone(),
+            bearer.lasting(tablepro_cloud_api::ANSWER_TIMEOUT),
+        )
     }
 }
 
@@ -1354,6 +1373,80 @@ mod tests {
         assert_eq!(held.session_id, signed_in(&account).session_id);
         assert!(held.session_id.is_some());
         assert!(matches!(token, Err(AccountError::Unreachable(_))), "{token:?}");
+    }
+
+    // Takes each connection and says when it has one, and never answers, as a paused container behind a published
+    // port does.
+    fn black_hole() -> (Endpoints, std::sync::mpsc::Receiver<()>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a free port");
+        let base = format!("http://{}", listener.local_addr().expect("its address"));
+        let (taken, connections) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut held = Vec::new();
+            for stream in listener.incoming().flatten() {
+                held.push(stream);
+                let _ = taken.send(());
+            }
+        });
+        (
+            Endpoints::new(&base, &format!("{base}/v2")).expect("the endpoints"),
+            connections,
+        )
+    }
+
+    // E2E F21: sync opened only after the launch refresh gave up on a paused server, so the pane said Sync Off.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_sign_in_names_itself_while_a_refresh_waits_on_a_server_that_never_answers() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        keep(dir.path(), Some(entitlement(Utc::now()))).await;
+        let (endpoints, connections) = black_hole();
+        let account = account_at(dir.path(), Keyring::holding(Some("refresh")), endpoints);
+        account.restore().await;
+        let refreshing = tokio::spawn({
+            let account = account.clone();
+            async move { account.refresh_entitlement().await }
+        });
+        connections
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the refresh reached the server");
+
+        let held = tokio::time::timeout(Duration::from_secs(1), account.signed_in_as()).await;
+
+        assert!(
+            matches!(&held, Ok(Ok(signed_in)) if signed_in.account_id.as_deref() == Some(ACCOUNT)),
+            "{held:?}"
+        );
+        assert!(!refreshing.is_finished());
+        refreshing.abort();
+    }
+
+    // A restored sign-in whose device is not registered yet waits for the refresh that registers it, since sync cannot
+    // bind to it and would hold that until it opened again.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_sign_in_with_no_device_yet_waits_for_the_refresh_in_flight() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let file = AccountFile {
+            account_id: Some(ACCOUNT.to_owned()),
+            ..AccountFile::default()
+        };
+        account_file::write(&dir.path().join("account.json"), &file)
+            .await
+            .expect("the account file");
+        let (endpoints, connections) = black_hole();
+        let account = account_at(dir.path(), Keyring::holding(Some("refresh")), endpoints);
+        account.restore().await;
+        let refreshing = tokio::spawn({
+            let account = account.clone();
+            async move { account.refresh_entitlement().await }
+        });
+        connections
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the refresh reached the server");
+
+        let held = tokio::time::timeout(Duration::from_millis(500), account.signed_in_as()).await;
+
+        assert!(held.is_err(), "{held:?}");
+        refreshing.abort();
     }
 
     #[tokio::test]

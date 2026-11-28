@@ -40,6 +40,7 @@ use crate::api::state::{
 use crate::api::transport::{ServiceTransport, TransportError};
 use crate::engine::{
     Adapters, Clock, EngineEvents, EngineHooks, Fence, Journal, JournalEntry, JournalIds, Pass, StopSignal, Waiting,
+    retryable,
 };
 use crate::moves::{Arrival, MoveFence};
 
@@ -99,6 +100,9 @@ pub struct ServiceSync {
     stale_move_dropped: std::sync::atomic::AtomicBool,
     // The person chose for the account this engine follows another one with.
     chosen: std::sync::atomic::AtomicBool,
+    // The last pass failed as a later try can get past, as the network: the passes after it wait to retry until the
+    // server answers one (E2E F21).
+    retrying: std::sync::atomic::AtomicBool,
     // One pass at a time per state file (0054, Scheduling).
     session: tokio::sync::Mutex<Session>,
     status: Mutex<SyncStatus>,
@@ -280,6 +284,7 @@ impl ServiceSync {
             policy_forbids: std::sync::atomic::AtomicBool::new(false),
             stale_move_dropped: std::sync::atomic::AtomicBool::new(false),
             chosen: std::sync::atomic::AtomicBool::new(false),
+            retrying: std::sync::atomic::AtomicBool::new(false),
             session: tokio::sync::Mutex::new(Session::default()),
             status: Mutex::new(SyncStatus {
                 provider: Some(Provider::Service),
@@ -772,7 +777,12 @@ impl ServiceSync {
         ) {
             *self.mode.lock().unwrap_or_else(PoisonError::into_inner) = ServiceMode::TeamsOnly;
         }
-        self.set_phase(SyncPhase::Syncing);
+        // Whoever runs it, a pass after one the network failed is a retry until the server answers it.
+        self.set_phase(if self.retrying.load(Ordering::SeqCst) {
+            SyncPhase::Waiting { retry_in_ms: 0 }
+        } else {
+            SyncPhase::Syncing
+        });
         self.before_team_pass().await;
         let taken = self.journal.take();
         let named = (why == PassReason::Journal).then(|| taken.clone());
@@ -808,6 +818,9 @@ impl ServiceSync {
         self.owe_account_choice().await?;
         self.queue().finish_decided().await?;
         let body = self.poll_scopes(session).await?;
+        if self.retrying.swap(false, Ordering::SeqCst) {
+            self.set_phase(SyncPhase::Syncing);
+        }
         let keyed = self.keys.dpop_key().await?.is_some();
         let approved = body
             .scopes
@@ -1193,6 +1206,8 @@ impl ServiceSync {
         }
         let mut status = self.status_lock();
         status.last_pass_ms = Some(now);
+        self.retrying
+            .store(outcome.as_ref().err().is_some_and(retryable), Ordering::SeqCst);
         match outcome {
             Ok(report) => {
                 status.last_synced_ms = Some(now);
@@ -1321,8 +1336,13 @@ impl Pass for ServiceSync {
         Duration::from_secs(secs.max(1))
     }
 
+    // Once the backoff ends, the retry it held runs now: still a wait until the server answers it.
     fn waiting(&self, retry_in_ms: Option<u64>) {
-        let phase = retry_in_ms.map_or(SyncPhase::Idle, |retry_in_ms| SyncPhase::Waiting { retry_in_ms });
+        let phase = match retry_in_ms {
+            Some(retry_in_ms) => SyncPhase::Waiting { retry_in_ms },
+            None if self.retrying.load(Ordering::SeqCst) => SyncPhase::Waiting { retry_in_ms: 0 },
+            None => SyncPhase::Idle,
+        };
         self.set_phase(phase);
     }
 }

@@ -430,6 +430,36 @@ async fn a_transport_opens_with_the_server_out_of_reach_and_its_calls_fail_as_th
     assert!(log.lock().unwrap().is_empty());
 }
 
+// Takes each connection and never answers, as a paused container behind a published port does.
+fn black_hole() -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}/v2", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        let mut held = Vec::new();
+        for stream in listener.incoming().flatten() {
+            held.push(stream);
+        }
+    });
+    base
+}
+
+// E2E F21: a paused server held each pass for the client's whole request timeout.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_scopes_body_of_a_server_that_never_answers_fails_as_the_network_within_the_answer_window() {
+    let (transport, _) = transport(&black_hole()).await;
+    let transport = transport.answering_within(std::time::Duration::from_millis(300));
+    let started = std::time::Instant::now();
+
+    let answered = transport.scopes(None, Proof::None).await;
+
+    assert!(matches!(answered, Err(TransportError::Network { .. })), "{answered:?}");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_sign_in_with_no_device_row_opens_no_transport() {
     let account = Account::at("http://127.0.0.1:1/v2");
