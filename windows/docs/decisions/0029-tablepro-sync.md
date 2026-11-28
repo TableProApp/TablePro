@@ -31,5 +31,6 @@ The core's sync engine runs TablePro Sync and iCloud over the core's stores ([co
 
 - Until the keys pages land, the upload dialog says what the account's keys need and offers Check again.
 - History syncs only through TablePro Sync, with the history this PC keeps as its window.
+- Changes waiting for approval (core #4668) show as "N changes need approval" with no action, apart from this PC's own approval in the key state. The review of those changes is a follow-up.
 - `OpenSync` passes no `HostSyncedSecrets` yet, so the core sends each connection's secrets as envelopes (core #4665). A Windows `HostSyncedSecrets` for profile secrets is a follow-up.
 - The UI tests run signed out: the section shows Off, and choosing TablePro Sync shows the plan gate.

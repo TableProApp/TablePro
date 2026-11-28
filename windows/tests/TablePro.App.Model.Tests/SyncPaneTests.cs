@@ -42,6 +42,21 @@ public sealed class SyncPaneTests
         Assert.Null(pane.Notice);
     }
 
+    [Fact]
+    public void ChangesWaitingForApprovalSayHowManyAndStayApartFromThisPcsOwnApproval()
+    {
+        var waiting = Idle with { Phase = SyncPhase.NeedsApproval, WaitingApprovals = 3 };
+
+        var changes = Pane(SyncProvider.TableProSync, FeatureAccess.Available, waiting, Approved);
+        var device = Pane(SyncProvider.TableProSync, FeatureAccess.Available, waiting, new KeyState.NeedsApproval(null));
+
+        Assert.Equal(SyncStatusKind.ChangesNeedApproval, changes.Status);
+        Assert.Equal(3, changes.ChangesAwaitingApproval);
+        Assert.Null(changes.Problem);
+        Assert.Equal(SyncStatusKind.NeedsApproval, device.Status);
+        Assert.Equal(0, device.ChangesAwaitingApproval);
+    }
+
     [Theory]
     [InlineData(SyncPhase.Syncing, SyncStatusKind.Syncing, false)]
     [InlineData(SyncPhase.Waiting, SyncStatusKind.Waiting, true)]

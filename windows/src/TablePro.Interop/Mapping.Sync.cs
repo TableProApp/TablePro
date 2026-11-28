@@ -41,6 +41,7 @@ internal static partial class Mapping
             Native.SyncPhaseTag.Waiting => SyncPhase.Waiting,
             Native.SyncPhaseTag.PullOnly => SyncPhase.PullOnly,
             Native.SyncPhaseTag.NewIdentity => SyncPhase.NewIdentity,
+            Native.SyncPhaseTag.NeedsApproval => SyncPhase.NeedsApproval,
             // A removed CloudKit zone is iCloud's alone, which Windows never runs.
             _ => SyncPhase.Unavailable,
         },

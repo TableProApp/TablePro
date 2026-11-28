@@ -34,6 +34,9 @@ public enum SyncStatusKind
 
     // The account has no keys yet, so its recovery key is set up first.
     NeedsRecoveryKey,
+
+    // Changes wait for the person's approval before they sync, which this app cannot review yet.
+    ChangesNeedApproval,
     Locked,
     Off,
     Unavailable,
@@ -64,7 +67,8 @@ public sealed record SyncPane(
     DateTimeOffset? LastPass,
     bool OffersSyncNow,
     bool ShowsCategories,
-    IReadOnlyList<SyncServerPolicy> ServerPolicies)
+    IReadOnlyList<SyncServerPolicy> ServerPolicies,
+    int ChangesAwaitingApproval = 0)
 {
     public const string Feature = "service_sync";
 
@@ -109,7 +113,8 @@ public sealed record SyncPane(
             live ? inputs.Status?.LastPass : null,
             live && status is not (SyncStatusKind.Syncing or SyncStatusKind.Starting),
             licensed,
-            policies);
+            policies,
+            status == SyncStatusKind.ChangesNeedApproval ? inputs.Status?.WaitingApprovals ?? 0 : 0);
     }
 
     // personal_sync off holds the history too, so it is the one notice then.
@@ -178,6 +183,7 @@ public sealed record SyncPane(
             SyncPhase.Idle => (SyncStatusKind.UpToDate, null),
             SyncPhase.Waiting => (SyncStatusKind.Waiting, status.Problem),
             SyncPhase.PullOnly => (SyncStatusKind.DownloadingOnly, null),
+            SyncPhase.NeedsApproval => (SyncStatusKind.ChangesNeedApproval, null),
             SyncPhase.Off => (SyncStatusKind.Off, null),
             _ => (SyncStatusKind.Unavailable, status.Problem),
         };

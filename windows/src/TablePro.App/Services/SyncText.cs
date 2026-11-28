@@ -20,6 +20,7 @@ internal static class SyncText
         SyncStatusKind.Syncing or SyncStatusKind.Starting => "",
         SyncStatusKind.Waiting => "",
         SyncStatusKind.DownloadingOnly => "",
+        SyncStatusKind.ChangesNeedApproval => "\uE7BA",
         SyncStatusKind.NeedsApproval or SyncStatusKind.NeedsRecoveryKey => "",
         SyncStatusKind.Locked => "",
         SyncStatusKind.Off => "",
@@ -40,6 +41,10 @@ internal static class SyncText
             SyncStatusKind.Locked when pane.LockCause is { } cause => LockMessage(cause),
             SyncStatusKind.NeedsApproval => Strings.Get("SyncNeedsApprovalDetail"),
             SyncStatusKind.NeedsRecoveryKey => Strings.Get("SyncNeedsRecoveryKeyDetail"),
+            SyncStatusKind.ChangesNeedApproval => Strings.Plural(
+                "SyncChangesNeedApprovalDetail",
+                pane.ChangesAwaitingApproval,
+                pane.ChangesAwaitingApproval),
             SyncStatusKind.Starting or SyncStatusKind.Syncing => string.Empty,
             _ => pane.LastPass is { } last ? LastSynced(last, DateTimeOffset.Now) : Strings.Get("SyncNeverSynced"),
         };

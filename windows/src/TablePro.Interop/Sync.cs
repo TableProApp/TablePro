@@ -30,6 +30,10 @@ public enum SyncPhase
     Waiting,
     PullOnly,
     NewIdentity,
+
+    // Changes wait for the person's approval before they sync (core #4668); WaitingApprovals counts them. Not this
+    // device's own approval, which the key state says.
+    NeedsApproval,
 }
 
 // Problem is the last pass's error code, which the app words.
@@ -279,6 +283,9 @@ internal sealed class SyncWake : Native.SyncListener
     public void StatusChanged() => Raise(SyncChanges.Status);
 
     public void KeysChanged() => Raise(SyncChanges.Keys);
+
+    // The changes waiting for approval are counted in the status.
+    public void ApprovalsChanged() => Raise(SyncChanges.Status);
 
     // False once the service is disposed and no change is left.
     public ValueTask<bool> WaitAsync(CancellationToken cancellationToken) =>

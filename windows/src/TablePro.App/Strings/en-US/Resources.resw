@@ -6832,6 +6832,17 @@ New fingerprint: {2}</value>
   <data name="SyncStatusNeedsApproval" xml:space="preserve">
     <value>Waiting for approval</value>
   </data>
+  <data name="SyncStatusChangesNeedApproval" xml:space="preserve">
+    <value>Changes need approval</value>
+  </data>
+  <data name="SyncChangesNeedApprovalDetail_one" xml:space="preserve">
+    <value>{0:N0} change needs approval before it syncs.</value>
+    <comment>{0} is the number of changes waiting for approval.</comment>
+  </data>
+  <data name="SyncChangesNeedApprovalDetail_other" xml:space="preserve">
+    <value>{0:N0} changes need approval before they sync.</value>
+    <comment>{0} is the number of changes waiting for approval.</comment>
+  </data>
   <data name="SyncStatusNeedsRecoveryKey" xml:space="preserve">
     <value>Recovery key needed</value>
   </data>
