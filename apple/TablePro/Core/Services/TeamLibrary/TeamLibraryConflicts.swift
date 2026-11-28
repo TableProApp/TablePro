@@ -185,10 +185,19 @@ internal final class TeamLibraryConflictsModel: ObservableObject {
         case (nil, nil):
             return true
         case let (shown?, pulled?):
-            return (shown as AnyObject).isEqual(pulled)
+            return canonical(shown).map { $0 == canonical(pulled) } ?? false
         default:
             return false
         }
+    }
+
+    // As JSON text with sorted members, so `true` never matches `1` the way Foundation's `isEqual` lets it.
+    nonisolated private static func canonical(_ value: Any) -> String? {
+        guard let data = try? JSONSerialization.data(
+            withJSONObject: value,
+            options: [.sortedKeys, .fragmentsAllowed, .withoutEscapingSlashes]
+        ) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 
     // RFC 6901: "/a~1b/c~0d" reads as ["a/b", "c~d"].

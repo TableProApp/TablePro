@@ -170,6 +170,30 @@ struct TeamLibraryConflictsModelTests {
         #expect(engine.approvalDecisions.isEmpty)
     }
 
+    @Test("A pulled 1 is not the true the sheet showed, nor a string the number, while member order does not count")
+    func valuesCompareAsJSON() {
+        let conflict = TeamConflictFixture.conflict(
+            "c1", kind: "library_connection", fields: ["enabled", "port", "sshConfig"],
+            mine: [:],
+            theirs: ["enabled": true, "port": 7_100, "sshConfig": ["host": "bastion", "port": 22] as [String: Any]]
+        )
+        let theirs: [String: Any] = ["enabled": true, "port": 7_100, "sshConfig": ["host": "bastion", "port": 22] as [String: Any]]
+        func shows(_ field: String, _ pulled: String?) -> Bool {
+            TeamLibraryConflictsModel.sheetShowed(
+                FieldApprovalInfo(field: field, current: nil, pulled: pulled, digest: "d"), of: conflict, theirs: theirs
+            )
+        }
+
+        #expect(shows("/enabled", "true"))
+        #expect(!shows("/enabled", "1"))
+        #expect(shows("/port", "7100"))
+        #expect(!shows("/port", "\"7100\""))
+        #expect(shows("/sshConfig", "{\"port\":22,\"host\":\"bastion\"}"))
+        #expect(shows("/sshConfig/host", "\"bastion\""))
+        #expect(!shows("/sshConfig/host", nil))
+        #expect(!shows("/name", "\"Prod\""))
+    }
+
     @Test("A JSON Pointer reads its escaped member names")
     func pointerTokens() {
         #expect(TeamLibraryConflictsModel.pointerTokens("/sshConfig/host") == ["sshConfig", "host"])
