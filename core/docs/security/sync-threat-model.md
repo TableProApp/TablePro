@@ -196,7 +196,7 @@ ePrint 2026/058 calls rollback an open problem for clients that keep no state. H
 
 ## Residual risks
 
-On 2026-11-25 the maintainer accepted risks 2, 3, 5, 6 and 9, which the vault model leaves open as 1Password and Bitwarden do. No step waits for every member to acknowledge a removal; the honest server's `rotation_due` holds team envelopes only until the next team version. The same day he accepted, under risk 2, that a member a stolen admin device confirmed can still be shown to other teammates. 0065 accepts risks 14 and 15, which give no key and only deny service.
+On 2026-11-25 the maintainer accepted risks 2, 3, 5, 6 and 9, which the vault model leaves open as 1Password and Bitwarden do. No step waits for every member to acknowledge a removal; the honest server's `rotation_due` holds team envelopes only until the next team version. The same day he accepted, under risk 2, that a member a stolen admin device confirmed can still be shown to other teammates. 0065 accepts risks 14 and 15, which give no key and only deny service. 0072 accepts risk 16, which writes only what a device could already write.
 
 1. **Trust on first use** at a genesis, for a team's creator, for each member an admin confirms without comparing, for teammates on a device recovered with the recovery key, and for a re-confirmation after a reset.
 2. **Withholding and split views** go undetected until devices or people compare. A server that withholds a member's rotation from a teammate gets the next team key wrapped to the member's old key, which a stolen device of that member opens. The member's app raises an alarm if that wrap reaches it, which does not stop the split. The same server can keep showing teammates a member that a stolen device confirmed and the person removed. Its own-account form: before any approval, a device of the person that the server keeps on the old account key version writes personal secrets and history under keys the removed device holds.
@@ -213,6 +213,7 @@ On 2026-11-25 the maintainer accepted risks 2, 3, 5, 6 and 9, which the vault mo
 13. **X25519 is not post-quantum.** Someone who archives wraps today could open them on a future quantum computer, and with them every envelope and history entry under those versions. A later hybrid suite protects what is written after the move, not before.
 14. **A device row taken by machine id.** A phished IdP session can register on a person's self-reported machine id and confuse or block that row's requests and resets.
 15. **A team ended on a made-up record.** After a restore, a server can serve a different record at a version a device waits for, signed by an account it made up, and the team ends on that device (`keys.conflict`). Refusing the push-back already ends a team the same way.
+16. **A push racing a device removal.** A team or history push that read its device as approved just before the device's removal committed can still land, since the push holds its own scope and the removal holds the account and the personal scope. A member removal takes the team row a team push holds, so it has no such race (0072).
 
 ## Out of scope
 

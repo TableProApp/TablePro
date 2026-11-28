@@ -1,6 +1,6 @@
 # 0052: Synced records have canonical ids; saved queries and folders have UUIDs and may have no connection
 
-- **Status**: Accepted
+- **Status**: Accepted; credential profile name collisions and team ids in other case amended by 0075
 - **Date**: 2026-11-25
 
 ## Context

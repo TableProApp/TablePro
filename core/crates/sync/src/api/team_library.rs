@@ -239,6 +239,9 @@ pub struct FacadeBase {
 pub enum TeamLibraryError {
     #[error("the sign-in this sync service was opened with has ended")]
     SignedInChanged,
+    // The app named another owner than the one this service's Team Library belongs to, as after a switch of account.
+    #[error("this sync service's Team Library belongs to another account")]
+    OtherOwner,
     #[error("this account reaches no such team")]
     UnknownTeam,
     #[error("this account's role does not write the team's library")]
@@ -265,6 +268,7 @@ impl TeamLibraryError {
     pub const fn code(&self) -> &'static str {
         match self {
             Self::SignedInChanged => "sync.team_library.signed_in_changed",
+            Self::OtherOwner => "sync.team_library.other_owner",
             Self::UnknownTeam => "sync.team_library.unknown_team",
             Self::NotWritable => "sync.team_library.not_writable",
             Self::NotPulled => "sync.team_library.not_pulled",

@@ -4,6 +4,7 @@
 // the store's agree member by member. Local only and sample connections never leave the device, and neither do the
 // column layouts and table folders of a connection that does not sync.
 
+mod bundle;
 mod connection;
 mod details;
 mod favourites;
@@ -27,6 +28,7 @@ use tablepro_storage::{
 };
 use uuid::Uuid;
 
+pub use bundle::{team_bundle, team_connection};
 pub use connection::DriverNames;
 pub use favourites::FavouriteAdapter;
 pub use folders::TableFolderAdapter;
