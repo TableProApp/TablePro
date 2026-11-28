@@ -8,6 +8,7 @@ mod import;
 mod pass;
 mod plan;
 mod publish;
+mod secrets;
 mod unsent;
 
 use std::collections::{BTreeSet, HashMap};
@@ -27,11 +28,12 @@ use crate::adapters::blocking;
 use crate::api::adapter::RecordAdapter;
 use crate::api::error::{AdapterError, StateError, SyncError};
 use crate::api::ids::ScopeName;
-use crate::api::scopes::Role;
+use crate::api::scopes::{Role, ScopePolicies};
 use crate::api::state::{BaseRow, Row, RowRange, StateIdentity, Table};
 use crate::api::team_library::{
     SignInGuard, TeamConnection, TeamFolder, TeamItem, TeamItemRef, TeamLibraryControl, TeamLibraryError,
-    TeamLibraryImport, TeamLibraryPolicy, TeamLibraryTeam, TeamPublish, TeamQuery, TeamScopeStatus, UnsentTeamEdit,
+    TeamLibraryImport, TeamLibraryPolicy, TeamLibraryTeam, TeamPublish, TeamQuery, TeamScopeStatus, TeamSecret,
+    UnsentTeamEdit,
 };
 use crate::engine::Fence;
 
@@ -367,16 +369,16 @@ impl TeamLibraryControl for ServiceSync {
         let body = session.body.clone();
         drop(session);
         let mut teams = Vec::new();
-        let scopes: Vec<(ScopeName, Option<Role>)> = match &body {
+        let scopes: Vec<(ScopeName, Option<Role>, ScopePolicies)> = match &body {
             Some(body) => body
                 .scopes
                 .iter()
                 .filter(|info| matches!(info.scope, ScopeName::Team(_)))
-                .map(|info| (info.scope, info.role))
+                .map(|info| (info.scope, info.role, info.policies))
                 .collect(),
             None => self.team_rows().await?,
         };
-        for (scope, role) in scopes {
+        for (scope, role, policies) in scopes {
             let Some(team) = team_of(scope) else { continue };
             let items = self.team_items(scope).await?;
             let bases = self.team_bases(scope).await?;
@@ -385,6 +387,7 @@ impl TeamLibraryControl for ServiceSync {
                 team,
                 role,
                 writable: writes(role),
+                syncs_passwords: policies.password_sync != Some(false),
                 items: with_writers(items, &bases, &local.writers),
                 name: local.name,
             });
@@ -441,7 +444,7 @@ impl TeamLibraryControl for ServiceSync {
         team: TeamId,
         connections: Vec<TeamConnection>,
     ) -> Result<TeamPublish, SyncError> {
-        self.publish(team, move |view| plan::connections(view, &connections))
+        self.publish(team, |view| plan::connections(view, &connections), &connections)
             .await
     }
 
@@ -451,12 +454,12 @@ impl TeamLibraryControl for ServiceSync {
         folders: Vec<TeamFolder>,
         queries: Vec<TeamQuery>,
     ) -> Result<TeamPublish, SyncError> {
-        self.publish(team, move |view| plan::saved_queries(view, &folders, &queries))
+        self.publish(team, move |view| plan::saved_queries(view, &folders, &queries), &[])
             .await
     }
 
     async fn remove_team_items(&self, team: TeamId, items: Vec<TeamItemRef>) -> Result<TeamPublish, SyncError> {
-        self.publish(team, move |view| plan::removals(view, &items)).await
+        self.publish(team, move |view| plan::removals(view, &items), &[]).await
     }
 
     async fn unsent_team_edits(&self) -> Result<Vec<UnsentTeamEdit>, SyncError> {
@@ -493,7 +496,7 @@ impl TeamLibraryControl for ServiceSync {
                 .team_rows()
                 .await?
                 .into_iter()
-                .map(|(scope, role)| (scope, role, None))
+                .map(|(scope, role, _)| (scope, role, None))
                 .collect(),
         };
         let mut status = Vec::new();
@@ -519,16 +522,23 @@ impl TeamLibraryControl for ServiceSync {
         self.journal.pass_soon(crate::api::control::PassReason::Person);
         Ok(())
     }
+
+    async fn team_connection_secrets(&self, team: TeamId, connection: String) -> Result<Vec<TeamSecret>, SyncError> {
+        self.signed_in()?;
+        let secrets = self.connection_secrets(ScopeName::Team(team), &connection).await?;
+        self.signed_in()?;
+        Ok(secrets)
+    }
 }
 
 impl ServiceSync {
     // The team scopes the state file holds, as an offline launch shows them before the first scopes body.
-    async fn team_rows(&self) -> Result<Vec<(ScopeName, Option<Role>)>, SyncError> {
+    async fn team_rows(&self) -> Result<Vec<(ScopeName, Option<Role>, ScopePolicies)>, SyncError> {
         let rows = begin(&self.state).await?.scan(&RowRange::Table(Table::Scopes)).await?;
         Ok(rows
             .into_iter()
             .filter_map(|row| match row {
-                Row::Scope(row) if matches!(row.scope, ScopeName::Team(_)) => Some((row.scope, row.role)),
+                Row::Scope(row) if matches!(row.scope, ScopeName::Team(_)) => Some((row.scope, row.role, row.policies)),
                 _ => None,
             })
             .collect())

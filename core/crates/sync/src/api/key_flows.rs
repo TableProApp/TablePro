@@ -389,6 +389,13 @@ pub trait TeamFlows: Send + Sync {
         unimplemented("keys.apply_team_objects")
     }
 
+    // The version a team secret is sealed under now, refused for the reason a seal would be: the team due a rotation,
+    // a role that writes no envelope, or no current version this account holds.
+    async fn team_writing_version(&self, team: TeamId) -> Result<Version, SyncError> {
+        let _ = team;
+        unimplemented("keys.team_writing_version")
+    }
+
     async fn seal_team_envelope(
         &self,
         team: TeamId,
@@ -409,6 +416,19 @@ pub trait TeamFlows: Send + Sync {
     ) -> Result<OpenedEnvelope, SyncError> {
         let _ = (team, envelope, fields, in_force);
         unimplemented("keys.open_team_envelope")
+    }
+
+    // A copy the device's own Team Library store holds, which a pull already judged or this device sealed: opened under
+    // any version the device took, with no rollback floor and nothing recorded, so reading a copy that has not gone up
+    // never moves the floor a pulled one is judged against (0056, Rollback).
+    async fn open_held_team_envelope(
+        &self,
+        team: TeamId,
+        envelope: EnvelopeId,
+        fields: Value,
+    ) -> Result<OpenedEnvelope, SyncError> {
+        let _ = (team, envelope, fields);
+        unimplemented("keys.open_held_team_envelope")
     }
 }
 
@@ -698,6 +718,9 @@ pub struct ApprovalSession {
 pub struct AccountDevice {
     pub key_device: KeyDeviceId,
     pub device: Option<DeviceRowId>,
+    // The row that asked for this key device's approval, as a session this device approved recorded it. The row may
+    // hold another key device by now, so it names the key device and never stands for the row that holds it.
+    pub requested_by: Option<DeviceRowId>,
     pub name: Option<String>,
     pub platform: Option<String>,
     pub added_at_us: Option<i64>,

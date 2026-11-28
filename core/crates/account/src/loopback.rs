@@ -66,8 +66,9 @@ impl Callback {
             _ => false,
         };
         if !from_expected {
-            tracing::warn!(expected = %expected.issuer, named = ?self.issuers, "a sign-in answer from another issuer was refused");
-            return Err(AccountError::SignInIssuerMismatch);
+            let refused = AccountError::SignInIssuerMismatch;
+            tracing::warn!(code = refused.code(), expected = %expected.issuer, named = ?self.issuers, "a sign-in answer from another issuer was refused");
+            return Err(refused);
         }
         match self.outcome {
             Outcome::Code(code) => Ok(code),

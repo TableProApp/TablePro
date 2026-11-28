@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use serde_json::json;
 use tablepro_storage::{TeamLibraryItem, TeamLibraryKind};
 use tablepro_sync::api::scopes::Role;
-use tablepro_sync::api::team_library::TeamItem;
+use tablepro_sync::api::team_library::{TeamItem, TeamSecrets};
 use uuid::Uuid;
 
 use super::*;
@@ -26,6 +26,7 @@ fn held(n: u128, role: Role) -> TeamLibraryTeam {
         name: None,
         role: Some(role),
         writable: role != Role::Member,
+        syncs_passwords: true,
         items: vec![TeamItem {
             item: TeamLibraryItem {
                 kind: TeamLibraryKind::Query,
@@ -42,6 +43,7 @@ fn connection() -> TeamConnection {
     TeamConnection {
         id: Uuid::from_u128(9),
         settings: json!({"name": "Prod", "host": "db"}),
+        secrets: TeamSecrets::Keep,
     }
 }
 

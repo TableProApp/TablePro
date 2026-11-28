@@ -137,14 +137,17 @@ pub(crate) fn resolve(policy: &ManagedPolicy, chosen: Option<&str>, loopback_htt
         .and_then(|text| match parse_origin(text, loopback_http) {
             Ok(origin) => Some(origin),
             Err(error) => {
-                tracing::warn!(%error, "the managed account server is not used");
+                tracing::warn!(code = error.code(), %error, "the managed account server is not used");
                 None
             }
         });
     let others_allowed = match (&managed, values.and_then(|values| values.allow_other_account_servers)) {
         (Some(_), Some(false)) => false,
         (None, Some(false)) => {
-            tracing::warn!("AllowOtherAccountServers is false with no AccountServerURL, so it is ignored");
+            tracing::warn!(
+                code = crate::account_error::POLICY_IGNORED,
+                "AllowOtherAccountServers is false with no AccountServerURL, so it is ignored"
+            );
             true
         }
         _ => true,
@@ -406,7 +409,7 @@ pub(crate) fn read_choice_blocking(path: &Path) -> Choice {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == ErrorKind::NotFound => return Choice::default(),
         Err(error) => {
-            tracing::warn!(%error, "the account server choice was not read");
+            tracing::warn!(code = crate::account_error::STORAGE, %error, "the account server choice was not read");
             return Choice::default();
         }
     };
@@ -414,13 +417,14 @@ pub(crate) fn read_choice_blocking(path: &Path) -> Choice {
         Ok(stored) if stored.version == CHOICE_VERSION => stored.choice,
         Ok(stored) => {
             tracing::warn!(
+                code = crate::account_error::STORAGE,
                 version = stored.version,
                 "the account server choice is of another version"
             );
             Choice::default()
         }
         Err(error) => {
-            tracing::warn!(%error, "the account server choice does not read");
+            tracing::warn!(code = crate::account_error::STORAGE, %error, "the account server choice does not read");
             Choice::default()
         }
     }

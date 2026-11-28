@@ -4,7 +4,7 @@ use tablepro_storage::TeamLibraryKind;
 use tablepro_sync::api::control::{ConflictChoice, SyncControl};
 use tablepro_sync::api::ids::RecordKey;
 use tablepro_sync::api::scopes::Role;
-use tablepro_sync::api::team_library::{TeamConnection, TeamLibraryControl, TeamPublish};
+use tablepro_sync::api::team_library::{TeamConnection, TeamLibraryControl, TeamPublish, TeamSecrets};
 use tablepro_sync_testing::FakeServer;
 
 use crate::support::{
@@ -19,6 +19,7 @@ async fn a_connection_goes_up_without_its_secrets_and_publishing_it_again_writes
     let connection = TeamConnection {
         id: uuid(7),
         settings: json!({"name": "Prod", "host": "db", "password": "x", "sshConfig": {"host": "b", "keyPassphrase": "y"}}),
+        secrets: TeamSecrets::Keep,
     };
 
     let first = mac

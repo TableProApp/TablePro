@@ -8,7 +8,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 use tablepro_records::Kind;
-use tablepro_storage::{StorageError, TeamLibraryItem, TeamLibraryKind, TeamLibraryStore, TeamLibraryWriter};
+use tablepro_storage::{
+    StorageError, TeamLibraryEnvelope, TeamLibraryItem, TeamLibraryKind, TeamLibraryStore, TeamLibraryWriter,
+};
 use uuid::Uuid;
 
 use super::blocking;
@@ -179,6 +181,109 @@ impl RecordAdapter for TeamLibraryAdapter {
     }
 }
 
+// A team's `secret_envelope` records (0056, Envelopes and history) over the same store: the sealed copies of the team's
+// connection secrets, ciphertext only. A pull lands the copies the keys already judged, and a publish writes the copies
+// it sealed, which the engine sends as it sends any change. The personal envelopes have a store of their own.
+pub struct TeamEnvelopeAdapter {
+    store: TeamLibraryStore,
+}
+
+impl TeamEnvelopeAdapter {
+    pub fn new(store: &TeamLibraryStore) -> Self {
+        Self { store: store.clone() }
+    }
+}
+
+#[async_trait]
+impl RecordAdapter for TeamEnvelopeAdapter {
+    fn kind(&self) -> Kind {
+        Kind::SecretEnvelope
+    }
+
+    fn store(&self) -> &str {
+        STORE
+    }
+
+    fn serves(&self, scope: ScopeName) -> bool {
+        matches!(scope, ScopeName::Team(_))
+    }
+
+    async fn identity(&self) -> Result<StoreStamp, AdapterError> {
+        let store = self.store.clone();
+        let identity = blocking(move || match store.identity_blocking()? {
+            Some(identity) => Ok(identity),
+            None => store.start_new_generation_blocking(),
+        })
+        .await?
+        .map_err(store_error)?;
+        Ok(stamp(Some(identity)))
+    }
+
+    async fn records(&self, scope: ScopeName) -> Result<LocalRecords, AdapterError> {
+        let ScopeName::Team(_) = scope else {
+            return Ok(LocalRecords::default());
+        };
+        let store = self.store.clone();
+        let team = scope.wire();
+        let held = blocking(move || store.team_blocking(&team))
+            .await?
+            .map_err(store_error)?;
+        let records = held
+            .into_iter()
+            .flat_map(|team| team.envelopes)
+            .map(|envelope| LocalRecord {
+                record_id: envelope.id,
+                fields: envelope.fields,
+                standing: Standing::Syncs,
+            })
+            .collect();
+        Ok(LocalRecords {
+            records,
+            unreadable: Vec::new(),
+            tombstones: Vec::new(),
+        })
+    }
+
+    async fn apply(&self, scope: ScopeName, changes: Vec<LocalChange>) -> Result<StoreStamp, AdapterError> {
+        let ScopeName::Team(_) = scope else {
+            return self.identity().await;
+        };
+        let mut puts = Vec::new();
+        let mut gone = Vec::new();
+        for change in changes {
+            match change {
+                LocalChange::Put { record_id, fields } if matches!(fields, Value::Object(_)) => {
+                    puts.push(TeamLibraryEnvelope { id: record_id, fields });
+                }
+                LocalChange::Put { .. } => {
+                    return Err(AdapterError::Unreadable {
+                        detail: "a team envelope whose fields are not an object".to_owned(),
+                    });
+                }
+                LocalChange::Delete { record_id } => gone.push(record_id),
+            }
+        }
+        let store = self.store.clone();
+        let team = scope.wire();
+        let identity = blocking(move || {
+            if !puts.is_empty() {
+                store.put_envelopes_blocking(&team, puts)?;
+            }
+            if !gone.is_empty() {
+                store.remove_envelopes_blocking(&team, &gone)?;
+            }
+            store.identity_blocking()
+        })
+        .await?
+        .map_err(store_error)?;
+        Ok(stamp(identity))
+    }
+
+    async fn tombstones_pushed(&self, _scope: ScopeName, _record_ids: Vec<String>) -> Result<(), AdapterError> {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -254,5 +359,63 @@ mod tests {
         assert!(elsewhere.is_empty());
         assert!(queries.records(team).await.unwrap().records.is_empty());
         assert_eq!(folders.records(team).await.unwrap().records.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn team_envelopes_round_trip_beside_the_items_and_serve_only_team_scopes() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store(dir.path());
+        let envelopes = TeamEnvelopeAdapter::new(&store);
+        let connections = TeamLibraryAdapter::all(&store)
+            .into_iter()
+            .find(|adapter| adapter.kind() == Kind::LibraryConnection)
+            .unwrap();
+        let team = ScopeName::Team(TeamId(Uuid::from_u128(5)));
+        let id = "library_connection/c1/password".to_owned();
+        let sealed = json!({"suite": "tp1", "kv": 1, "nonce": "bm9uY2U", "ct": "Y3Q"});
+
+        connections
+            .apply(
+                team,
+                vec![LocalChange::Put {
+                    record_id: "c1".to_owned(),
+                    fields: json!({"name": "Shop"}),
+                }],
+            )
+            .await
+            .unwrap();
+        envelopes
+            .apply(
+                team,
+                vec![LocalChange::Put {
+                    record_id: id.clone(),
+                    fields: sealed.clone(),
+                }],
+            )
+            .await
+            .unwrap();
+        let held = envelopes.records(team).await.unwrap().records;
+        let refused = envelopes
+            .apply(
+                team,
+                vec![LocalChange::Put {
+                    record_id: id.clone(),
+                    fields: json!("plaintext"),
+                }],
+            )
+            .await;
+        envelopes
+            .apply(team, vec![LocalChange::Delete { record_id: id.clone() }])
+            .await
+            .unwrap();
+
+        assert!(envelopes.serves(team));
+        assert!(!envelopes.serves(ScopeName::Personal));
+        assert_eq!(held.len(), 1);
+        assert_eq!((held[0].record_id.as_str(), &held[0].fields), (id.as_str(), &sealed));
+        assert!(matches!(refused, Err(AdapterError::Unreadable { .. })));
+        assert!(envelopes.records(team).await.unwrap().records.is_empty());
+        assert_eq!(connections.records(team).await.unwrap().records.len(), 1);
+        assert!(envelopes.records(ScopeName::Personal).await.unwrap().records.is_empty());
     }
 }

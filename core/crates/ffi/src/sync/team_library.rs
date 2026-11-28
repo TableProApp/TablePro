@@ -5,22 +5,27 @@
 
 use std::sync::Arc;
 
+use secrecy::{ExposeSecret, SecretString};
 use serde_json::Value;
 use tablepro_core::DriverRegistry;
 use tablepro_keys::encoding::{AccountId, Origin};
+use tablepro_records::Kind;
+use tablepro_records::envelope::{SecretKind, destination};
 use tablepro_storage::{
-    ChangeJournal, ConnectionListState, SshProfile, StoragePaths, TeamLibraryKind, TeamLibraryOwner, TeamLibraryStore,
+    ChangeJournal, ConnectionListState, SavedConnection, SshProfile, StoragePaths, TeamLibraryKind, TeamLibraryOwner,
+    TeamLibraryStore,
 };
 use tablepro_sync::SyncError;
 use tablepro_sync::adapters::library::{DriverNames, LocalUse, shared_row_local_uses, team_bundle, team_connection};
 use tablepro_sync::adapters::store_journal::StoreJournal;
 use tablepro_sync::api::ids::{ScopeName, typeid_uuid};
 use tablepro_sync::api::scopes::Role;
+use tablepro_sync::api::secrets::{DeviceSecrets, SecretRef};
 use tablepro_sync::api::state::StateIdentity;
 use tablepro_sync::api::team_library::{
     FacadeBase, ImportedEdit, SignInGuard, TeamConnection, TeamFolder, TeamId, TeamItem, TeamItemRef,
     TeamLibraryControl, TeamLibraryError, TeamLibraryImport, TeamLibraryPolicy, TeamLibraryTeam, TeamPublish,
-    TeamQuery, TeamScopeStatus, UnsentState, UnsentTeamEdit,
+    TeamQuery, TeamScopeStatus, TeamSecret, TeamSecrets, UnsentState, UnsentTeamEdit,
 };
 use tablepro_sync::service::ServiceSync;
 use uuid::Uuid;
@@ -73,6 +78,9 @@ pub struct TeamLibraryTeamInfo {
     pub role: Option<TeamRoleTag>,
     pub can_write: bool,
     pub items: Vec<TeamLibraryItemInfo>,
+    // False while the team's password sync is off, so a publish carries no password.
+    #[uniffi(default = true)]
+    pub syncs_passwords: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -102,6 +110,18 @@ pub struct TeamPublishInfo {
     pub conflicts: u32,
     pub unsent: u32,
     pub problem: Option<String>,
+    // Why the connections went up without their secrets: `sync.team_library.passwords_off`, `.not_confirmed`,
+    // `.rotation_due` or `.passwords_role`. None when every secret went up, or there was none.
+    #[uniffi(default = None)]
+    pub secrets_left_out: Option<String>,
+}
+
+// One secret of a team connection: `kind` is core ADR 0056's name for it (`password`, `ssh_password`,
+// `ssh_key_passphrase`, `ssh_totp_secret`, `ssl_key_passphrase`).
+#[derive(Clone, uniffi::Record)]
+pub struct TeamSecretArg {
+    pub kind: String,
+    pub value: SecretString,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -310,6 +330,7 @@ fn team_info(team: TeamLibraryTeam, names: DriverNames) -> TeamLibraryTeamInfo {
         name: team.name,
         role: team.role.map(role_tag),
         can_write: team.writable,
+        syncs_passwords: team.syncs_passwords,
         items: team.items.into_iter().map(|item| item_info(item, names)).collect(),
     }
 }
@@ -320,6 +341,7 @@ fn publish_info(publish: TeamPublish) -> TeamPublishInfo {
         conflicts: publish.conflicts,
         unsent: publish.unsent,
         problem: publish.problem,
+        secrets_left_out: publish.secrets_left_out.map(|reason| reason.code().to_owned()),
     }
 }
 
@@ -348,7 +370,6 @@ fn status_info(status: TeamScopeStatus) -> TeamScopeStatusInfo {
     }
 }
 
-// The bundle the team gets, built the one way every platform builds it; the publish strips every secret key.
 // A use of this device that a row from another origin would make (`shared_row_local_uses`), which the app asks about
 // once per destination before the first connect.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -409,21 +430,113 @@ fn local_uses(
         .collect())
 }
 
+// The bundle the team gets, built the one way every platform builds it; the publish strips every secret key. Its
+// secrets stay as the team has them until `secrets` names them.
 fn connection(
     record: LibraryConnectionRecord,
     names: DriverNames,
     profiles: &[SshProfile],
-) -> Result<TeamConnection, CoreError> {
+) -> Result<(TeamConnection, SavedConnection), CoreError> {
     let id = entity(&record.connection.id, "connection id")?;
     let saved = stored_connection(id, record, None)?;
     let profile = saved
         .details
         .ssh_profile_id
         .and_then(|linked| profiles.iter().find(|held| held.id == linked));
-    Ok(TeamConnection {
-        id,
-        settings: team_bundle(&saved, profile, names),
-    })
+    Ok((
+        TeamConnection {
+            id,
+            settings: team_bundle(&saved, profile, names),
+            secrets: TeamSecrets::Keep,
+        },
+        saved,
+    ))
+}
+
+// The connection as the library holds it now, when it still goes where the copy the app published goes: a copy the app
+// read before a save moved the connection keeps the team's secrets as they are, so no secret is sealed for a
+// destination it was not saved for.
+fn still_goes_where_published<'a>(
+    held: &'a [SavedConnection],
+    profiles: &[SshProfile],
+    published: &TeamConnection,
+    names: DriverNames,
+) -> Option<&'a SavedConnection> {
+    let current = held.iter().find(|saved| saved.id == published.id)?;
+    let profile = current
+        .details
+        .ssh_profile_id
+        .and_then(|linked| profiles.iter().find(|held| held.id == linked));
+    let now = team_bundle(current, profile, names);
+    // A password's destination names every member any team secret is sealed for.
+    let where_to = |fields: &Value| destination(Kind::LibraryConnection, &SecretKind::Password, fields);
+    (where_to(&now) == where_to(&published.settings)).then_some(current)
+}
+
+// The secrets a saved connection signs in with, where this device keeps them: a linked credential profile's password
+// and a linked SSH profile's secrets in place of the connection's own, as the team copy carries the profile's values.
+// None when this device reads no secrets at all, so the team's stay as they are.
+async fn saved_secrets(
+    secrets: Option<&Arc<dyn DeviceSecrets>>,
+    saved: &SavedConnection,
+    profiles: &[SshProfile],
+) -> Result<TeamSecrets, CoreError> {
+    let Some(secrets) = secrets else {
+        return Ok(TeamSecrets::Keep);
+    };
+    let ssh_profile = saved
+        .details
+        .ssh_profile_id
+        .filter(|linked| profiles.iter().any(|held| held.id == *linked));
+    let mut found = Vec::new();
+    for kind in TEAM_SECRETS {
+        let (parent, parent_id) = match (&kind, saved.details.credential_profile_id, ssh_profile) {
+            (SecretKind::Password, Some(profile), _) => (Kind::CredentialProfile, profile),
+            (SecretKind::SshPassword | SecretKind::SshKeyPassphrase | SecretKind::SshTotpSecret, _, Some(profile)) => {
+                (Kind::SshProfile, profile)
+            }
+            _ => (Kind::Connection, saved.id),
+        };
+        if !secrets.kinds(parent).contains(&kind) {
+            continue;
+        }
+        let reference = SecretRef {
+            parent,
+            parent_id,
+            secret: kind.clone(),
+        };
+        let value = secrets
+            .load(&reference)
+            .await
+            .map_err(|error| CoreError::from(SyncError::from(error)))?;
+        if let Some(value) = value.filter(|value| !value.expose_secret().is_empty()) {
+            found.push(TeamSecret { kind, value });
+        }
+    }
+    Ok(TeamSecrets::Set(found))
+}
+
+// The secret kinds a team connection's envelopes hold that a store here keeps; a driver's own fields have none yet.
+const TEAM_SECRETS: [SecretKind; 5] = [
+    SecretKind::Password,
+    SecretKind::SslKeyPassphrase,
+    SecretKind::SshPassword,
+    SecretKind::SshKeyPassphrase,
+    SecretKind::SshTotpSecret,
+];
+
+fn team_secret(arg: TeamSecretArg) -> Result<TeamSecret, CoreError> {
+    let kind = SecretKind::parse(Kind::LibraryConnection, &arg.kind)
+        .filter(|kind| TEAM_SECRETS.contains(kind))
+        .ok_or_else(|| malformed("secret kind"))?;
+    Ok(TeamSecret { kind, value: arg.value })
+}
+
+fn team_secret_arg(secret: TeamSecret) -> TeamSecretArg {
+    TeamSecretArg {
+        kind: secret.kind.to_string(),
+        value: secret.value,
+    }
 }
 
 fn folder(arg: TeamFolderArg) -> Result<TeamFolder, CoreError> {
@@ -662,10 +775,39 @@ impl SyncService {
     ) -> Result<TeamPublishInfo, CoreError> {
         let team = team(&team_id)?;
         let (names, profiles) = (self.driver_names(), self.held_profiles());
-        let connections = connections
+        let (secrets, store, tasks) = (self.secrets.clone(), self.connections.clone(), self.tasks.clone());
+        let read: Vec<TeamConnection> = connections
             .into_iter()
-            .map(|record| connection(record, names, &profiles))
+            .map(|record| connection(record, names, &profiles).map(|(connection, _)| connection))
             .collect::<Result<Vec<_>, _>>()?;
+        let connections = on_runtime(&self.tasks, async move {
+            let (Some(secrets), Some(store)) = (secrets, store) else {
+                return Ok(read);
+            };
+            // Held from the library read through the secrets' reads, so a save lands wholly before or after them.
+            let _held = secrets.hold().await;
+            let list = tasks
+                .spawn_blocking_task(move || store.list_blocking())
+                .await
+                .map_err(|failure| CoreError::failed("ffi.panicked", failure.to_string()))?
+                .map_err(|error| {
+                    CoreError::from(SyncError::from(tablepro_sync::api::AdapterError::Store {
+                        store: "connections.json".to_owned(),
+                        detail: error.to_string(),
+                    }))
+                })?;
+            let mut connections = Vec::new();
+            for mut connection in read {
+                if let Some(current) =
+                    still_goes_where_published(&list.connections, &list.ssh_profiles, &connection, names)
+                {
+                    connection.secrets = saved_secrets(Some(&secrets), current, &list.ssh_profiles).await?;
+                }
+                connections.push(connection);
+            }
+            Ok(connections)
+        })
+        .await?;
         let publish = self
             .on_team_library(expected_owner, move |control| async move {
                 control.publish_team_connections(team, connections).await
@@ -768,6 +910,51 @@ impl SyncService {
             control.import_team_library(teams).await
         })
         .await
+    }
+}
+
+#[uniffi::export]
+impl SyncService {
+    // An editor's edit of a team copy, which this device never saves: `connection.connection.id` is the id the team
+    // stores. `secrets` None leaves the team's envelopes of it as they are; Some is every secret it signs in with, each
+    // sealed again for the edited destination, and a kind left out loses its envelope.
+    pub async fn publish_team_connection_edit(
+        &self,
+        expected_owner: TeamLibraryOwnerArg,
+        team_id: String,
+        connection: LibraryConnectionRecord,
+        secrets: Option<Vec<TeamSecretArg>>,
+    ) -> Result<TeamPublishInfo, CoreError> {
+        let team = team(&team_id)?;
+        let (names, profiles) = (self.driver_names(), self.held_profiles());
+        let (mut connection, _) = self::connection(connection, names, &profiles)?;
+        connection.secrets = match secrets {
+            Some(secrets) => TeamSecrets::Set(secrets.into_iter().map(team_secret).collect::<Result<_, _>>()?),
+            None => TeamSecrets::Keep,
+        };
+        let publish = self
+            .on_team_library(expected_owner, move |control| async move {
+                control.publish_team_connections(team, vec![connection]).await
+            })
+            .await?;
+        Ok(publish_info(publish))
+    }
+
+    // The secrets the team keeps for one of its connections, for a connect or the edit form: only those sealed for the
+    // destination the team's copy names now. The app asks the person for any left out.
+    pub async fn team_connection_secrets(
+        &self,
+        expected_owner: TeamLibraryOwnerArg,
+        team_id: String,
+        connection_id: String,
+    ) -> Result<Vec<TeamSecretArg>, CoreError> {
+        let team = team(&team_id)?;
+        let secrets = self
+            .on_team_library(expected_owner, move |control| async move {
+                control.team_connection_secrets(team, connection_id).await
+            })
+            .await?;
+        Ok(secrets.into_iter().map(team_secret_arg).collect())
     }
 }
 
@@ -957,10 +1144,11 @@ mod tests {
     fn a_published_connection_goes_as_the_mac_s_bundle_and_a_bad_id_is_refused() {
         let id = Uuid::from_u128(1).hyphenated().to_string().to_uppercase();
 
-        let published = connection(record(&id), DriverNames::Mac, &[]).unwrap();
+        let (published, _) = connection(record(&id), DriverNames::Mac, &[]).unwrap();
         let refused = connection(record("not a uuid"), DriverNames::Mac, &[]);
 
         assert_eq!(published.id, Uuid::from_u128(1));
+        assert_eq!(published.secrets, TeamSecrets::Keep);
         assert_eq!(
             published.settings,
             json!({"name": "Shop", "host": "db", "port": 5432, "database": "shop", "username": "app",
@@ -1142,6 +1330,7 @@ mod tests {
                 name: Some("Acme".to_owned()),
                 role: Some(Role::Editor),
                 writable: true,
+                syncs_passwords: true,
                 items: vec![TeamItem {
                     item: TeamLibraryItem {
                         kind: TeamLibraryKind::Folder,
@@ -1179,5 +1368,160 @@ mod tests {
         assert_eq!(by_uuid.account_id, AccountId(uuid).to_wire());
         assert!(team_library_owner("not a url", &typeid).is_none());
         assert!(team_library_owner("https://api.tablepro.app", "team_x").is_none());
+    }
+
+    // The device's secrets as a test sets them, by parent, record and kind; it keeps only the kinds it is given.
+    struct Kept(Vec<(Kind, Uuid, SecretKind, &'static str)>);
+
+    #[async_trait::async_trait]
+    impl DeviceSecrets for Kept {
+        fn kinds(&self, parent: Kind) -> Vec<SecretKind> {
+            self.0
+                .iter()
+                .filter(|(kind, ..)| *kind == parent)
+                .map(|(_, _, secret, _)| secret.clone())
+                .collect()
+        }
+
+        async fn hold(&self) -> Box<dyn Send> {
+            Box::new(())
+        }
+
+        async fn load(&self, secret: &SecretRef) -> Result<Option<SecretString>, tablepro_sync::api::AdapterError> {
+            Ok(self
+                .0
+                .iter()
+                .find(|(kind, id, held, _)| *kind == secret.parent && *id == secret.parent_id && *held == secret.secret)
+                .map(|(.., value)| SecretString::from((*value).to_owned())))
+        }
+
+        async fn store(&self, _: &SecretRef, _: &SecretString) -> Result<(), tablepro_sync::api::AdapterError> {
+            Ok(())
+        }
+
+        async fn delete(&self, _: &SecretRef) -> Result<(), tablepro_sync::api::AdapterError> {
+            Ok(())
+        }
+    }
+
+    fn named(secrets: &TeamSecrets) -> Vec<(String, String)> {
+        let TeamSecrets::Set(secrets) = secrets else {
+            return Vec::new();
+        };
+        secrets
+            .iter()
+            .map(|secret| (secret.kind.to_string(), secret.value.expose_secret().to_owned()))
+            .collect()
+    }
+
+    // A connection linked to a credential profile and an SSH profile signs in with theirs, so the team gets theirs; the
+    // rest are the connection's own, and an empty one is none.
+    #[tokio::test]
+    async fn a_saved_connection_publishes_the_secrets_it_signs_in_with_its_profiles_first() {
+        let (credential, ssh) = (Uuid::from_u128(20), Uuid::from_u128(21));
+        let mut saved = stored_connection(Uuid::from_u128(1), record(&Uuid::from_u128(1).to_string()), None).unwrap();
+        saved.details.credential_profile_id = Some(credential);
+        saved.details.ssh_profile_id = Some(ssh);
+        let profile = SshProfile {
+            id: ssh,
+            name: "Bastion".to_owned(),
+            ssh: tablepro_storage::SavedSshConfig::new("bastion", tablepro_storage::SavedSshAuth::Password),
+        };
+        let device: Arc<dyn DeviceSecrets> = Arc::new(Kept(vec![
+            (Kind::Connection, saved.id, SecretKind::Password, "own"),
+            (Kind::Connection, saved.id, SecretKind::SshPassword, "own-tunnel"),
+            (Kind::Connection, saved.id, SecretKind::SshKeyPassphrase, ""),
+            (Kind::CredentialProfile, credential, SecretKind::Password, "profile"),
+            (Kind::SshProfile, ssh, SecretKind::SshPassword, "profile-tunnel"),
+        ]));
+
+        let linked = saved_secrets(Some(&device), &saved, std::slice::from_ref(&profile))
+            .await
+            .unwrap();
+        let profile_gone = saved_secrets(Some(&device), &saved, &[]).await.unwrap();
+        saved.details.credential_profile_id = None;
+        let own = saved_secrets(Some(&device), &saved, &[]).await.unwrap();
+        let unread = saved_secrets(None, &saved, &[]).await.unwrap();
+
+        assert_eq!(
+            named(&linked),
+            vec![
+                ("password".to_owned(), "profile".to_owned()),
+                ("ssh_password".to_owned(), "profile-tunnel".to_owned()),
+            ]
+        );
+        assert_eq!(
+            named(&profile_gone),
+            vec![
+                ("password".to_owned(), "profile".to_owned()),
+                ("ssh_password".to_owned(), "own-tunnel".to_owned()),
+            ]
+        );
+        assert_eq!(
+            named(&own),
+            vec![
+                ("password".to_owned(), "own".to_owned()),
+                ("ssh_password".to_owned(), "own-tunnel".to_owned()),
+            ]
+        );
+        assert_eq!(unread, TeamSecrets::Keep);
+    }
+
+    // An edit's secrets cross by their 0056 names; a name no team envelope holds is refused, and each goes back by name.
+    #[test]
+    fn an_edit_s_secret_kinds_are_the_envelope_table_s_and_anything_else_is_refused() {
+        let arg = |kind: &str| TeamSecretArg {
+            kind: kind.to_owned(),
+            value: SecretString::from("x".to_owned()),
+        };
+
+        let password = team_secret(arg("ssh_key_passphrase")).unwrap();
+        let back = team_secret_arg(password.clone());
+
+        assert_eq!(password.kind, SecretKind::SshKeyPassphrase);
+        assert_eq!(
+            (back.kind.as_str(), back.value.expose_secret()),
+            ("ssh_key_passphrase", "x")
+        );
+        for bad in ["ai_key.openai", "plugin.token", "token", ""] {
+            assert_eq!(team_secret(arg(bad)).unwrap_err().code(), "sync.team_library.malformed");
+        }
+    }
+
+    #[test]
+    fn a_publish_names_why_it_left_the_secrets_out_by_code() {
+        let info = publish_info(TeamPublish {
+            edits: 1,
+            secrets_left_out: Some(tablepro_sync::api::team_library::SecretsLeftOut::PasswordsOff),
+            ..TeamPublish::default()
+        });
+
+        assert_eq!(info.edits, 1);
+        assert_eq!(
+            info.secrets_left_out.as_deref(),
+            Some("sync.team_library.passwords_off")
+        );
+        assert_eq!(publish_info(TeamPublish::default()).secrets_left_out, None);
+    }
+
+    // A publish seals only for the destination the library still holds: a record the app read before a save moved the
+    // connection, or one the library no longer holds, keeps the team's secrets as they are.
+    #[test]
+    fn a_published_copy_the_library_moved_since_names_no_secret() {
+        let id = Uuid::from_u128(1).to_string();
+        let held = vec![stored_connection(Uuid::from_u128(1), record(&id), None).unwrap()];
+        let (current, _) = connection(record(&id), DriverNames::Mac, &[]).unwrap();
+        let mut moved_record = record(&id);
+        "elsewhere".clone_into(&mut moved_record.connection.host);
+        let (moved, _) = connection(moved_record, DriverNames::Mac, &[]).unwrap();
+        let mut renamed_record = record(&id);
+        "Renamed".clone_into(&mut renamed_record.connection.name);
+        let (renamed, _) = connection(renamed_record, DriverNames::Mac, &[]).unwrap();
+        let (other, _) = connection(record(&Uuid::from_u128(2).to_string()), DriverNames::Mac, &[]).unwrap();
+
+        assert!(still_goes_where_published(&held, &[], &current, DriverNames::Mac).is_some());
+        assert!(still_goes_where_published(&held, &[], &renamed, DriverNames::Mac).is_some());
+        assert!(still_goes_where_published(&held, &[], &moved, DriverNames::Mac).is_none());
+        assert!(still_goes_where_published(&held, &[], &other, DriverNames::Mac).is_none());
     }
 }

@@ -90,9 +90,12 @@ pub fn set_core_log_sink(sink: Box<dyn CoreLogSink>, level: CoreLogLevel) {
         Bridge::start(QUEUE)
     });
     bridge.set(Arc::from(sink), level);
-    // Another subscriber may already be the process's; the core then logs there.
     if installed {
+        // Another subscriber may already be the process's; the core then logs there.
         let _ = tracing::dispatcher::set_global_default(tracing::Dispatch::new(bridge.clone()));
+    } else {
+        // A new level reaches the callsites only through the process's interest cache.
+        tracing::callsite::rebuild_interest_cache();
     }
 }
 
@@ -133,8 +136,9 @@ impl Bridge {
             .replace(sink);
         // Dropped once the lock is let go: the last reference to a foreign sink runs the host's own release.
         drop(replaced);
+        // No rebuild of tracing's process-wide cache here: with one dispatcher registered, tracing rebuilds from the
+        // calling thread's default, and a thread without one turns every level off for the whole process.
         self.shared.level.store(level.rank(), Ordering::SeqCst);
-        tracing::callsite::rebuild_interest_cache();
     }
 
     fn takes(&self, level: Level) -> bool {
@@ -466,6 +470,39 @@ mod tests {
         });
 
         assert!(done.recv_timeout(Duration::from_secs(5)).is_ok());
+    }
+
+    // The only test that installs the process's sink: every other one keeps its bridge to its own thread, so no test
+    // changes what another one hears. The host may set the sink from any thread, one with no default of its own
+    // included; none of its calls may turn a level off for the process, the first or a later one.
+    #[test]
+    fn a_sink_set_from_a_thread_with_no_default_of_its_own_hears_every_thread() {
+        let on_a_thread = |level: CoreLogLevel| {
+            let (sent, lines) = channel();
+            std::thread::spawn(move || set_core_log_sink(Box::new(Collect(Mutex::new(sent))), level))
+                .join()
+                .unwrap();
+            lines
+        };
+        let first = on_a_thread(CoreLogLevel::Info);
+        let later = on_a_thread(CoreLogLevel::Debug);
+
+        std::thread::spawn(|| {
+            tracing::debug!(target: "tablepro_sync", marker = "set from a spawned thread", "reached");
+        })
+        .join()
+        .unwrap();
+        let reached = std::iter::from_fn(|| later.recv_timeout(Duration::from_secs(5)).ok()).find(|line| {
+            line.private_fields
+                .contains(&field("marker", "set from a spawned thread"))
+        });
+
+        assert!(reached.is_some(), "the line never reached the sink set last");
+        assert!(first.try_iter().all(|line| {
+            !line
+                .private_fields
+                .contains(&field("marker", "set from a spawned thread"))
+        }));
     }
 
     struct Panics(Mutex<Sender<CoreLogLine>>);

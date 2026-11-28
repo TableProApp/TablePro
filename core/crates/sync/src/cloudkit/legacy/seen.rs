@@ -245,7 +245,10 @@ impl Seen {
         };
         let parsed = decoded(&row.value);
         if parsed.is_none() {
-            tracing::warn!("the legacy mirror's record does not read; importing the Swift metadata again");
+            tracing::warn!(
+                code = SyncError::Malformed { what: "legacy mirror" }.code(),
+                "the legacy mirror's record does not read; importing the Swift metadata again"
+            );
         }
         Ok(Some(parsed.unwrap_or_default()))
     }

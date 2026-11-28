@@ -104,19 +104,24 @@ pub(super) enum AfterPush {
 }
 
 // A `policy` refusal stands only while the switch that refused it is off: once the scopes body says it is on again,
-// the change goes up again, as a device pushes its copies back when an admin turns a switch on (0051, Policies). The
-// refusals that lapsed come back apart, for the pass to forget.
+// the change goes up again, as a device pushes its copies back when an admin turns a switch on (0051, Policies). A
+// `rotation_due` refusal stands only while the team is due a rotation, so a team envelope held meanwhile goes up once
+// the next team version applies (0056, Teams). The refusals that lapsed come back apart, for the pass to forget.
 fn standing_refusals(
     refused: HashMap<RecordKey, RefusedRow>,
     row: &ScopeRow,
 ) -> (HashMap<RecordKey, RefusedRow>, Vec<RecordKey>) {
     let (standing, lapsed): (HashMap<RecordKey, RefusedRow>, HashMap<RecordKey, RefusedRow>) =
         refused.into_iter().partition(|(key, refusal)| {
-            refusal.code != RejectedCode::Policy.as_str()
-                || key
-                    .kind
+            if refusal.code == RejectedCode::Policy.as_str() {
+                key.kind
                     .known()
                     .is_none_or(|kind| kind_off(row.policies, row.scope, kind))
+            } else if refusal.code == RejectedCode::RotationDue.as_str() {
+                row.rotation_due
+            } else {
+                true
+            }
         });
     (standing, lapsed.into_keys().collect())
 }
@@ -230,14 +235,15 @@ fn hold_colliding(diffed: &mut Diffed, kind: Kind, local: &LocalRecords, bases: 
 }
 
 // A team scope's deletions go after its writes, the parts before the whole: a query moved out of a folder lands
-// before the folder goes, so the server never deletes it with the folder, and a folder before the connection its
-// queries named (0052, Team scope).
+// before the folder goes, so the server never deletes it with the folder, a folder before the connection its queries
+// named (0052, Team scope), and a connection's envelopes before the connection.
 fn deletes_last(pending: &mut [Pending]) {
     let rank = |pending: &Pending| match (&pending.op, pending.key.kind.known()) {
         (PendingOp::Write { .. }, _) => 0,
         (PendingOp::Delete, Some(Kind::LibraryQuery)) => 1,
         (PendingOp::Delete, Some(Kind::LibraryFolder)) => 2,
-        (PendingOp::Delete, _) => 3,
+        (PendingOp::Delete, Some(Kind::SecretEnvelope)) => 3,
+        (PendingOp::Delete, _) => 4,
     };
     pending.sort_by_key(rank);
 }
@@ -271,6 +277,12 @@ impl ServiceSync {
         // Personal and history data go up only from an approved device, and not once a key flow locked it in this pass.
         if !matches!(scope, ScopeName::Team(_)) && (info.approved != Some(true) || self.hooks.locked().is_some()) {
             return Ok(AfterPush::Done);
+        }
+        if matches!(scope, ScopeName::Team(_))
+            && self.seals(ctx, &row)
+            && !kind_off(row.policies, scope, Kind::SecretEnvelope)
+        {
+            self.reseal_unsent_envelopes(scope).await?;
         }
         let mut pending = self.pending(ctx, &row).await?;
         if matches!(scope, ScopeName::Team(_)) {

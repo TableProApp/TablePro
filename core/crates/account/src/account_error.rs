@@ -69,6 +69,11 @@ const WORDED_REFUSALS: [(&str, &str); 13] = [
     ("share_password_wrong", "account.share_password_wrong"),
 ];
 
+// The codes a log line names where a file, the entitlement or a managed policy value failed with no `AccountError`.
+pub(crate) const STORAGE: &str = "account.storage";
+pub(crate) const ENTITLEMENT: &str = "account.entitlement";
+pub(crate) const POLICY_IGNORED: &str = "account.policy_ignored";
+
 impl AccountError {
     // A stable code an app outside Rust words the error from.
     pub fn code(&self) -> &'static str {
@@ -90,10 +95,10 @@ impl AccountError {
                 .find(|(problem, _)| problem == code)
                 .map_or("account.refused", |(_, worded)| worded),
             Self::RateLimited { .. } => "account.rate_limited",
-            Self::Entitlement(_) => "account.entitlement",
+            Self::Entitlement(_) => ENTITLEMENT,
             Self::Server(error) => error.code(),
             Self::License(error) => error.code(),
-            Self::Storage { .. } => "account.storage",
+            Self::Storage { .. } => STORAGE,
             Self::Protocol(_) => "account.protocol",
         }
     }
