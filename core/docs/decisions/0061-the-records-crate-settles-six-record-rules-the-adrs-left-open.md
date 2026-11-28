@@ -1,6 +1,6 @@
 # 0061: The records crate settles six record rules the ADRs left open
 
-- **Status**: Accepted; amends 0044, 0051, 0054 and 0056
+- **Status**: Accepted; amends 0044, 0051, 0054 and 0056; driver names on the wire amended by 0075
 - **Date**: 2026-11-26
 
 ## Context

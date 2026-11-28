@@ -1,6 +1,6 @@
 # 0017: Favourites keep folders and keywords on saved queries, and the tables and databases a user marks
 
-- **Status**: Accepted; the FFI surface added by [0030](0030-storage-import-and-library-through-the-ffi.md); the integer ids superseded and the per-connection folders and keywords amended by [0052](0052-synced-records-have-canonical-ids.md)
+- **Status**: Accepted; the FFI surface added by [0030](0030-storage-import-and-library-through-the-ffi.md); the integer ids superseded and the per-connection folders and keywords amended by [0052](0052-synced-records-have-canonical-ids.md); the favourites' database amended by 0069
 - **Date**: 2026-11-08
 
 ## Context
