@@ -511,7 +511,8 @@ async fn a_second_mac_signed_in_with_sync_off_learns_by_itself_that_it_needs_app
 }
 
 // The key sheets name each key device by the account's row that holds it, this Mac's by its own row; a key device no
-// row holds keeps no row, which the Mac shows as removed with its keys not changed yet.
+// row holds keeps no row, which the Mac shows as removed with its keys not changed yet, under the name of the row that
+// asked for it when this Mac approved it.
 #[test]
 fn a_key_device_takes_the_name_platform_and_row_of_the_row_that_holds_it() {
     use tablepro_keys::encoding::KeyDeviceId;
@@ -537,10 +538,12 @@ fn a_key_device_takes_the_name_platform_and_row_of_the_row_that_holds_it() {
     let rows = super::names::DeviceRows::of(vec![
         row("dev_a", "Lab (a)", None),
         row("dev_b", "Lab (b)", Some(other)),
+        row("dev_c", "Lab (c)", None),
     ]);
-    let key = |key_device, device: Option<&str>| AccountDevice {
+    let key = |key_device, device: Option<&str>, requested_by: Option<&str>| AccountDevice {
         key_device,
         device: device.map(|id| DeviceRowId(id.to_owned())),
+        requested_by: requested_by.map(|id| DeviceRowId(id.to_owned())),
         name: None,
         platform: None,
         added_at_us: None,
@@ -548,15 +551,21 @@ fn a_key_device_takes_the_name_platform_and_row_of_the_row_that_holds_it() {
         compared: false,
     };
 
-    let this = rows.name(key(mine, Some("dev_a")));
-    let approved = rows.name(key(other, None));
-    let removed = rows.name(key(gone, None));
+    let this = rows.name(key(mine, Some("dev_a"), None));
+    let approved = rows.name(key(other, None, Some("dev_c")));
+    let removed = rows.name(key(gone, None, None));
+    let signed_out = rows.name(key(gone, None, Some("dev_c")));
 
     assert_eq!(this.name.as_deref(), Some("Lab (a)"));
     assert_eq!(this.platform.as_deref(), Some("macos"));
     assert_eq!(approved.device, Some(DeviceRowId("dev_b".to_owned())));
     assert_eq!(approved.name.as_deref(), Some("Lab (b)"));
     assert_eq!((removed.device, removed.name), (None, None));
+    assert_eq!(
+        (signed_out.device, signed_out.name.as_deref()),
+        (None, Some("Lab (c)")),
+        "a key device that waits to be removed is named by the row that asked for it, and keeps no row"
+    );
 }
 
 // A new device's request is named by the row that wrote it, as the server serves it beside the request; its key device

@@ -17,3 +17,4 @@ mod harness;
 mod device;
 mod push_back;
 mod replay;
+mod team_secrets;

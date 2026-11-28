@@ -299,7 +299,7 @@ private final class ProjectLibraryStore: ImportLibraryStore {
     func addImportedProfiles(_ profiles: [PlannedCredentialProfile]) throws -> [BundleRef: UUID] { [:] }
     func ensureTags(_ tags: [PlannedTag]) throws -> [String: UUID] { [:] }
     func existingConnectionIds() -> Set<UUID> { [] }
-    func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) {}
+    func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) -> CredentialWriteResult { .allKept }
 
     func ensureProjects(_ projects: [PlannedProject]) throws -> [BundleRef: UUID] {
         receivedProjects = projects
@@ -332,7 +332,7 @@ private final class ProjectlessLibraryStore: ImportLibraryStore {
     func ensureGroupPaths(_ paths: [[PathComponent]]) throws -> [UUID?] { paths.map { _ in nil } }
     func ensureTags(_ tags: [PlannedTag]) throws -> [String: UUID] { [:] }
     func existingConnectionIds() -> Set<UUID> { [] }
-    func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) {}
+    func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) -> CredentialWriteResult { .allKept }
 
     func writeConnections(_ connections: [ResolvedConnection]) -> ConnectionImportWrite? {
         writtenConnections = connections

@@ -116,17 +116,10 @@ pub(crate) fn check_may_seal(roster: Option<&Roster>, scope_due: bool) -> Result
 }
 
 impl KeyService {
-    pub(super) async fn seal_team(
-        &self,
-        team: TeamId,
-        envelope: &EnvelopeId,
-        secret: &SecretString,
-        dest: &Value,
-    ) -> Result<Value, SyncError> {
-        team_envelope(envelope)?;
+    // The team's book and the version a seal writes under, refused as a seal is.
+    async fn sealing_book(&self, txn: &mut dyn StateTxn, team: TeamId) -> Result<(TeamBook, Version), SyncError> {
         self.may_handle_secrets()?;
         let scope = ScopeName::Team(team);
-        let mut txn = self.begin().await?;
         if self.own_account(&mut *txn).await?.is_none() {
             return Err(SyncError::NotAllowed {
                 what: "seal a team secret before this device holds the account's keys",
@@ -136,7 +129,11 @@ impl KeyService {
         check_may_seal(self.current_roster(&mut *txn, team).await?.as_ref(), due)?;
         let book = self.load_team(&mut *txn, team).await?;
         book.check_anchor()?;
-        let Some(row) = book.row().filter(|row| row.state == KeyVersionState::Ok).cloned() else {
+        let Some(version) = book
+            .row()
+            .filter(|row| row.state == KeyVersionState::Ok)
+            .map(|row| row.version)
+        else {
             // Nothing is written under the team key while a restart waits for the person's words (0064).
             if book
                 .row()
@@ -161,13 +158,39 @@ impl KeyService {
                 code: RejectedCode::Role,
             });
         }
-        let key = secrets::team_key(self, team, &book, &mut facts, row.version, row.version).await?;
+        Ok((book, version))
+    }
+
+    pub(super) async fn team_sealing_version(&self, team: TeamId) -> Result<Version, SyncError> {
+        let mut txn = self.begin().await?;
+        Ok(self.sealing_book(&mut *txn, team).await?.1)
+    }
+
+    pub(super) async fn seal_team(
+        &self,
+        team: TeamId,
+        envelope: &EnvelopeId,
+        secret: &SecretString,
+        dest: &Value,
+    ) -> Result<Value, SyncError> {
+        team_envelope(envelope)?;
+        let scope = ScopeName::Team(team);
+        let mut txn = self.begin().await?;
+        let (book, version) = self.sealing_book(&mut *txn, team).await?;
+        let mut cache = FactsCache::default();
+        let mut facts = ServiceFacts {
+            service: self,
+            txn: &mut *txn,
+            scope,
+            cache: &mut cache,
+        };
+        let key = secrets::team_key(self, team, &book, &mut facts, version, version).await?;
         let sealed = seal_envelope(
             &key,
             self.origin(),
             Scope::Team(team),
             envelope,
-            row.version,
+            version,
             secret.expose_secret(),
             &to_json(dest)?,
         )?;
@@ -208,6 +231,40 @@ impl KeyService {
         let opened = open_envelope(&key, self.origin(), Scope::Team(team), envelope, &sealed)?;
         keep_kv(&mut *txn, scope, envelope, sealed.kv).await?;
         txn.commit().await?;
+        Ok(OpenedEnvelope {
+            secret: opened.secret,
+            dest: from_json(&opened.dest)?,
+            kv: sealed.kv,
+        })
+    }
+
+    pub(super) async fn open_team_held(
+        &self,
+        team: TeamId,
+        envelope: &EnvelopeId,
+        fields: &Value,
+    ) -> Result<OpenedEnvelope, SyncError> {
+        team_envelope(envelope)?;
+        self.may_handle_secrets()?;
+        let scope = ScopeName::Team(team);
+        let text = serde_json::to_vec(fields).map_err(|_| SyncError::Malformed { what: "envelope" })?;
+        let sealed = parse_sealed(&text)?;
+        let mut txn = self.begin().await?;
+        let book = self.load_team(&mut *txn, team).await?;
+        book.check_anchor()?;
+        let newest = book.row().map(|row| row.version).ok_or(SyncError::NotAllowed {
+            what: "open a team secret before this device holds the team key",
+        })?;
+        check_open_kv(sealed.kv, None, newest, None)?;
+        let mut cache = FactsCache::default();
+        let mut facts = ServiceFacts {
+            service: self,
+            txn: &mut *txn,
+            scope,
+            cache: &mut cache,
+        };
+        let key = secrets::team_key(self, team, &book, &mut facts, sealed.kv, newest).await?;
+        let opened = open_envelope(&key, self.origin(), Scope::Team(team), envelope, &sealed)?;
         Ok(OpenedEnvelope {
             secret: opened.secret,
             dest: from_json(&opened.dest)?,

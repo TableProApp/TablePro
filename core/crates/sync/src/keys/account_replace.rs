@@ -18,7 +18,7 @@ use tablepro_keys::scope_key::Start;
 use super::account_genesis::{ShownKey, refusal};
 use super::{AccountObjectsPlan, KeptDevice, KeyService, OwnAccount, ScopeKeyPlan, create_change};
 use crate::api::error::SyncError;
-use crate::api::ids::ScopeName;
+use crate::api::ids::{DeviceRowId, ScopeName};
 use crate::api::key_flows::{
     AccountDevice, DraftId, KeyState, RecoveryKeyDraft, ReviewedDevice, RotationDraft, TypedBack,
 };
@@ -61,9 +61,11 @@ impl KeyService {
         if current.identity_seed(self.origin(), self.account())?.public()? != own.ik {
             return Err(KeysError::Signature.into());
         }
-        let mut devices = vec![reviewed(own.device.key_device, true)];
+        let requesting = self.requesting_rows(txn.as_mut()).await?;
+        let mut devices = vec![reviewed(own.device.key_device, true, None)];
         for kept in self.certified_pins(txn.as_mut(), &own).await? {
-            devices.push(reviewed(kept.key_device, false));
+            let requested_by = requesting.get(&kept.key_device).cloned();
+            devices.push(reviewed(kept.key_device, false, requested_by));
         }
         let next = ShownKey::new()?;
         let recovery = next.draft(DraftId(uuid::Uuid::nil()))?;
@@ -504,11 +506,12 @@ impl KeyService {
     }
 }
 
-fn reviewed(key_device: KeyDeviceId, this_device: bool) -> ReviewedDevice {
+fn reviewed(key_device: KeyDeviceId, this_device: bool, requested_by: Option<DeviceRowId>) -> ReviewedDevice {
     ReviewedDevice {
         device: AccountDevice {
             key_device,
             device: None,
+            requested_by,
             name: None,
             platform: None,
             added_at_us: None,
