@@ -516,6 +516,98 @@ public sealed class TeamLibraryModel
     }
 }
 
+public enum TeamSignOutAnswer
+{
+    Upload,
+    Discard,
+    Cancel,
+}
+
+// What Sign Out asks about: the edits by name, null when they could not be listed, and the code of an upload that did
+// not finish.
+public sealed record TeamSignOutQuestion(IReadOnlyList<string>? Names, string? UploadFailure);
+
+// Sign out's part for Team Library (the macOS app's TeamLibrary.signOut): edits the teams have not taken are listed
+// first, to upload, discard or keep the sign-in for; once signed out, the account's Team Library data goes, verified.
+public static class TeamSignOut
+{
+    // False when the person keeps the sign-in. Owner is the one read before the sign-out started, so nothing reaches
+    // another account's library. Edits that could not be listed are asked about too, since discarding loses any there
+    // are.
+    public static async Task<bool> SettleUnsentAsync(
+        ITeamCalls calls,
+        TeamLibraryOwner owner,
+        Func<TeamSignOutQuestion, Task<TeamSignOutAnswer>> ask)
+    {
+        ArgumentNullException.ThrowIfNull(calls);
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentNullException.ThrowIfNull(ask);
+        string? failure = null;
+        var uploaded = false;
+        while (true)
+        {
+            IReadOnlyList<string>? names;
+            try
+            {
+                names = [.. (await calls.GetUnsentTeamEditsAsync(owner).ConfigureAwait(true)).Select(TeamLibraryModel.Name)];
+            }
+            catch (Exception exception) when (KeyErrors.Of(exception) is not null)
+            {
+                names = null;
+            }
+
+            if (names is { Count: 0 })
+            {
+                return true;
+            }
+
+            // An upload that went through but left edits behind says so.
+            if (uploaded && failure is null && names is not null)
+            {
+                failure = "sync.team_library.not_pulled";
+            }
+
+            switch (await ask(new TeamSignOutQuestion(names, failure)).ConfigureAwait(true))
+            {
+                case TeamSignOutAnswer.Upload:
+                    uploaded = true;
+                    try
+                    {
+                        await calls.SyncNowAsync().ConfigureAwait(true);
+                        failure = null;
+                    }
+                    catch (Exception exception) when (KeyErrors.Of(exception) is { } error)
+                    {
+                        failure = error.Code;
+                    }
+
+                    break;
+                case TeamSignOutAnswer.Discard:
+                    // The delete after the sign-out takes them with the rest of the account's Team Library data.
+                    return true;
+                default:
+                    return false;
+            }
+        }
+    }
+
+    // After the sign-out: null when the data is gone; else why it stays, which keeps Team Library off for the account.
+    public static async Task<CoreError?> DeleteDataAsync(ITeamCalls calls, TeamLibraryOwner owner)
+    {
+        ArgumentNullException.ThrowIfNull(calls);
+        ArgumentNullException.ThrowIfNull(owner);
+        try
+        {
+            await calls.DeleteTeamLibraryDataAsync(owner).ConfigureAwait(true);
+            return null;
+        }
+        catch (Exception exception) when (KeyErrors.Of(exception) is { } error)
+        {
+            return error;
+        }
+    }
+}
+
 public enum TeamConflictCase
 {
     // This computer deleted the item and the team changed it.

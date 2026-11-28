@@ -220,6 +220,29 @@ internal static class TeamDialogs
         return await library.DiscardAsync(null, owner).ConfigureAwait(true);
     }
 
+    // Sign out's question while Team Library edits are not uploaded (the macOS app's AccountSignOutPrompt).
+    public static async Task<TeamSignOutAnswer> SignOutUnsentAsync(FrameworkElement owner, TeamSignOutQuestion question)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentNullException.ThrowIfNull(question);
+        var dialog = KeyDialogs.Dialog(owner, "TeamSignOutDialog");
+        dialog.Title = Strings.Get("TeamSignOutTitle");
+        dialog.Content = KeyDialogs.Paragraph(Strings.Sentences(
+            question.UploadFailure is { } code ? Strings.Format("TeamSignOutUploadFailed", SyncText.Code(code)) : null,
+            question.Names is { } names
+                ? Strings.Format("TeamSignOutUnsent", Strings.ListAnd(names))
+                : Strings.Get("TeamSignOutUnlisted")));
+        dialog.PrimaryButtonText = Strings.Get("TeamSignOutUpload");
+        dialog.SecondaryButtonText = Strings.Get("TeamSignOutDiscard");
+        dialog.CloseButtonText = Strings.Get("Cancel");
+        return await WindowDialogs.ShowAsync(dialog, owner).ConfigureAwait(true) switch
+        {
+            ContentDialogResult.Primary => TeamSignOutAnswer.Upload,
+            ContentDialogResult.Secondary => TeamSignOutAnswer.Discard,
+            _ => TeamSignOutAnswer.Cancel,
+        };
+    }
+
     // This account's words, which an owner or admin compares to confirm it.
     public static async Task OwnWordsAsync(FrameworkElement owner, Workbench workbench)
     {

@@ -15,6 +15,7 @@ Team Library shares saved queries, folders and connections with a team through t
 - **Saved queries pane.** A Team Library section under the tree lists each team's queries, read only. Double-click or Enter opens one in a new query tab. Publish to team confirms the count and sends every saved query and folder on this computer. A bar shows the publish's outcome, the conflicts with Resolve, and the edits not uploaded with Discard.
 - **Conflicts.** One ContentDialog per conflict shows each field on both sides and who changed the team's copy last, with Keep mine, Keep theirs and Decide later.
 - **Team keys page.** Settings > Sync > Team keys opens a page in the window, as the end-to-end encryption page does: Show my words for every member, then a card per team with its key's status and action. Owners and admins also see the members with Confirm or Compare, and the stopped devices with Confirm again. Confirming a member, comparing a key change, accepting a held restart and starting the key over each compare words in a ContentDialog. Windows shows words only, no QR code.
+- **Sign out.** The owner is read first. Edits not uploaded are listed next, with Upload and sign out, Discard and sign out or Cancel. The keys are erased after that. Once signed out, the account's Team Library data is deleted for that owner through the service of the sign-in that ended, which `SyncHost.LeaseAsync` keeps open past the sign-in change.
 
 ## Rationale
 
@@ -25,5 +26,5 @@ Team Library shares saved queries, folders and connections with a team through t
 ## Consequences
 
 - Team connections and their passwords come next, over `PublishTeamConnections` and the items' records; the credentials a removed member could read are not listed yet.
-- Sign out does not ask about edits not uploaded yet or delete the account's Team Library data yet; that comes in a follow-up, as does `DeleteOtherTeamLibraryData` after an involuntary sign-out. Until then the edits stay in the owner's store on this computer and go up at that account's next sign-in.
+- Deleting another account's Team Library data after an involuntary sign-out (`DeleteOtherTeamLibraryData`) is not called yet.
 - The UI tests run signed out, so the section and the page are reached only signed in; their rules are covered by the models' tests.
