@@ -623,3 +623,36 @@ async fn an_envelope_pulled_while_the_store_cannot_read_its_copy_lands_once_it_c
     assert_eq!(mac_secrets.get(&envelope_id(1)), Some(changed.clone()));
     assert_eq!(stored_envelope(&server, 1), Some(changed));
 }
+
+// A secret store meets its first pass with no refill: an envelope its record keeps out of the store waits as one
+// waiting for its record, never as a refill's, and takes no pull-wins over a secret the device holds (0076).
+#[tokio::test]
+async fn an_envelope_store_seen_for_the_first_time_holds_a_refused_envelope_as_waiting_for_its_record() {
+    let server = FakeServer::new();
+    let other_secrets = envelopes();
+    let other = DeviceBuilder::new(&server, "dev_other")
+        .adapter(ScopeName::Personal, Arc::clone(&other_secrets))
+        .build()
+        .await;
+    rotate(&other, 1).await;
+    other_secrets.put(&envelope_id(1), sealed(1));
+    other.sync().await;
+    let secrets = envelopes();
+    secrets.without_identity();
+    secrets.refuse_value(&envelope_id(1), true);
+    let mac = DeviceBuilder::new(&server, "dev_mac")
+        .adapter(ScopeName::Personal, Arc::clone(&secrets))
+        .build()
+        .await;
+
+    mac.sync().await;
+    let waiting = mac.row(RowKey::Held(personal_key(&envelope_id(1)))).await;
+    secrets.refuse_value(&envelope_id(1), false);
+    mac.sync().await;
+
+    assert!(
+        matches!(&waiting, Some(Row::Held(held)) if held.reason == HeldReason::AwaitingStore),
+        "{waiting:?}"
+    );
+    assert_eq!(secrets.get(&envelope_id(1)), Some(sealed(1)));
+}

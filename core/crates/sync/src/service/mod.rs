@@ -989,7 +989,7 @@ impl ServiceSync {
                     }),
                     _ => None,
                 };
-                let marked = stored.is_none_or(|stored| start.needs_refill(stored));
+                let marked = adapter.refills() && stored.is_none_or(|stored| start.needs_refill(stored));
                 if marked {
                     for kind in kinds.get(&store).into_iter().flatten() {
                         if stored.is_none() && carried_over(txn.as_mut(), &store, *kind, &known).await? {
